@@ -1,0 +1,290 @@
+{% extends "layout.html" %}
+{% block page_title %}Dashboard{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+
+  <!-- Header + filtros -->
+  <div class="flex flex-wrap items-end justify-between gap-4">
+    <div>
+      <h1 class="text-2xl font-bold font-heading text-text-primary">Dashboard</h1>
+      <p class="mt-1 text-sm text-text-muted font-body" id="dash-subtitle">Resumen del mes actual</p>
+    </div>
+    <div class="flex flex-wrap items-end gap-3">
+      <div class="w-40">
+        <label for="dash-month" class="block text-xs font-medium text-text-secondary mb-1 font-body">Mes</label>
+        <select id="dash-month" class="block w-full rounded-lg border border-border px-3 py-2 text-sm font-body bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-500"></select>
+      </div>
+      <div class="w-28">
+        <label for="dash-year" class="block text-xs font-medium text-text-secondary mb-1 font-body">Anio</label>
+        <select id="dash-year" class="block w-full rounded-lg border border-border px-3 py-2 text-sm font-body bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-500"></select>
+      </div>
+      <button id="btn-hoy" onclick="resetToNow()"
+        class="px-4 py-2 rounded-lg border border-border text-sm font-medium font-body text-text-secondary hover:bg-surface-hover hover:text-text-primary transition-colors flex items-center gap-2 cursor-pointer">
+        <i data-lucide="calendar" class="h-4 w-4"></i>
+        Mes actual
+      </button>
+    </div>
+  </div>
+
+  <!-- Stat cards -->
+  <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4" id="stats-grid"></div>
+
+  <!-- Charts -->
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+    <div class="bg-surface rounded-xl border border-border shadow-sm">
+      <div class="px-5 pt-5 pb-1">
+        <h3 class="text-sm font-semibold font-heading text-text-primary">Ingresos vs Gastos</h3>
+        <p class="text-xs text-text-muted font-body mt-0.5" id="bar-subtitle">Ultimos 6 meses</p>
+      </div>
+      <div class="px-4 pb-4" id="bar-chart-wrap" style="min-height:308px"></div>
+    </div>
+    <div class="bg-surface rounded-xl border border-border shadow-sm">
+      <div class="px-5 pt-5 pb-1">
+        <h3 class="text-sm font-semibold font-heading text-text-primary">Ingresos por Tratamiento</h3>
+        <p class="text-xs text-text-muted font-body mt-0.5" id="pie-subtitle">Mes seleccionado</p>
+      </div>
+      <div class="px-4 pb-4" id="pie-chart-wrap" style="min-height:308px"></div>
+    </div>
+  </div>
+
+  <!-- Tratamientos del mes -->
+  <div class="bg-surface rounded-xl border border-border shadow-sm">
+    <div class="flex items-center justify-between px-5 py-4 border-b border-border">
+      <h3 class="text-sm font-semibold font-heading text-text-primary" id="tbl-title">Tratamientos del mes</h3>
+      <a href="/ingresos" class="text-sm font-medium text-primary-600 hover:text-primary-700 transition-colors">Ver ingresos</a>
+    </div>
+    <div id="recent-table"></div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+lucide.createIcons();
+const PIE_COLORS = ['#0891b2','#059669','#f59e0b','#8b5cf6','#ec4899','#f97316'];
+const MONTH_LBL = ['','Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+const MONTH_FULL = ['','Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+
+const now = new Date();
+let selMonth = now.getMonth() + 1;
+let selYear  = now.getFullYear();
+
+// ── Selects ──
+populateSelect(document.getElementById('dash-month'), buildMonthOptions(String(selMonth)), String(selMonth));
+buildYearOptions(String(selYear)).forEach(o => document.getElementById('dash-year').appendChild(o));
+document.getElementById('dash-month').addEventListener('change', e => { selMonth = parseInt(e.target.value); loadDashboard(); });
+document.getElementById('dash-year').addEventListener('change',  e => { selYear  = parseInt(e.target.value); loadDashboard(); });
+
+function resetToNow() {
+  selMonth = now.getMonth() + 1;
+  selYear  = now.getFullYear();
+  document.getElementById('dash-month').value = String(selMonth);
+  document.getElementById('dash-year').value  = String(selYear);
+  loadDashboard();
+}
+
+// ── Skeletons ──
+function renderStatSkeletons() {
+  const grid = document.getElementById('stats-grid');
+  grid.replaceChildren();
+  for (let i = 0; i < 6; i++) {
+    const card = domEl('div', 'bg-surface rounded-xl border border-border p-5 shadow-sm animate-pulse');
+    const row = domEl('div', 'flex items-center justify-between');
+    row.appendChild(domEl('div', 'h-4 w-24 bg-surface-alt rounded'));
+    row.appendChild(domEl('div', 'h-9 w-9 bg-surface-alt rounded-lg'));
+    card.appendChild(row);
+    card.appendChild(domEl('div', 'mt-3 h-7 w-20 bg-surface-alt rounded'));
+    grid.appendChild(card);
+  }
+}
+
+function showChartSkeleton(id) {
+  const wrap = document.getElementById(id);
+  wrap.replaceChildren();
+  const outer = domEl('div', 'h-72 flex items-center justify-center');
+  const inner = domEl('div', 'animate-pulse flex flex-col items-center gap-2');
+  inner.appendChild(domEl('div', 'h-40 w-56 bg-surface-alt rounded-lg'));
+  inner.appendChild(domEl('div', 'h-3 w-32 bg-surface-alt rounded'));
+  outer.appendChild(inner);
+  wrap.appendChild(outer);
+}
+
+function showChartEmpty(id, msg) {
+  const wrap = document.getElementById(id);
+  wrap.replaceChildren();
+  wrap.appendChild(domEl('div', 'h-72 flex items-center justify-center text-sm text-text-muted font-body', msg));
+}
+
+// ── Stat cards ──
+function renderStats(ing, gas, pag, gan, pe, ventas50) {
+  const defs = [
+    { label: 'Ingresos del Mes', value: fmt(ing), icon: 'dollar-sign', cls: 'text-text-primary' },
+    { label: 'Gastos Operativos', value: fmt(gas), icon: 'trending-down', cls: 'text-text-primary' },
+    { label: 'Pagos Doctores', value: fmt(pag), icon: 'user-check', cls: 'text-text-primary' },
+    { label: 'Ganancia Neta', value: fmt(gan), icon: 'trending-up', cls: gan >= 0 ? 'text-accent-700' : 'text-danger-600' },
+    { label: 'Punto de Equilibrio', value: fmt(pe), icon: 'target', cls: pe > 0 && ing >= pe ? 'text-accent-700' : pe > 0 ? 'text-warning-600' : 'text-text-primary' },
+    { label: '50% de las Ventas', value: fmt(ventas50), icon: 'percent', cls: 'text-text-primary' },
+  ];
+  const grid = document.getElementById('stats-grid');
+  grid.replaceChildren();
+  defs.forEach(d => {
+    const card = domEl('div', 'bg-surface rounded-xl border border-border p-5 shadow-sm');
+    const row = domEl('div', 'flex items-center justify-between');
+    row.appendChild(domEl('p', 'text-sm font-medium text-text-secondary font-body', d.label));
+    const iconWrap = domEl('div', 'h-9 w-9 rounded-lg bg-primary-50 flex items-center justify-center shrink-0');
+    iconWrap.appendChild(domIcon(d.icon, 'h-4 w-4 text-primary-600'));
+    row.appendChild(iconWrap);
+    card.appendChild(row);
+    card.appendChild(domEl('p', 'mt-3 text-2xl font-bold font-heading tabular-nums ' + d.cls, d.value));
+    grid.appendChild(card);
+  });
+  lucide.createIcons();
+}
+
+// ── Bar chart ──
+let _barChart = null;
+function renderBarChart(barData) {
+  if (!barData.length) { showChartEmpty('bar-chart-wrap', 'Sin datos para este periodo'); return; }
+  const wrap = document.getElementById('bar-chart-wrap');
+  wrap.replaceChildren();
+  const canvas = document.createElement('canvas');
+  canvas.height = 288;
+  wrap.appendChild(canvas);
+  if (_barChart) _barChart.destroy();
+  _barChart = new Chart(canvas, {
+    type: 'bar',
+    data: {
+      labels: barData.map(d => d.name),
+      datasets: [
+        { label: 'Ingresos', data: barData.map(d => d.ingresos), backgroundColor: '#0891b2', borderRadius: 4, maxBarThickness: 40 },
+        { label: 'Gastos',   data: barData.map(d => d.gastos),   backgroundColor: '#ef4444', borderRadius: 4, maxBarThickness: 40 },
+      ],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { position: 'top', labels: { boxWidth: 10, color: '#475569', font: { size: 12 } } },
+        tooltip: { callbacks: { label: ctx => ctx.dataset.label + ': ' + fmt(ctx.raw) } },
+      },
+      scales: {
+        x: { grid: { color: '#e2e8f0' }, ticks: { color: '#94a3b8', font: { size: 11 } } },
+        y: { grid: { color: '#e2e8f0' }, border: { display: false },
+             ticks: { color: '#94a3b8', font: { size: 11 }, callback: v => '$' + (v/1000).toFixed(0) + 'k' } },
+      },
+    },
+  });
+}
+
+// ── Pie chart ──
+let _pieChart = null;
+function renderPieChart(pieData) {
+  if (!pieData.length) { showChartEmpty('pie-chart-wrap', 'Sin tratamientos registrados este mes'); return; }
+  const wrap = document.getElementById('pie-chart-wrap');
+  wrap.replaceChildren();
+  const canvas = document.createElement('canvas');
+  canvas.height = 288;
+  wrap.appendChild(canvas);
+  if (_pieChart) _pieChart.destroy();
+  _pieChart = new Chart(canvas, {
+    type: 'doughnut',
+    data: {
+      labels: pieData.map(d => d.name),
+      datasets: [{ data: pieData.map(d => d.value), backgroundColor: PIE_COLORS, borderWidth: 2, borderColor: '#fff' }],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false, cutout: '50%',
+      plugins: {
+        legend: { position: 'bottom', labels: { boxWidth: 8, usePointStyle: true, pointStyle: 'circle', color: '#475569', font: { size: 11 } } },
+        tooltip: { callbacks: { label: ctx => ctx.label + ': ' + fmt(ctx.raw) } },
+      },
+    },
+  });
+}
+
+// ── Main load ──
+async function loadDashboard() {
+  const mes = selYear + '-' + String(selMonth).padStart(2, '0');
+
+  // Update subtitles
+  document.getElementById('dash-subtitle').textContent =
+    MONTH_FULL[selMonth] + ' ' + selYear;
+  document.getElementById('pie-subtitle').textContent =
+    MONTH_FULL[selMonth] + ' ' + selYear;
+
+  renderStatSkeletons();
+  showChartSkeleton('bar-chart-wrap');
+  showChartSkeleton('pie-chart-wrap');
+
+  // Compute last 6 months relative to selection
+  const last6 = [];
+  for (let i = 5; i >= 0; i--) {
+    const d = new Date(selYear, selMonth - 1 - i, 1);
+    last6.push({ year: d.getFullYear(), month: d.getMonth() + 1 });
+  }
+  const yearsNeeded = [...new Set(last6.map(d => d.year))];
+
+  // Update bar subtitle
+  const oldest = last6[0], newest = last6[last6.length - 1];
+  document.getElementById('bar-subtitle').textContent =
+    MONTH_LBL[oldest.month] + ' ' + oldest.year +
+    ' — ' + MONTH_LBL[newest.month] + ' ' + newest.year;
+
+  const [resumenRes, txRes, ...trimResults] = await Promise.allSettled([
+    API.get('/reportes/resumen-mensual?mes=' + mes),
+    API.get('/reportes/tratamientos-realizados?mes=' + mes),
+    ...yearsNeeded.map(y => API.get('/reportes/trimestral?year=' + y)),
+  ]);
+
+  // ── Stats ──
+  let ing = 0, gas = 0, pag = 0, gan = 0, pe = 0, ventas50 = 0;
+  if (resumenRes.status === 'fulfilled') {
+    const r = resumenRes.value;
+    ing = r.total_ingresos || 0;
+    gas = (r.gastos_fijos || 0) + (r.gastos_variables || 0);
+    pag = r.total_pagos_doctores || 0;
+    gan = r.utilidad_neta != null ? r.utilidad_neta : (ing - gas - pag);
+    pe       = (r.punto_de_equilibrio || {}).punto_equilibrio || 0;
+    ventas50 = (r.punto_de_equilibrio || {}).cincuenta_pct_ventas || 0;
+  }
+  renderStats(ing, gas, pag, gan, pe, ventas50);
+
+  // ── Bar chart: últimos 6 meses ──
+  const trimByYear = {};
+  yearsNeeded.forEach((y, i) => {
+    if (trimResults[i]?.status === 'fulfilled') {
+      trimByYear[y] = trimResults[i].value.meses || [];
+    }
+  });
+  const barData = last6.map(d => {
+    const meses = trimByYear[d.year] || [];
+    const m = meses.find(x => x.mes === d.month) || { total: 0, gastos: 0 };
+    const label = MONTH_LBL[d.month] + (d.year !== selYear ? ' \'' + String(d.year).slice(2) : '');
+    return { name: label, ingresos: m.total || 0, gastos: m.gastos || 0 };
+  });
+  renderBarChart(barData);
+
+  // ── Pie chart: por tratamiento ──
+  let pieData = [];
+  if (txRes.status === 'fulfilled') {
+    pieData = (txRes.value.tratamientos || [])
+      .filter(t => t.ingreso > 0)
+      .slice(0, 6)
+      .map(t => ({ name: t.tratamiento, value: t.ingreso }));
+  }
+  renderPieChart(pieData);
+
+  // ── Tabla tratamientos ──
+  document.getElementById('tbl-title').textContent =
+    'Tratamientos de ' + MONTH_FULL[selMonth] + ' ' + selYear;
+  const tratamientos = txRes.status === 'fulfilled' ? (txRes.value.tratamientos || []) : [];
+  renderTable('recent-table', [
+    { key: 'tratamiento', label: 'Tratamiento', render: v => domEl('span', 'font-medium text-text-primary', v) },
+    { key: 'cantidad', label: 'Cantidad', align: 'center', render: v => domEl('span', 'tabular-nums', String(v)) },
+    { key: 'ingreso', label: 'Ingreso Total', align: 'right', render: v => domEl('span', 'tabular-nums', fmt(v)) },
+  ], tratamientos, 'Sin tratamientos registrados este mes', false);
+}
+
+loadDashboard();
+</script>
+{% endblock %}

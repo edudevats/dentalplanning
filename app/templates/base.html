@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{% block title %}DentalSaaS{% endblock %}</title>
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@300;400;500;600;700&family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet" />
+
+  <!-- Tailwind v4 browser CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+  <style type="text/tailwindcss">
+    @theme {
+      --color-primary-50:  #ecfeff;
+      --color-primary-100: #cffafe;
+      --color-primary-200: #a5f3fc;
+      --color-primary-300: #67e8f9;
+      --color-primary-400: #22d3ee;
+      --color-primary-500: #0891b2;
+      --color-primary-600: #0e7490;
+      --color-primary-700: #155e75;
+      --color-primary-800: #164e63;
+      --color-primary-900: #083344;
+
+      --color-accent-50:  #ecfdf5;
+      --color-accent-100: #d1fae5;
+      --color-accent-200: #a7f3d0;
+      --color-accent-300: #6ee7b7;
+      --color-accent-400: #34d399;
+      --color-accent-500: #059669;
+      --color-accent-600: #047857;
+      --color-accent-700: #065f46;
+
+      --color-danger-50:  #fef2f2;
+      --color-danger-100: #fee2e2;
+      --color-danger-500: #ef4444;
+      --color-danger-600: #dc2626;
+      --color-danger-700: #b91c1c;
+
+      --color-warning-50:  #fffbeb;
+      --color-warning-100: #fef3c7;
+      --color-warning-500: #f59e0b;
+      --color-warning-600: #d97706;
+
+      --color-surface:        #ffffff;
+      --color-surface-alt:    #f8fafc;
+      --color-surface-hover:  #f1f5f9;
+      --color-border:         #e2e8f0;
+      --color-border-strong:  #cbd5e1;
+      --color-text-primary:   #164e63;
+      --color-text-secondary: #475569;
+      --color-text-muted:     #94a3b8;
+
+      --font-heading: 'Poppins', system-ui, sans-serif;
+      --font-body:    'Open Sans', system-ui, sans-serif;
+    }
+
+    body {
+      font-family: var(--font-body);
+      color: var(--color-text-primary);
+      background-color: var(--color-surface-alt);
+      margin: 0;
+    }
+
+    h1, h2, h3, h4, h5, h6 { font-family: var(--font-heading); }
+
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background-color: var(--color-border-strong); border-radius: 3px; }
+
+    .tabular-nums { font-variant-numeric: tabular-nums; }
+  </style>
+
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+
+  <!-- Lucide icons -->
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+</head>
+<body>
+  <!-- Shared utilities (cargado primero para que todos los scripts inline puedan usarlo) -->
+  <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+
+  {% block body %}{% endblock %}
+</body>
+</html>

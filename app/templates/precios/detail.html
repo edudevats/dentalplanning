@@ -1,0 +1,247 @@
+{% extends "layout.html" %}
+{% block page_title %}Detalle Tratamiento{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto space-y-6" id="page-content">
+  <div class="flex justify-center py-20">
+    <div class="w-8 h-8 border-2 border-primary-200 border-t-primary-500 rounded-full animate-spin"></div>
+  </div>
+</div>
+
+<!-- Delete modal -->
+<div id="modal-del" class="hidden fixed inset-0 z-50 overflow-y-auto">
+  <div class="flex min-h-full items-end sm:items-center justify-center p-4">
+    <div class="fixed inset-0 bg-black/40" onclick="Modal.close('modal-del')"></div>
+    <div class="relative bg-surface rounded-2xl shadow-xl w-full max-w-md">
+      <div class="flex items-center justify-between px-6 py-4 border-b border-border">
+        <h2 class="text-base font-semibold font-heading text-text-primary">Eliminar Tratamiento</h2>
+        <button type="button" onclick="Modal.close('modal-del')" class="p-2 rounded-lg text-text-muted hover:bg-surface-hover transition-colors cursor-pointer">
+          <i data-lucide="x" class="h-4 w-4"></i>
+        </button>
+      </div>
+      <div class="px-6 py-5">
+        <p class="text-sm text-text-secondary font-body">Estas seguro de eliminar <strong id="del-name"></strong>? Esta accion no se puede deshacer.</p>
+        <div class="flex justify-end gap-3 mt-6">
+          <button type="button" onclick="Modal.close('modal-del')"
+            class="inline-flex items-center justify-center gap-2 rounded-lg font-medium font-body cursor-pointer border border-border bg-surface hover:bg-surface-hover text-text-secondary px-4 py-2 text-sm min-h-[38px]">
+            Cancelar
+          </button>
+          <button type="button" id="del-btn" onclick="handleDelete()"
+            class="inline-flex items-center justify-center gap-2 rounded-lg font-medium font-body cursor-pointer bg-danger-500 hover:bg-danger-600 text-white px-4 py-2 text-sm min-h-[38px]">
+            <i data-lucide="trash-2" class="h-4 w-4"></i>
+            <span id="del-btn-text">Eliminar</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+lucide.createIcons();
+const TX_ID = {{ tratamiento_id }};
+
+function gananciaVariant(p) {
+  if (p >= 30) return 'success'; if (p >= 15) return 'warning'; return 'danger';
+}
+
+function fmtVal(v) { return v != null ? fmt(v) : '-'; }
+function pctVal(v) { return v != null ? pct(v) : '-'; }
+
+function card(title, bodyFn) {
+  const wrap = domEl('div', 'bg-surface rounded-xl border border-border shadow-sm');
+  if (title) {
+    const hdr = domEl('div', 'px-5 py-4 border-b border-border');
+    hdr.appendChild(domEl('h3', 'text-sm font-semibold font-heading text-text-primary', title));
+    wrap.appendChild(hdr);
+  }
+  bodyFn(wrap);
+  return wrap;
+}
+
+function rowItem(label, value, bold) {
+  const div = domEl('div', 'flex justify-between items-center px-5 py-3' + (bold ? ' bg-surface-alt' : ''));
+  div.appendChild(domEl('span', 'text-sm ' + (bold ? 'font-medium text-text-primary' : 'text-text-secondary'), label));
+  div.appendChild(domEl('span', 'text-sm tabular-nums ' + (bold ? 'font-bold text-text-primary' : 'text-text-primary'), value));
+  return div;
+}
+
+function render(data) {
+  const c = data.calculos || {};
+  const descuentos = c.descuentos || [];
+
+  const content = document.getElementById('page-content');
+  content.replaceChildren();
+
+  // Header
+  const hdr = domEl('div', 'flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4');
+  const hdrLeft = domEl('div', 'flex items-center gap-4');
+  const backBtn = domEl('a', 'p-2 rounded-lg hover:bg-surface-hover transition-colors cursor-pointer');
+  backBtn.href = '/tratamientos'; backBtn.setAttribute('aria-label', 'Volver');
+  backBtn.appendChild(domIcon('arrow-left', 'h-5 w-5 text-text-secondary'));
+  hdrLeft.appendChild(backBtn);
+  const titleDiv = domEl('div');
+  titleDiv.appendChild(domEl('h2', 'text-xl font-semibold font-heading text-text-primary', data.nombre));
+  titleDiv.appendChild(domEl('p', 'text-sm text-text-muted', (data.horas_invertidas || 0) + 'h invertidas'));
+  hdrLeft.appendChild(titleDiv);
+  hdr.appendChild(hdrLeft);
+
+  const btnRow = domEl('div', 'flex gap-2');
+  const mkBtn = (href, icon, label, cls) => {
+    const a = domEl('a', 'inline-flex items-center justify-center gap-2 rounded-lg font-medium font-body cursor-pointer border border-border bg-surface hover:bg-surface-hover text-text-secondary px-3 py-1.5 text-sm min-h-[34px] ' + (cls || ''));
+    a.href = href;
+    a.appendChild(domIcon(icon, 'h-4 w-4'));
+    a.appendChild(domEl('span', '', label));
+    return a;
+  };
+  btnRow.appendChild(mkBtn('/tratamientos/' + TX_ID + '/editar', 'edit-3', 'Editar', ''));
+  const dupBtn = domEl('button', 'inline-flex items-center justify-center gap-2 rounded-lg font-medium font-body cursor-pointer border border-border bg-surface hover:bg-surface-hover text-text-secondary px-3 py-1.5 text-sm min-h-[34px]');
+  dupBtn.type = 'button';
+  dupBtn.appendChild(domIcon('copy', 'h-4 w-4'));
+  dupBtn.appendChild(domEl('span', '', 'Duplicar'));
+  dupBtn.addEventListener('click', handleDuplicate);
+  btnRow.appendChild(dupBtn);
+  const delBtn = domEl('button', 'inline-flex items-center justify-center gap-2 rounded-lg font-medium font-body cursor-pointer bg-danger-500 hover:bg-danger-600 text-white px-3 py-1.5 text-sm min-h-[34px]');
+  delBtn.type = 'button';
+  delBtn.appendChild(domIcon('trash-2', 'h-4 w-4'));
+  delBtn.appendChild(domEl('span', '', 'Eliminar'));
+  delBtn.addEventListener('click', () => {
+    document.getElementById('del-name').textContent = data.nombre;
+    Modal.open('modal-del');
+  });
+  btnRow.appendChild(delBtn);
+  hdr.appendChild(btnRow);
+  content.appendChild(hdr);
+
+  // Cards row
+  const grid = domEl('div', 'grid grid-cols-1 lg:grid-cols-2 gap-6');
+
+  const precioCard = card('Precio y Comisiones', wrap => {
+    const body = domEl('div', 'divide-y divide-border');
+    body.appendChild(rowItem('Precio Paciente', fmtVal(data.precio_paciente)));
+    body.appendChild(rowItem('Comision Bancaria', (data.comision_bancaria_pct || 0) + '%'));
+    const ce = data.comision_especialista;
+    body.appendChild(rowItem('Comision Especialista', ce?.tipo === 'porcentaje' ? (ce?.valor || 0) + '%' : fmtVal(ce?.valor)));
+    wrap.appendChild(body);
+  });
+  grid.appendChild(precioCard);
+
+  const costCard = card('Desglose de Costos', wrap => {
+    const body = domEl('div', 'divide-y divide-border');
+    body.appendChild(rowItem('Costo Consultorio', fmtVal(c.costo_consultorio)));
+    body.appendChild(rowItem('Costo Materiales', fmtVal(c.costo_materiales)));
+    body.appendChild(rowItem('Comision Bancaria', fmtVal(c.comision_bancaria)));
+    body.appendChild(rowItem('Comision Especialista', fmtVal(c.comision_especialista)));
+    body.appendChild(rowItem('Costo Total Venta', fmtVal(c.costo_venta), true));
+    body.appendChild(rowItem('Costo Total Tratamiento', fmtVal(c.costo_tratamiento), true));
+    wrap.appendChild(body);
+  });
+  grid.appendChild(costCard);
+  content.appendChild(grid);
+
+  // Ganancia summary
+  const ganCard = domEl('div', 'bg-surface rounded-xl border border-border shadow-sm');
+  const ganBody = domEl('div', 'flex flex-col sm:flex-row items-center justify-between gap-4 p-5');
+  const g1 = domEl('div', 'text-center sm:text-left');
+  g1.appendChild(domEl('p', 'text-sm text-text-muted mb-1', 'Ganancia Neta'));
+  g1.appendChild(domEl('p', 'text-2xl font-bold tabular-nums text-accent-600 font-heading', fmtVal(c.ganancia_neta)));
+  ganBody.appendChild(g1);
+  const g2 = domEl('div', 'text-center');
+  g2.appendChild(domEl('p', 'text-sm text-text-muted mb-1', '% Ganancia'));
+  g2.appendChild(badgeEl(pctVal(c.pct_ganancia), gananciaVariant(c.pct_ganancia)));
+  ganBody.appendChild(g2);
+  const g3 = domEl('div', 'text-center sm:text-right');
+  g3.appendChild(domEl('p', 'text-sm text-text-muted mb-1', 'Precio Minimo Sugerido'));
+  g3.appendChild(domEl('p', 'text-lg font-semibold tabular-nums text-text-primary font-heading', fmtVal(c.precio_minimo)));
+  ganBody.appendChild(g3);
+  ganCard.appendChild(ganBody);
+  content.appendChild(ganCard);
+
+  // Materials table
+  if (data.materiales?.length) {
+    const matCard = card('Materiales (' + data.materiales.length + ')', wrap => {
+      const tbl = domEl('div', 'overflow-x-auto');
+      const table = domEl('table', 'w-full text-sm');
+      const thead = domEl('thead');
+      const hr = domEl('tr', 'border-b border-border bg-surface-alt');
+      [['Material','left'],['Costo/u','right'],['Cantidad','center'],['Subtotal','right']].forEach(([h, a]) => {
+        hr.appendChild(domEl('th', 'py-2.5 px-5 text-' + a + ' text-xs font-semibold text-text-muted uppercase', h));
+      });
+      thead.appendChild(hr);
+      table.appendChild(thead);
+      const tbody = domEl('tbody');
+      data.materiales.forEach(m => {
+        const tr = domEl('tr', 'border-b border-border last:border-0');
+        tr.appendChild(domEl('td', 'py-2.5 px-5 text-text-primary', m.nombre));
+        tr.appendChild(domEl('td', 'py-2.5 px-5 text-right tabular-nums text-text-secondary', fmtVal(m.costo_unitario)));
+        tr.appendChild(domEl('td', 'py-2.5 px-5 text-center tabular-nums', String(m.cantidad)));
+        tr.appendChild(domEl('td', 'py-2.5 px-5 text-right tabular-nums font-medium', fmtVal(m.subtotal)));
+        tbody.appendChild(tr);
+      });
+      table.appendChild(tbody);
+      tbl.appendChild(table);
+      wrap.appendChild(tbl);
+    });
+    content.appendChild(matCard);
+  }
+
+  // Descuentos table
+  if (descuentos.length) {
+    const descCard = card('Escenarios de Descuento', wrap => {
+      const tbl = domEl('div', 'overflow-x-auto');
+      const table = domEl('table', 'w-full text-sm');
+      const thead = domEl('thead');
+      const hr = domEl('tr', 'border-b border-border bg-surface-alt');
+      [['Descuento','left'],['Precio','right'],['Ganancia','right'],['% Ganancia','right']].forEach(([h, a]) => {
+        hr.appendChild(domEl('th', 'py-2.5 px-5 text-' + a + ' text-xs font-semibold text-text-muted uppercase', h));
+      });
+      thead.appendChild(hr);
+      table.appendChild(thead);
+      const tbody = domEl('tbody');
+      descuentos.forEach(d => {
+        const tr = domEl('tr', 'border-b border-border last:border-0');
+        tr.appendChild(domEl('td', 'py-2.5 px-5 font-medium', d.descuento_pct + '%'));
+        tr.appendChild(domEl('td', 'py-2.5 px-5 text-right tabular-nums', fmtVal(d.precio_con_descuento)));
+        tr.appendChild(domEl('td', 'py-2.5 px-5 text-right tabular-nums font-medium ' + (d.ganancia_neta >= 0 ? 'text-accent-600' : 'text-danger-600'), fmtVal(d.ganancia_neta)));
+        const td4 = domEl('td', 'py-2.5 px-5 text-right');
+        td4.appendChild(badgeEl(pctVal(d.pct_ganancia), gananciaVariant(d.pct_ganancia)));
+        tr.appendChild(td4);
+        tbody.appendChild(tr);
+      });
+      table.appendChild(tbody);
+      tbl.appendChild(table);
+      wrap.appendChild(tbl);
+    });
+    content.appendChild(descCard);
+  }
+
+  lucide.createIcons();
+}
+
+async function handleDuplicate() {
+  try {
+    await API.post('/tratamientos/' + TX_ID + '/duplicar', {});
+    Toast.success('Tratamiento duplicado correctamente');
+    location.href = '/tratamientos';
+  } catch { Toast.error('No se pudo duplicar'); }
+}
+
+async function handleDelete() {
+  const btn = document.getElementById('del-btn');
+  const txt = document.getElementById('del-btn-text');
+  btn.disabled = true; txt.textContent = 'Eliminando...';
+  try {
+    await API.delete('/tratamientos/' + TX_ID);
+    Toast.success('Tratamiento eliminado');
+    location.href = '/tratamientos';
+  } catch {
+    Toast.error('No se pudo eliminar');
+    btn.disabled = false; txt.textContent = 'Eliminar';
+  }
+}
+
+API.get('/tratamientos/' + TX_ID).then(render).catch(() => Toast.error('No se pudo cargar'));
+</script>
+{% endblock %}

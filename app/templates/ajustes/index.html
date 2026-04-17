@@ -1,0 +1,497 @@
+{% extends "layout.html" %}
+{% block page_title %}Ajustes{% endblock %}
+
+{% block content %}
+<div class="flex flex-col lg:flex-row gap-6">
+  <!-- Sidebar nav -->
+  <div class="lg:w-56 shrink-0">
+    <div class="bg-surface rounded-xl border border-border shadow-sm">
+      <nav class="p-2 space-y-0.5" id="tab-nav"></nav>
+    </div>
+  </div>
+
+  <!-- Content panels -->
+  <div class="flex-1 min-w-0">
+    <!-- CONSULTORIO -->
+    <div id="panel-consultorio" class="space-y-6">
+      <div class="bg-surface rounded-xl border border-border shadow-sm">
+        <div class="px-5 py-4 border-b border-border"><h3 class="text-sm font-semibold font-heading text-text-primary">Gastos y Unidades</h3></div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 p-5">
+          <div>
+            <label class="block text-sm font-medium text-text-secondary mb-1 font-body">Gastos Fijos Mensuales ($)</label>
+            <input id="cfg-gastos_fijos" type="number" step="0.01" class="block w-full rounded-lg border border-border px-3 py-2.5 text-sm font-body bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-500 min-h-[44px]" />
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-text-secondary mb-1 font-body">Numero de Unidades</label>
+            <input id="cfg-numero_unidades" type="number" min="1" class="block w-full rounded-lg border border-border px-3 py-2.5 text-sm font-body bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-500 min-h-[44px]" />
+          </div>
+        </div>
+      </div>
+
+      <div class="bg-surface rounded-xl border border-border shadow-sm">
+        <div class="px-5 py-4 border-b border-border"><h3 class="text-sm font-semibold font-heading text-text-primary">Horario Semanal (horas por dia)</h3></div>
+        <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3 p-5" id="horario-grid"></div>
+      </div>
+
+      <div class="bg-surface rounded-xl border border-border shadow-sm">
+        <div class="px-5 py-4 border-b border-border"><h3 class="text-sm font-semibold font-heading text-text-primary">Valores Calculados</h3></div>
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 p-5">
+          <div class="bg-surface-alt rounded-lg p-4 text-center">
+            <p class="text-xs text-text-muted mb-1 font-body">Horas / Semana</p>
+            <p class="text-xl font-bold tabular-nums text-primary-700 font-heading" id="calc-horas_semana">-</p>
+          </div>
+          <div class="bg-surface-alt rounded-lg p-4 text-center">
+            <p class="text-xs text-text-muted mb-1 font-body">Horas / Mes</p>
+            <p class="text-xl font-bold tabular-nums text-primary-700 font-heading" id="calc-horas_mes">-</p>
+          </div>
+          <div class="bg-surface-alt rounded-lg p-4 text-center">
+            <p class="text-xs text-text-muted mb-1 font-body">Costo / Hora</p>
+            <p class="text-xl font-bold tabular-nums text-primary-700 font-heading" id="calc-costo_hora">-</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="flex justify-end">
+        <button id="btn-save-cfg" class="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-accent-600 hover:bg-accent-700 text-white text-sm font-medium font-body transition-colors cursor-pointer min-h-[44px]">
+          <i data-lucide="save" class="h-4 w-4"></i> Guardar Configuracion
+        </button>
+      </div>
+    </div>
+
+    <!-- CRUD PANELS (especialistas, metodos-pago, gastos-conceptos, estrategias) -->
+    <div id="panel-especialistas" class="hidden space-y-4"></div>
+    <div id="panel-metodos-pago" class="hidden space-y-4"></div>
+    <div id="panel-gastos-conceptos" class="hidden space-y-4"></div>
+    <div id="panel-estrategias" class="hidden space-y-4"></div>
+
+    <!-- DISTRIBUCION -->
+    <div id="panel-distribucion" class="hidden space-y-6">
+      <div class="bg-surface rounded-xl border border-border shadow-sm">
+        <div class="px-5 py-4 border-b border-border"><h3 class="text-sm font-semibold font-heading text-text-primary">Porcentajes de Distribucion</h3></div>
+        <div class="p-5 space-y-4">
+          <div class="flex h-8 rounded-lg overflow-hidden border border-border" id="dist-bar"></div>
+          <div class="grid grid-cols-2 sm:grid-cols-5 gap-3" id="dist-inputs"></div>
+          <div class="flex items-center justify-between px-4 py-3 rounded-lg" id="dist-total-row">
+            <span class="text-sm font-medium font-body">Total</span>
+            <span class="text-sm font-bold tabular-nums" id="dist-total-val">0.0%</span>
+          </div>
+        </div>
+      </div>
+      <div class="flex justify-end">
+        <button id="btn-save-dist" class="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-accent-600 hover:bg-accent-700 text-white text-sm font-medium font-body transition-colors cursor-pointer min-h-[44px] disabled:opacity-50 disabled:cursor-not-allowed">
+          <i data-lucide="save" class="h-4 w-4"></i> Guardar Distribucion
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- CRUD Modal -->
+<div id="modal-crud" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4">
+  <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" id="modal-crud-backdrop"></div>
+  <div class="relative bg-surface rounded-2xl shadow-xl w-full max-w-sm">
+    <div class="flex items-center justify-between px-5 py-4 border-b border-border">
+      <h2 class="text-base font-semibold font-heading text-text-primary" id="modal-crud-title">Modal</h2>
+      <button id="modal-crud-close" class="p-1.5 rounded-lg text-text-muted hover:bg-surface-hover cursor-pointer"><i data-lucide="x" class="h-4 w-4"></i></button>
+    </div>
+    <div class="p-5 space-y-4" id="modal-crud-body"></div>
+  </div>
+</div>
+
+<!-- Delete Modal -->
+<div id="modal-delete" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4">
+  <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" id="modal-delete-backdrop"></div>
+  <div class="relative bg-surface rounded-2xl shadow-xl w-full max-w-sm">
+    <div class="flex items-center justify-between px-5 py-4 border-b border-border">
+      <h2 class="text-base font-semibold font-heading text-text-primary" id="modal-delete-title">Eliminar</h2>
+      <button id="modal-delete-close" class="p-1.5 rounded-lg text-text-muted hover:bg-surface-hover cursor-pointer"><i data-lucide="x" class="h-4 w-4"></i></button>
+    </div>
+    <div class="p-5">
+      <p class="text-sm text-text-secondary mb-6 font-body" id="modal-delete-msg"></p>
+      <div class="flex justify-end gap-3">
+        <button id="modal-delete-cancel" class="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg border border-border bg-surface hover:bg-surface-hover text-sm font-medium font-body text-text-primary transition-colors cursor-pointer min-h-[44px]">Cancelar</button>
+        <button id="modal-delete-confirm" class="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-danger-600 hover:bg-danger-700 text-white text-sm font-medium font-body transition-colors cursor-pointer min-h-[44px]">
+          <i data-lucide="trash-2" class="h-4 w-4"></i> Eliminar
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+lucide.createIcons();
+
+// ── Tab setup ────────────────────────────────────────────
+const TABS = [
+  { key: 'consultorio',     label: 'Consultorio',       icon: 'building-2' },
+  { key: 'especialistas',   label: 'Especialistas',     icon: 'users' },
+  { key: 'metodos-pago',    label: 'Metodos de Pago',   icon: 'credit-card' },
+  { key: 'gastos-conceptos',label: 'Conceptos Gasto',   icon: 'folder-open' },
+  { key: 'estrategias',     label: 'Estrategias MKT',   icon: 'megaphone' },
+  { key: 'distribucion',    label: 'Distribucion',      icon: 'pie-chart' },
+];
+
+let activeTab = 'consultorio';
+
+function buildNav() {
+  const nav = document.getElementById('tab-nav');
+  nav.replaceChildren();
+  TABS.forEach(t => {
+    const btn = domEl('button', 'w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium font-body transition-colors cursor-pointer text-left ' + (t.key === activeTab ? 'bg-primary-50 text-primary-700' : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary'));
+    btn.type = 'button';
+    btn.appendChild(domIcon(t.icon, 'h-4 w-4 shrink-0'));
+    btn.appendChild(domEl('span', '', t.label));
+    btn.addEventListener('click', () => switchTab(t.key));
+    nav.appendChild(btn);
+  });
+  lucide.createIcons();
+}
+
+function switchTab(key) {
+  activeTab = key;
+  buildNav();
+  TABS.forEach(t => {
+    const panel = document.getElementById('panel-' + t.key);
+    if (panel) panel.classList.toggle('hidden', t.key !== key);
+  });
+  if (key === 'consultorio') loadConfig();
+  else if (key === 'especialistas') loadCrud('especialistas');
+  else if (key === 'metodos-pago') loadCrud('metodos-pago');
+  else if (key === 'gastos-conceptos') loadCrud('gastos-conceptos');
+  else if (key === 'estrategias') loadCrud('estrategias');
+  else if (key === 'distribucion') loadDist();
+}
+
+buildNav();
+
+// ── CONSULTORIO ───────────────────────────────────────────
+const DAYS = [
+  { key: 'horas_lunes', label: 'Lunes' }, { key: 'horas_martes', label: 'Martes' },
+  { key: 'horas_miercoles', label: 'Miercoles' }, { key: 'horas_jueves', label: 'Jueves' },
+  { key: 'horas_viernes', label: 'Viernes' }, { key: 'horas_sabado', label: 'Sabado' },
+  { key: 'horas_domingo', label: 'Domingo' },
+];
+
+(function buildHorario() {
+  const grid = document.getElementById('horario-grid');
+  DAYS.forEach(d => {
+    const wrap = domEl('div', '');
+    wrap.appendChild(domEl('label', 'block text-sm font-medium text-text-secondary mb-1 font-body', d.label));
+    const inp = document.createElement('input');
+    inp.id = 'cfg-' + d.key;
+    inp.type = 'number'; inp.step = '0.5'; inp.min = '0'; inp.max = '24';
+    inp.className = 'block w-full rounded-lg border border-border px-3 py-2.5 text-sm font-body bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-500 min-h-[44px]';
+    wrap.appendChild(inp);
+    grid.appendChild(wrap);
+  });
+})();
+
+let cfgData = null;
+async function loadConfig() {
+  try {
+    cfgData = await API.get('/config');
+    ['gastos_fijos', 'numero_unidades', ...DAYS.map(d => d.key)].forEach(k => {
+      const el = document.getElementById('cfg-' + k);
+      if (el) el.value = cfgData[k] ?? '';
+    });
+    const calc = cfgData.calculado || cfgData;
+    document.getElementById('calc-horas_semana').textContent = calc.horas_semana ?? '-';
+    document.getElementById('calc-horas_mes').textContent = calc.horas_mes ?? '-';
+    document.getElementById('calc-costo_hora').textContent = fmt(calc.costo_hora);
+  } catch { Toast.error('Error al cargar configuracion'); }
+}
+
+document.getElementById('btn-save-cfg').addEventListener('click', async () => {
+  const payload = {};
+  ['gastos_fijos', 'numero_unidades'].forEach(k => {
+    payload[k] = Number(document.getElementById('cfg-' + k).value) || 0;
+  });
+  DAYS.forEach(d => { payload[d.key] = Number(document.getElementById('cfg-' + d.key).value) || 0; });
+  try {
+    cfgData = await API.put('/config', payload);
+    const calc = cfgData.calculado || cfgData;
+    document.getElementById('calc-horas_semana').textContent = calc.horas_semana ?? '-';
+    document.getElementById('calc-horas_mes').textContent = calc.horas_mes ?? '-';
+    document.getElementById('calc-costo_hora').textContent = fmt(calc.costo_hora);
+    Toast.success('Configuracion guardada');
+  } catch (e) { Toast.error(e?.error || 'Error al guardar'); }
+});
+
+loadConfig();
+
+// ── CRUD TABS ─────────────────────────────────────────────
+const CRUD_CFG = {
+  'especialistas': {
+    entity: 'Especialista', endpoint: '/ajustes/especialistas',
+    cols: [
+      { key: 'nombre', label: 'Nombre' },
+      { key: 'comision_pct', label: 'Comision %', align: 'right', render: v => domEl('span', 'tabular-nums', v + '%') },
+      { key: 'is_active', label: 'Estado', align: 'center', render: v => {
+        const s = domEl('span', 'inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ' + (v ? 'bg-accent-50 text-accent-700' : 'bg-neutral-100 text-neutral-600'), v ? 'Activo' : 'Inactivo');
+        return s;
+      }},
+    ],
+    fields: [
+      { key: 'nombre', label: 'Nombre', type: 'text' },
+      { key: 'comision_pct', label: 'Comision (%)', type: 'number', step: '0.1', min: '0', max: '100' },
+      { key: 'is_active', label: 'Activo', type: 'checkbox', defaultValue: true },
+    ],
+  },
+  'metodos-pago': {
+    entity: 'Metodo de Pago', endpoint: '/ajustes/metodos-pago',
+    cols: [
+      { key: 'nombre', label: 'Nombre' },
+      { key: 'comision_pct', label: 'Comision %', align: 'right', render: v => domEl('span', 'tabular-nums', v + '%') },
+    ],
+    fields: [
+      { key: 'nombre', label: 'Nombre', type: 'text' },
+      { key: 'comision_pct', label: 'Comision (%)', type: 'number', step: '0.1', min: '0', max: '100' },
+    ],
+  },
+  'gastos-conceptos': {
+    entity: 'Concepto de Gasto', endpoint: '/ajustes/gastos-conceptos',
+    cols: [
+      { key: 'nombre', label: 'Nombre' },
+      { key: 'tipo', label: 'Tipo', render: v => {
+        return domEl('span', 'inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ' + (v === 'fijo' ? 'bg-primary-50 text-primary-700' : 'bg-amber-50 text-amber-700'), v);
+      }},
+    ],
+    fields: [
+      { key: 'nombre', label: 'Nombre', type: 'text' },
+      { key: 'tipo', label: 'Tipo', type: 'select', options: [{ value: 'fijo', label: 'Fijo' }, { value: 'variable', label: 'Variable' }] },
+    ],
+  },
+  'estrategias': {
+    entity: 'Estrategia', endpoint: '/ajustes/estrategias',
+    cols: [{ key: 'nombre', label: 'Nombre' }],
+    fields: [{ key: 'nombre', label: 'Nombre', type: 'text' }],
+  },
+};
+
+let crudState = {};
+
+function buildCrudPanel(tab, items) {
+  const cfg = CRUD_CFG[tab];
+  const panel = document.getElementById('panel-' + tab);
+  panel.replaceChildren();
+
+  const topBar = domEl('div', 'flex justify-end');
+  const addBtn = domEl('button', 'inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-accent-600 hover:bg-accent-700 text-white text-sm font-medium font-body transition-colors cursor-pointer min-h-[40px]');
+  addBtn.type = 'button';
+  addBtn.appendChild(domIcon('plus', 'h-4 w-4'));
+  addBtn.appendChild(domEl('span', '', 'Agregar'));
+  addBtn.addEventListener('click', () => openCrudModal(tab, null));
+  topBar.appendChild(addBtn);
+  panel.appendChild(topBar);
+
+  const tblWrap = domEl('div', '');
+  tblWrap.id = 'tbl-' + tab;
+  panel.appendChild(tblWrap);
+
+  const colsWithActions = [
+    ...cfg.cols,
+    { key: '_actions', label: 'Acciones', align: 'right', render: (_, row) => {
+      const wrap = domEl('div', 'flex justify-end gap-1');
+      const editBtn = domEl('button', 'p-1.5 rounded-md text-text-muted hover:text-primary-600 hover:bg-primary-50 transition-colors cursor-pointer');
+      editBtn.type = 'button';
+      editBtn.appendChild(domIcon('edit-3', 'h-4 w-4'));
+      editBtn.addEventListener('click', () => openCrudModal(tab, row));
+      const delBtn = domEl('button', 'p-1.5 rounded-md text-text-muted hover:text-danger-600 hover:bg-danger-50 transition-colors cursor-pointer');
+      delBtn.type = 'button';
+      delBtn.appendChild(domIcon('trash-2', 'h-4 w-4'));
+      delBtn.addEventListener('click', () => openDeleteModal(tab, row));
+      wrap.appendChild(editBtn);
+      wrap.appendChild(delBtn);
+      return wrap;
+    }},
+  ];
+
+  renderTable('tbl-' + tab, colsWithActions, items, 'No hay registros', false);
+  lucide.createIcons();
+}
+
+async function loadCrud(tab) {
+  try {
+    const items = await API.get(CRUD_CFG[tab].endpoint);
+    crudState[tab] = items;
+    buildCrudPanel(tab, items);
+  } catch { Toast.error('Error al cargar datos'); }
+}
+
+function openCrudModal(tab, item) {
+  const cfg = CRUD_CFG[tab];
+  crudState._editItem = item;
+  crudState._editTab = tab;
+  document.getElementById('modal-crud-title').textContent = item ? ('Editar ' + cfg.entity) : ('Nuevo ' + cfg.entity);
+  const body = document.getElementById('modal-crud-body');
+  body.replaceChildren();
+
+  cfg.fields.forEach(f => {
+    const wrap = domEl('div', '');
+    if (f.type === 'checkbox') {
+      const lbl = domEl('label', 'flex items-center gap-3 cursor-pointer');
+      const chk = document.createElement('input');
+      chk.type = 'checkbox'; chk.id = 'mf-' + f.key;
+      chk.className = 'w-4 h-4 rounded border-border text-primary-500 focus:ring-primary-300';
+      chk.checked = item ? !!item[f.key] : (f.defaultValue !== undefined ? f.defaultValue : false);
+      lbl.appendChild(chk);
+      lbl.appendChild(domEl('span', 'text-sm font-medium text-text-secondary font-body', f.label));
+      wrap.appendChild(lbl);
+    } else if (f.type === 'select') {
+      wrap.appendChild(domEl('label', 'block text-sm font-medium text-text-secondary mb-1 font-body', f.label));
+      const sel = document.createElement('select');
+      sel.id = 'mf-' + f.key;
+      sel.className = 'block w-full rounded-lg border border-border px-3 py-2.5 text-sm font-body bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-500 min-h-[44px]';
+      (f.options || []).forEach(o => {
+        const opt = document.createElement('option');
+        opt.value = o.value; opt.textContent = o.label;
+        sel.appendChild(opt);
+      });
+      sel.value = item ? (item[f.key] ?? '') : '';
+      wrap.appendChild(sel);
+    } else {
+      wrap.appendChild(domEl('label', 'block text-sm font-medium text-text-secondary mb-1 font-body', f.label));
+      const inp = document.createElement('input');
+      inp.id = 'mf-' + f.key; inp.type = f.type || 'text';
+      if (f.step) inp.step = f.step; if (f.min) inp.min = f.min; if (f.max) inp.max = f.max;
+      inp.className = 'block w-full rounded-lg border border-border px-3 py-2.5 text-sm font-body bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-500 min-h-[44px]';
+      inp.value = item ? (item[f.key] ?? '') : '';
+      wrap.appendChild(inp);
+    }
+    body.appendChild(wrap);
+  });
+
+  const footer = domEl('div', 'flex justify-end gap-3 pt-2');
+  const cancelBtn = domEl('button', 'inline-flex items-center gap-2 px-4 py-2.5 rounded-lg border border-border bg-surface hover:bg-surface-hover text-sm font-medium font-body text-text-primary transition-colors cursor-pointer min-h-[44px]', 'Cancelar');
+  cancelBtn.type = 'button';
+  cancelBtn.addEventListener('click', () => Modal.close('modal-crud'));
+  const saveBtn = domEl('button', 'inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-accent-600 hover:bg-accent-700 text-white text-sm font-medium font-body transition-colors cursor-pointer min-h-[44px]');
+  saveBtn.type = 'button';
+  saveBtn.appendChild(domIcon('save', 'h-4 w-4'));
+  saveBtn.appendChild(domEl('span', '', 'Guardar'));
+  saveBtn.addEventListener('click', () => saveCrud(tab, item));
+  footer.appendChild(cancelBtn);
+  footer.appendChild(saveBtn);
+  body.appendChild(footer);
+
+  Modal.open('modal-crud');
+  lucide.createIcons();
+}
+
+async function saveCrud(tab, item) {
+  const cfg = CRUD_CFG[tab];
+  const payload = {};
+  cfg.fields.forEach(f => {
+    const el = document.getElementById('mf-' + f.key);
+    if (!el) return;
+    if (f.type === 'checkbox') payload[f.key] = el.checked;
+    else if (f.type === 'number') payload[f.key] = Number(el.value);
+    else payload[f.key] = el.value;
+  });
+  try {
+    if (item) await API.put(cfg.endpoint + '/' + item.id, payload);
+    else await API.post(cfg.endpoint, payload);
+    Toast.success(item ? 'Actualizado' : 'Registrado');
+    Modal.close('modal-crud');
+    loadCrud(tab);
+  } catch (e) { Toast.error(e?.error || 'Error al guardar'); }
+}
+
+function openDeleteModal(tab, item) {
+  crudState._deleteItem = item;
+  crudState._deleteTab = tab;
+  document.getElementById('modal-delete-title').textContent = 'Eliminar ' + CRUD_CFG[tab].entity;
+  document.getElementById('modal-delete-msg').textContent = '¿Estas seguro de eliminar "' + (item.nombre || item.id) + '"? Esta accion no se puede deshacer.';
+  Modal.open('modal-delete');
+}
+
+document.getElementById('modal-delete-confirm').addEventListener('click', async () => {
+  const { _deleteItem: item, _deleteTab: tab } = crudState;
+  if (!item || !tab) return;
+  try {
+    await API.delete(CRUD_CFG[tab].endpoint + '/' + item.id);
+    Toast.success('Eliminado');
+    Modal.close('modal-delete');
+    loadCrud(tab);
+  } catch (e) { Toast.error(e?.error || 'Error al eliminar'); }
+});
+
+document.getElementById('modal-crud-close').addEventListener('click', () => Modal.close('modal-crud'));
+document.getElementById('modal-crud-backdrop').addEventListener('click', () => Modal.close('modal-crud'));
+document.getElementById('modal-delete-close').addEventListener('click', () => Modal.close('modal-delete'));
+document.getElementById('modal-delete-cancel').addEventListener('click', () => Modal.close('modal-delete'));
+document.getElementById('modal-delete-backdrop').addEventListener('click', () => Modal.close('modal-delete'));
+
+// ── DISTRIBUCION ──────────────────────────────────────────
+const DIST_FIELDS = [
+  { key: 'pct_sueldo',           label: 'Sueldo',          color: '#0891b2' },
+  { key: 'pct_bonos',            label: 'Bonos',           color: '#059669' },
+  { key: 'pct_mcmp',             label: 'MCMP',            color: '#f59e0b' },
+  { key: 'pct_fondo_emergencia', label: 'Fondo Emergencia',color: '#8b5cf6' },
+  { key: 'pct_marketing',        label: 'Marketing',       color: '#ec4899' },
+];
+
+let distData = null;
+
+(function buildDistInputs() {
+  const inp = document.getElementById('dist-inputs');
+  DIST_FIELDS.forEach(f => {
+    const wrap = domEl('div', '');
+    const lbl = domEl('label', 'block text-xs font-medium text-text-secondary mb-1 font-body', f.label);
+    const rel = domEl('div', 'relative');
+    const input = document.createElement('input');
+    input.id = 'dist-' + f.key; input.type = 'number'; input.step = '0.1'; input.min = '0'; input.max = '100';
+    input.className = 'w-full border border-border rounded-lg px-3 py-2 pr-8 text-sm text-right tabular-nums focus:ring-2 focus:ring-primary-300 focus:border-primary-500 outline-none';
+    input.addEventListener('input', updateDistBar);
+    const pct = domEl('span', 'absolute right-3 top-1/2 -translate-y-1/2 text-xs text-text-muted', '%');
+    rel.appendChild(input); rel.appendChild(pct);
+    wrap.appendChild(lbl); wrap.appendChild(rel);
+    inp.appendChild(wrap);
+  });
+})();
+
+function updateDistBar() {
+  const total = DIST_FIELDS.reduce((s, f) => s + (Number(document.getElementById('dist-' + f.key)?.value) || 0), 0);
+  const bar = document.getElementById('dist-bar');
+  bar.replaceChildren();
+  DIST_FIELDS.forEach(f => {
+    const w = Number(document.getElementById('dist-' + f.key)?.value) || 0;
+    if (w <= 0) return;
+    const seg = domEl('div', 'flex items-center justify-center text-[10px] font-bold text-white transition-all duration-300');
+    seg.style.width = w + '%'; seg.style.backgroundColor = f.color;
+    seg.title = f.label + ': ' + w + '%';
+    seg.textContent = w >= 8 ? (w + '%') : '';
+    bar.appendChild(seg);
+  });
+  const ok = Math.abs(total - 100) < 0.01;
+  const row = document.getElementById('dist-total-row');
+  row.className = 'flex items-center justify-between px-4 py-3 rounded-lg ' + (ok ? 'bg-accent-50 text-accent-700' : 'bg-danger-50 text-danger-700');
+  document.getElementById('dist-total-val').textContent = total.toFixed(1) + '%';
+  document.getElementById('btn-save-dist').disabled = !ok;
+}
+
+async function loadDist() {
+  try {
+    distData = await API.get('/ajustes/distribucion');
+    DIST_FIELDS.forEach(f => {
+      const el = document.getElementById('dist-' + f.key);
+      if (el) el.value = distData[f.key] ?? 0;
+    });
+    updateDistBar();
+  } catch { Toast.error('Error al cargar distribucion'); }
+}
+
+document.getElementById('btn-save-dist').addEventListener('click', async () => {
+  const payload = {};
+  DIST_FIELDS.forEach(f => { payload[f.key] = Number(document.getElementById('dist-' + f.key)?.value) || 0; });
+  const total = Object.values(payload).reduce((s, v) => s + v, 0);
+  if (Math.abs(total - 100) > 0.01) { Toast.error('Los porcentajes deben sumar 100%'); return; }
+  try {
+    distData = await API.put('/ajustes/distribucion', payload);
+    Toast.success('Distribucion guardada');
+  } catch (e) { Toast.error(e?.error || 'Error al guardar'); }
+});
+</script>
+{% endblock %}

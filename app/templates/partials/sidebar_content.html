@@ -1,0 +1,112 @@
+<div class="flex flex-col h-full">
+  <!-- Brand -->
+  <div class="flex items-center gap-2.5 px-5 h-16 border-b border-border shrink-0">
+    <i data-lucide="stethoscope" class="h-6 w-6 text-primary-600"></i>
+    <span class="text-lg font-bold font-heading text-primary-800">DentalSaaS</span>
+  </div>
+
+  <!-- Navigation -->
+  <nav class="flex-1 overflow-y-auto px-3 py-4 space-y-6">
+
+    <div>
+      <p class="px-3 mb-2 text-[11px] font-semibold tracking-wider text-text-muted uppercase font-body">PRINCIPAL</p>
+      <ul class="space-y-0.5">
+        <li>
+          <a href="/dashboard" data-nav-path="/dashboard" class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium font-body transition-colors duration-150 text-text-secondary hover:bg-surface-hover hover:text-text-primary">
+            <i data-lucide="layout-dashboard" class="h-[18px] w-[18px] shrink-0"></i>
+            Dashboard
+          </a>
+        </li>
+      </ul>
+    </div>
+
+    <div>
+      <p class="px-3 mb-2 text-[11px] font-semibold tracking-wider text-text-muted uppercase font-body">PRECIOS</p>
+      <ul class="space-y-0.5">
+        <li>
+          <a href="/tratamientos" data-nav-path="/tratamientos" class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium font-body transition-colors duration-150 text-text-secondary hover:bg-surface-hover hover:text-text-primary">
+            <i data-lucide="calculator" class="h-[18px] w-[18px] shrink-0"></i>
+            Tratamientos
+          </a>
+        </li>
+        <li>
+          <a href="/materiales" data-nav-path="/materiales" class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium font-body transition-colors duration-150 text-text-secondary hover:bg-surface-hover hover:text-text-primary">
+            <i data-lucide="package" class="h-[18px] w-[18px] shrink-0"></i>
+            Materiales
+          </a>
+        </li>
+      </ul>
+    </div>
+
+    <div>
+      <p class="px-3 mb-2 text-[11px] font-semibold tracking-wider text-text-muted uppercase font-body">FINANZAS</p>
+      <ul class="space-y-0.5">
+        <li>
+          <a href="/ingresos" data-nav-path="/ingresos" class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium font-body transition-colors duration-150 text-text-secondary hover:bg-surface-hover hover:text-text-primary">
+            <i data-lucide="trending-up" class="h-[18px] w-[18px] shrink-0"></i>
+            Ingresos
+          </a>
+        </li>
+        <li>
+          <a href="/gastos" data-nav-path="/gastos" class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium font-body transition-colors duration-150 text-text-secondary hover:bg-surface-hover hover:text-text-primary">
+            <i data-lucide="trending-down" class="h-[18px] w-[18px] shrink-0"></i>
+            Gastos
+          </a>
+        </li>
+        <li>
+          <a href="/pagos-doctores" data-nav-path="/pagos-doctores" class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium font-body transition-colors duration-150 text-text-secondary hover:bg-surface-hover hover:text-text-primary">
+            <i data-lucide="user-check" class="h-[18px] w-[18px] shrink-0"></i>
+            Pagos Doctores
+          </a>
+        </li>
+      </ul>
+    </div>
+
+    <div>
+      <p class="px-3 mb-2 text-[11px] font-semibold tracking-wider text-text-muted uppercase font-body">REPORTES</p>
+      <ul class="space-y-0.5">
+        <li>
+          <a href="/reportes/resumen" data-nav-path="/reportes/resumen" class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium font-body transition-colors duration-150 text-text-secondary hover:bg-surface-hover hover:text-text-primary">
+            <i data-lucide="bar-chart-3" class="h-[18px] w-[18px] shrink-0"></i>
+            Reportes
+          </a>
+        </li>
+        <li>
+          <a href="/reportes/marketing" data-nav-path="/reportes/marketing" class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium font-body transition-colors duration-150 text-text-secondary hover:bg-surface-hover hover:text-text-primary">
+            <i data-lucide="megaphone" class="h-[18px] w-[18px] shrink-0"></i>
+            Marketing
+          </a>
+        </li>
+      </ul>
+    </div>
+
+    <div>
+      <p class="px-3 mb-2 text-[11px] font-semibold tracking-wider text-text-muted uppercase font-body">SISTEMA</p>
+      <ul class="space-y-0.5">
+        <li>
+          <a href="/ajustes" data-nav-path="/ajustes" class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium font-body transition-colors duration-150 text-text-secondary hover:bg-surface-hover hover:text-text-primary">
+            <i data-lucide="settings" class="h-[18px] w-[18px] shrink-0"></i>
+            Ajustes
+          </a>
+        </li>
+      </ul>
+    </div>
+
+  </nav>
+
+  <!-- User info -->
+  <div class="border-t border-border px-4 py-4 shrink-0">
+    <div class="flex items-center gap-3">
+      <div class="w-9 h-9 rounded-full bg-primary-100 text-primary-700 flex items-center justify-center text-sm font-semibold font-heading shrink-0">
+        <span data-user-initials>??</span>
+      </div>
+      <div class="flex-1 min-w-0">
+        <p class="text-sm font-medium text-text-primary truncate" data-user-name>Usuario</p>
+        <p class="text-xs text-text-muted truncate" data-user-role>Administrador</p>
+      </div>
+      <button onclick="Auth.logout()" class="p-2 rounded-lg text-text-muted hover:text-danger-600 hover:bg-danger-50 transition-colors cursor-pointer" title="Cerrar sesion" aria-label="Cerrar sesion">
+        <i data-lucide="log-out" class="h-4 w-4"></i>
+      </button>
+    </div>
+  </div>
+</div>

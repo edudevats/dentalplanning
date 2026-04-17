@@ -1,0 +1,268 @@
+{% extends "layout.html" %}
+{% block page_title %}Registro de Ingresos{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+  <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+    <h1 class="text-2xl font-bold font-heading text-text-primary">Registro de Ingresos</h1>
+    <div class="flex items-center gap-3 flex-wrap">
+      <select id="sel-month" class="rounded-lg border border-border px-3 py-2 text-sm font-body bg-surface focus:ring-2 focus:ring-primary-300 focus:border-primary-500 outline-none min-h-[38px] w-36"></select>
+      <select id="sel-year" class="rounded-lg border border-border px-3 py-2 text-sm font-body bg-surface focus:ring-2 focus:ring-primary-300 focus:border-primary-500 outline-none min-h-[38px] w-28"></select>
+      <button type="button" onclick="openCreate()"
+        class="inline-flex items-center justify-center gap-2 rounded-lg font-medium font-body cursor-pointer bg-primary-500 hover:bg-primary-600 text-white px-4 py-2 text-sm min-h-[38px]">
+        <i data-lucide="plus" class="h-4 w-4"></i> Nuevo Ingreso
+      </button>
+    </div>
+  </div>
+
+  <!-- Stats -->
+  <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+    <div class="bg-surface rounded-xl border border-border p-5 shadow-sm">
+      <div class="flex items-center justify-between">
+        <p class="text-sm font-medium text-text-secondary font-body">Total Ingresos</p>
+        <div class="h-9 w-9 rounded-lg bg-primary-50 flex items-center justify-center"><i data-lucide="dollar-sign" class="h-4 w-4 text-primary-600"></i></div>
+      </div>
+      <p class="mt-3 text-2xl font-bold font-heading tabular-nums text-text-primary" id="stat-ingresos">$0.00</p>
+    </div>
+    <div class="bg-surface rounded-xl border border-border p-5 shadow-sm">
+      <div class="flex items-center justify-between">
+        <p class="text-sm font-medium text-text-secondary font-body">Comisiones Bancarias</p>
+        <div class="h-9 w-9 rounded-lg bg-primary-50 flex items-center justify-center"><i data-lucide="trending-down" class="h-4 w-4 text-primary-600"></i></div>
+      </div>
+      <p class="mt-3 text-2xl font-bold font-heading tabular-nums text-text-primary" id="stat-com-ban">$0.00</p>
+    </div>
+    <div class="bg-surface rounded-xl border border-border p-5 shadow-sm">
+      <div class="flex items-center justify-between">
+        <p class="text-sm font-medium text-text-secondary font-body">Comisiones Doctores</p>
+        <div class="h-9 w-9 rounded-lg bg-primary-50 flex items-center justify-center"><i data-lucide="users" class="h-4 w-4 text-primary-600"></i></div>
+      </div>
+      <p class="mt-3 text-2xl font-bold font-heading tabular-nums text-text-primary" id="stat-com-doc">$0.00</p>
+    </div>
+    <div class="bg-surface rounded-xl border border-border p-5 shadow-sm">
+      <div class="flex items-center justify-between">
+        <p class="text-sm font-medium text-text-secondary font-body">Ingreso Neto</p>
+        <div class="h-9 w-9 rounded-lg bg-primary-50 flex items-center justify-center"><i data-lucide="wallet" class="h-4 w-4 text-primary-600"></i></div>
+      </div>
+      <p class="mt-3 text-2xl font-bold font-heading tabular-nums" id="stat-neto">$0.00</p>
+    </div>
+  </div>
+
+  <!-- Table -->
+  <div class="bg-surface rounded-xl border border-border shadow-sm">
+    <div id="table-wrap"></div>
+  </div>
+</div>
+
+<!-- Create/Edit modal -->
+<div id="modal-form" class="hidden fixed inset-0 z-50 overflow-y-auto">
+  <div class="flex min-h-full items-end sm:items-center justify-center p-4">
+    <div class="fixed inset-0 bg-black/40" onclick="Modal.close('modal-form')"></div>
+    <div class="relative bg-surface rounded-2xl shadow-xl w-full max-w-2xl">
+      <div class="flex items-center justify-between px-6 py-4 border-b border-border">
+        <h2 id="modal-title" class="text-base font-semibold font-heading text-text-primary">Nuevo Ingreso</h2>
+        <button type="button" onclick="Modal.close('modal-form')" class="p-2 rounded-lg text-text-muted hover:bg-surface-hover transition-colors cursor-pointer"><i data-lucide="x" class="h-4 w-4"></i></button>
+      </div>
+      <div class="px-6 py-5">
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div><label class="block text-sm font-medium text-text-secondary mb-1 font-body">Fecha</label>
+            <input id="f-fecha" type="date" class="block w-full rounded-lg border border-border px-3 py-2.5 text-sm font-body min-h-[44px] bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-500" /></div>
+          <div><label class="block text-sm font-medium text-text-secondary mb-1 font-body">Paciente</label>
+            <input id="f-paciente" type="text" placeholder="Nombre del paciente" class="block w-full rounded-lg border border-border px-3 py-2.5 text-sm font-body text-text-primary placeholder:text-text-muted min-h-[44px] bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-500" /></div>
+          <div><label class="block text-sm font-medium text-text-secondary mb-1 font-body">Tratamiento</label>
+            <select id="f-tratamiento" class="block w-full rounded-lg border border-border px-3 py-2.5 text-sm font-body min-h-[44px] bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-500"></select></div>
+          <div><label class="block text-sm font-medium text-text-secondary mb-1 font-body">Especialista</label>
+            <select id="f-especialista" class="block w-full rounded-lg border border-border px-3 py-2.5 text-sm font-body min-h-[44px] bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-500"></select></div>
+          <div><label class="block text-sm font-medium text-text-secondary mb-1 font-body">Metodo de Pago</label>
+            <select id="f-metodo" class="block w-full rounded-lg border border-border px-3 py-2.5 text-sm font-body min-h-[44px] bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-500"></select></div>
+          <div><label class="block text-sm font-medium text-text-secondary mb-1 font-body">Monto</label>
+            <input id="f-monto" type="number" placeholder="0.00" class="block w-full rounded-lg border border-border px-3 py-2.5 text-sm font-body min-h-[44px] bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-500" /></div>
+          <div><label class="block text-sm font-medium text-text-secondary mb-1 font-body">Comision Bancaria</label>
+            <input id="f-com-ban" type="number" placeholder="0.00" class="block w-full rounded-lg border border-border px-3 py-2.5 text-sm font-body min-h-[44px] bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-500" /></div>
+          <div><label class="block text-sm font-medium text-text-secondary mb-1 font-body">Comision Doctor</label>
+            <input id="f-com-doc" type="number" placeholder="0.00" class="block w-full rounded-lg border border-border px-3 py-2.5 text-sm font-body min-h-[44px] bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-500" /></div>
+          <div><label class="block text-sm font-medium text-text-secondary mb-1 font-body">Estrategia</label>
+            <select id="f-estrategia" class="block w-full rounded-lg border border-border px-3 py-2.5 text-sm font-body min-h-[44px] bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-500"></select></div>
+          <div class="flex items-center gap-3 pt-6">
+            <input id="f-factura" type="checkbox" class="h-4 w-4 rounded border-border text-primary-500 focus:ring-primary-300 cursor-pointer" />
+            <label for="f-factura" class="text-sm font-medium text-text-secondary font-body cursor-pointer">Factura</label>
+          </div>
+        </div>
+        <div class="flex justify-end gap-3 mt-6 pt-4 border-t border-border">
+          <button type="button" onclick="Modal.close('modal-form')" class="inline-flex items-center justify-center gap-2 rounded-lg font-medium font-body cursor-pointer border border-border bg-surface hover:bg-surface-hover text-text-secondary px-4 py-2 text-sm min-h-[38px]">Cancelar</button>
+          <button type="button" id="save-btn" onclick="handleSave()" class="inline-flex items-center justify-center gap-2 rounded-lg font-medium font-body cursor-pointer bg-primary-500 hover:bg-primary-600 text-white px-4 py-2 text-sm min-h-[38px]"><span id="save-text">Guardar</span></button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Delete modal -->
+<div id="modal-del" class="hidden fixed inset-0 z-50 overflow-y-auto">
+  <div class="flex min-h-full items-end sm:items-center justify-center p-4">
+    <div class="fixed inset-0 bg-black/40" onclick="Modal.close('modal-del')"></div>
+    <div class="relative bg-surface rounded-2xl shadow-xl w-full max-w-md">
+      <div class="flex items-center justify-between px-6 py-4 border-b border-border">
+        <h2 class="text-base font-semibold font-heading text-text-primary">Eliminar Ingreso</h2>
+        <button type="button" onclick="Modal.close('modal-del')" class="p-2 rounded-lg text-text-muted hover:bg-surface-hover transition-colors cursor-pointer"><i data-lucide="x" class="h-4 w-4"></i></button>
+      </div>
+      <div class="px-6 py-5">
+        <p class="text-sm text-text-secondary font-body">Esta accion no se puede deshacer. Se eliminara permanentemente este registro de ingreso.</p>
+        <div class="flex justify-end gap-3 mt-6 pt-4 border-t border-border">
+          <button type="button" onclick="Modal.close('modal-del')" class="inline-flex items-center justify-center gap-2 rounded-lg font-medium font-body cursor-pointer border border-border bg-surface hover:bg-surface-hover text-text-secondary px-4 py-2 text-sm min-h-[38px]">Cancelar</button>
+          <button type="button" id="del-btn" onclick="handleDelete()" class="inline-flex items-center justify-center gap-2 rounded-lg font-medium font-body cursor-pointer bg-danger-500 hover:bg-danger-600 text-white px-4 py-2 text-sm min-h-[38px]"><span id="del-text">Eliminar</span></button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+lucide.createIcons();
+
+const now = new Date();
+let selMonth = String(now.getMonth() + 1);
+let selYear = String(now.getFullYear());
+let tableData = [], especialistas = [], metodosPago = [], tratamientos = [], estrategias = [];
+let editingId = null;
+
+// Build selects
+populateSelect(document.getElementById('sel-month'), buildMonthOptions(selMonth), selMonth);
+buildYearOptions(selYear).forEach(o => document.getElementById('sel-year').appendChild(o));
+
+document.getElementById('sel-month').addEventListener('change', e => { selMonth = e.target.value; fetchData(); });
+document.getElementById('sel-year').addEventListener('change', e => { selYear = e.target.value; fetchData(); });
+
+function findName(list, id) { return list.find(i => String(i.id) === String(id))?.nombre ?? '-'; }
+
+function updateStats() {
+  const ti = tableData.reduce((s, r) => s + Number(r.monto || 0), 0);
+  const cb = tableData.reduce((s, r) => s + Number(r.comision_bancaria || 0), 0);
+  const cd = tableData.reduce((s, r) => s + Number(r.comision_doctor || 0), 0);
+  const neto = ti - cb - cd;
+  document.getElementById('stat-ingresos').textContent = fmt(ti);
+  document.getElementById('stat-com-ban').textContent = fmt(cb);
+  document.getElementById('stat-com-doc').textContent = fmt(cd);
+  const netoEl = document.getElementById('stat-neto');
+  netoEl.textContent = fmt(neto);
+  netoEl.className = 'mt-3 text-2xl font-bold font-heading tabular-nums ' + (neto >= 0 ? 'text-accent-700' : 'text-danger-600');
+}
+
+function renderTable_() {
+  const cols = [
+    { key: 'fecha', label: 'Fecha', render: v => formatDate(v) },
+    { key: 'paciente', label: 'Paciente' },
+    { key: 'tratamiento_id', label: 'Tratamiento', render: v => findName(tratamientos, v) },
+    { key: 'especialista_id', label: 'Especialista', render: v => findName(especialistas, v) },
+    { key: 'metodo_pago_id', label: 'Metodo Pago', render: v => findName(metodosPago, v) },
+    { key: 'monto', label: 'Monto', align: 'right', render: v => domEl('span', 'tabular-nums font-medium', fmt(v)) },
+    { key: 'comision_bancaria', label: 'Com. Bancaria', align: 'right', render: v => domEl('span', 'tabular-nums text-text-muted', fmt(v)) },
+    { key: 'comision_doctor', label: 'Com. Doctor', align: 'right', render: v => domEl('span', 'tabular-nums text-text-muted', fmt(v)) },
+    { key: 'factura', label: 'Factura', align: 'center', render: v => badge(v ? 'Si' : 'No', v ? 'success' : 'neutral') },
+    { key: 'estrategia_id', label: 'Estrategia', render: v => findName(estrategias, v) },
+    { key: 'id', label: '', align: 'right', render: (_, row) => {
+      const div = domEl('div', 'flex items-center justify-end gap-1');
+      const eBtn = domEl('button', 'rounded-lg p-1.5 text-text-muted hover:bg-primary-50 hover:text-primary-700 transition-colors cursor-pointer');
+      eBtn.type = 'button'; eBtn.appendChild(domIcon('pencil')); eBtn.addEventListener('click', () => openEdit(row));
+      const dBtn = domEl('button', 'rounded-lg p-1.5 text-text-muted hover:bg-danger-50 hover:text-danger-600 transition-colors cursor-pointer');
+      dBtn.type = 'button'; dBtn.appendChild(domIcon('trash-2')); dBtn.addEventListener('click', () => openDel(row));
+      div.appendChild(eBtn); div.appendChild(dBtn); return div;
+    }},
+  ];
+  renderTable('table-wrap', cols, tableData, 'No hay ingresos registrados', false);
+  lucide.createIcons();
+}
+
+async function fetchData() {
+  renderTable('table-wrap', [], [], '', true);
+  try {
+    const mes = selYear + '-' + String(selMonth).padStart(2, '0');
+    const res = await API.get('/edr/ingresos?mes=' + mes);
+    tableData = Array.isArray(res) ? res : (res.ingresos || []);
+  } catch { Toast.error('Error al cargar ingresos'); tableData = []; }
+  updateStats(); renderTable_();
+}
+
+function openCreate() {
+  editingId = null;
+  document.getElementById('modal-title').textContent = 'Nuevo Ingreso';
+  document.getElementById('save-text').textContent = 'Guardar';
+  ['f-fecha','f-paciente','f-monto','f-com-ban','f-com-doc'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('f-factura').checked = false;
+  ['f-tratamiento','f-especialista','f-metodo','f-estrategia'].forEach(id => document.getElementById(id).value = '');
+  Modal.open('modal-form');
+}
+
+function openEdit(row) {
+  editingId = row.id;
+  document.getElementById('modal-title').textContent = 'Editar Ingreso';
+  document.getElementById('save-text').textContent = 'Actualizar';
+  document.getElementById('f-fecha').value = row.fecha ? row.fecha.slice(0, 10) : '';
+  document.getElementById('f-paciente').value = row.paciente || '';
+  document.getElementById('f-monto').value = row.monto ?? '';
+  document.getElementById('f-com-ban').value = row.comision_bancaria ?? '';
+  document.getElementById('f-com-doc').value = row.comision_doctor ?? '';
+  document.getElementById('f-factura').checked = !!row.factura;
+  document.getElementById('f-tratamiento').value = row.tratamiento_id ? String(row.tratamiento_id) : '';
+  document.getElementById('f-especialista').value = row.especialista_id ? String(row.especialista_id) : '';
+  document.getElementById('f-metodo').value = row.metodo_pago_id ? String(row.metodo_pago_id) : '';
+  document.getElementById('f-estrategia').value = row.estrategia_id ? String(row.estrategia_id) : '';
+  Modal.open('modal-form');
+}
+
+function openDel(row) { editingId = row.id; Modal.open('modal-del'); }
+
+async function handleSave() {
+  const fecha = document.getElementById('f-fecha').value;
+  const paciente = document.getElementById('f-paciente').value.trim();
+  const monto = document.getElementById('f-monto').value;
+  if (!fecha || !paciente || !monto) { Toast.warning('Completa los campos obligatorios'); return; }
+  const btn = document.getElementById('save-btn'); const txt = document.getElementById('save-text');
+  btn.disabled = true; txt.textContent = 'Guardando...';
+  const payload = {
+    fecha, paciente, monto: Number(monto),
+    comision_bancaria: Number(document.getElementById('f-com-ban').value) || 0,
+    comision_doctor: Number(document.getElementById('f-com-doc').value) || 0,
+    factura: document.getElementById('f-factura').checked,
+    tratamiento_id: Number(document.getElementById('f-tratamiento').value) || null,
+    especialista_id: Number(document.getElementById('f-especialista').value) || null,
+    metodo_pago_id: Number(document.getElementById('f-metodo').value) || null,
+    estrategia_id: Number(document.getElementById('f-estrategia').value) || null,
+  };
+  try {
+    if (editingId) { await API.put('/edr/ingresos/' + editingId, payload); Toast.success('Ingreso actualizado'); }
+    else { await API.post('/edr/ingresos', payload); Toast.success('Ingreso creado'); }
+    Modal.close('modal-form'); fetchData();
+  } catch { Toast.error('Error al guardar ingreso'); }
+  finally { btn.disabled = false; txt.textContent = editingId ? 'Actualizar' : 'Guardar'; }
+}
+
+async function handleDelete() {
+  const btn = document.getElementById('del-btn'); const txt = document.getElementById('del-text');
+  btn.disabled = true; txt.textContent = 'Eliminando...';
+  try {
+    await API.delete('/edr/ingresos/' + editingId);
+    Toast.success('Ingreso eliminado'); Modal.close('modal-del'); fetchData();
+  } catch { Toast.error('Error al eliminar'); }
+  finally { btn.disabled = false; txt.textContent = 'Eliminar'; }
+}
+
+async function init() {
+  try {
+    const [esp, mp, trat, est] = await Promise.all([
+      API.get('/ajustes/especialistas'), API.get('/ajustes/metodos-pago'),
+      API.get('/tratamientos'), API.get('/ajustes/estrategias'),
+    ]);
+    especialistas = esp ?? []; metodosPago = mp ?? []; tratamientos = Array.isArray(trat) ? trat : (trat.tratamientos || []); estrategias = est ?? [];
+    populateSelect(document.getElementById('f-especialista'), especialistas.map(e => ({ value: String(e.id), label: e.nombre })), '', 'Seleccionar especialista');
+    populateSelect(document.getElementById('f-metodo'), metodosPago.map(m => ({ value: String(m.id), label: m.nombre })), '', 'Seleccionar metodo');
+    populateSelect(document.getElementById('f-tratamiento'), tratamientos.map(t => ({ value: String(t.id), label: t.nombre })), '', 'Seleccionar tratamiento');
+    populateSelect(document.getElementById('f-estrategia'), estrategias.map(e => ({ value: String(e.id), label: e.nombre })), '', 'Seleccionar estrategia');
+  } catch {}
+  fetchData();
+}
+
+init();
+</script>
+{% endblock %}

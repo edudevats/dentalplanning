@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block body %}
+
+<!-- Mobile overlay -->
+<div id="sidebar-overlay" class="fixed inset-0 bg-black/40 z-40 lg:hidden hidden"></div>
+
+<!-- Desktop sidebar -->
+<aside class="hidden lg:flex lg:flex-col lg:fixed lg:inset-y-0 lg:left-0 lg:w-64 bg-surface border-r border-border z-30">
+  {% include "partials/sidebar_content.html" %}
+</aside>
+
+<!-- Mobile sidebar -->
+<aside id="mobile-sidebar" class="fixed inset-y-0 left-0 w-64 bg-surface border-r border-border z-50 flex flex-col transform -translate-x-full transition-transform duration-200 ease-in-out lg:hidden">
+  {% include "partials/sidebar_content.html" %}
+  <button id="sidebar-close" class="absolute top-4 right-4 p-1 rounded-lg text-text-muted hover:text-text-primary hover:bg-surface-hover transition-colors cursor-pointer" aria-label="Cerrar menu">
+    <i data-lucide="x" class="h-5 w-5"></i>
+  </button>
+</aside>
+
+<!-- Top bar -->
+<header class="sticky top-0 z-20 h-16 bg-surface border-b border-border lg:ml-64">
+  <div class="flex items-center justify-between h-full px-4 lg:px-6">
+    <div class="flex items-center gap-3">
+      <button id="sidebar-toggle" class="p-2 rounded-lg text-text-secondary hover:bg-surface-hover transition-colors cursor-pointer lg:hidden" aria-label="Abrir menu">
+        <i data-lucide="menu" class="h-5 w-5"></i>
+      </button>
+      <h1 class="text-lg font-semibold font-heading text-text-primary">{% block page_title %}{% endblock %}</h1>
+    </div>
+    <div class="flex items-center gap-2">
+      <button class="relative p-2 rounded-lg text-text-secondary hover:bg-surface-hover transition-colors cursor-pointer" aria-label="Notificaciones">
+        <i data-lucide="bell" class="h-5 w-5"></i>
+      </button>
+      <div class="hidden sm:flex items-center gap-2 ml-2 pl-3 border-l border-border">
+        <div class="w-8 h-8 rounded-full bg-primary-100 text-primary-700 flex items-center justify-center text-xs font-semibold font-heading">
+          <span data-user-initials>??</span>
+        </div>
+        <span class="text-sm font-medium text-text-primary hidden md:inline" data-user-name>Usuario</span>
+      </div>
+    </div>
+  </div>
+</header>
+
+<!-- Main content -->
+<main class="lg:ml-64 p-4 lg:p-6">
+  {% block content %}{% endblock %}
+</main>
+
+{% block scripts %}{% endblock %}
+
+<script>
+  lucide.createIcons();
+  setActiveNav();
+  initMobileSidebar();
+  if (!Auth.check()) { /* redirected */ }
+  else loadUserInfo();
+</script>
+{% endblock %}
