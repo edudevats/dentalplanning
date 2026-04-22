@@ -1,0 +1,42 @@
+{% extends "layout.html" %}
+{% block title %}Agregar materiales{% endblock %}
+{% block page_title %}Agregar materiales{% endblock %}
+{% block content %}
+<div id="importar-app" class="space-y-4">
+  <div class="flex flex-wrap items-end justify-between gap-3">
+    <div>
+      <h1 class="text-2xl font-bold font-heading text-text-primary">Agregar materiales al inventario</h1>
+      <p class="mt-1 text-sm text-text-muted font-body">Selecciona del catálogo maestro</p>
+    </div>
+    <button id="btn-importar" class="px-4 py-2 rounded-lg bg-primary-600 text-white text-sm font-medium hover:bg-primary-700 cursor-pointer">Importar seleccionados</button>
+  </div>
+
+  <div class="bg-surface rounded-xl border border-border shadow-sm p-4 flex flex-wrap gap-3">
+    <input id="busqueda" placeholder="Buscar..." class="flex-1 min-w-[200px] rounded-lg border border-border px-3 py-2 text-sm bg-surface" />
+    <select id="filtro-cat" class="rounded-lg border border-border px-3 py-2 text-sm bg-surface">
+      <option value="">Todas</option>
+      <option value="mesa_control">Mesa de control</option>
+      <option value="instrumental">Instrumental</option>
+    </select>
+  </div>
+
+  <div class="bg-surface rounded-xl border border-border shadow-sm overflow-hidden">
+    <table id="tabla-master" class="w-full text-sm">
+      <thead class="bg-surface-alt">
+        <tr>
+          <th class="text-center px-4 py-3 font-semibold text-text-secondary w-12"><input type="checkbox" id="seleccionar-todo" /></th>
+          <th class="text-left px-4 py-3 font-semibold text-text-secondary">Nombre</th>
+          <th class="text-left px-4 py-3 font-semibold text-text-secondary">Categorías</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-border"></tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/inventario/api.js') }}"></script>
+<script src="{{ url_for('static', filename='js/inventario/dom.js') }}"></script>
+<script src="{{ url_for('static', filename='js/inventario/importar.js') }}"></script>
+{% endblock %}

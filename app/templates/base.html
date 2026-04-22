@@ -1,14 +1,15 @@
 <!DOCTYPE html>
-<html lang="es">
+<html lang="es" style="visibility:hidden">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>{% block title %}DentalSaaS{% endblock %}</title>
+  <title>{% block title %}Dental Planning{% endblock %}</title>
 
   <!-- Google Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@300;400;500;600;700&family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
 
   <!-- Tailwind v4 browser CDN -->
   <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
@@ -56,6 +57,32 @@
 
       --font-heading: 'Poppins', system-ui, sans-serif;
       --font-body:    'Open Sans', system-ui, sans-serif;
+
+      /* Clinical Sanctuary — Inventario */
+      --color-cs-primary:         #005db6;
+      --color-cs-primary-dim:     #0051a1;
+      --color-cs-primary-container: #d5e3f7;
+      --color-cs-on-primary:      #ffffff;
+      --color-cs-on-primary-container: #001c3b;
+
+      --color-cs-surface:              #f7f9fb;
+      --color-cs-surface-bright:       #ffffff;
+      --color-cs-surface-container-lowest: #ffffff;
+      --color-cs-surface-container-low:    #f1f5f9;
+      --color-cs-surface-container:    #e8eff3;
+      --color-cs-surface-container-high: #dde6ec;
+
+      --color-cs-on-surface:      #2a3439;
+      --color-cs-on-surface-var:  #475569;
+      --color-cs-outline:         #8a9199;
+      --color-cs-outline-variant: #c1c7cd;
+
+      --color-cs-error:           #9f403d;
+      --color-cs-error-container: #fe8983;
+      --color-cs-on-error-container: #410002;
+
+      --font-cs-display: 'Manrope', system-ui, sans-serif;
+      --font-cs-body:    'Inter', system-ui, sans-serif;
     }
 
     body {

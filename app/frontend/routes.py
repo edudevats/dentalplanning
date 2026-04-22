@@ -4,7 +4,12 @@ from . import frontend_bp
 
 @frontend_bp.route('/')
 def index():
-    return redirect(url_for('frontend.dashboard'))
+    return redirect(url_for('frontend.selector'))
+
+
+@frontend_bp.route('/selector')
+def selector():
+    return render_template('selector.html')
 
 
 @frontend_bp.route('/login')
@@ -85,3 +90,43 @@ def reportes_marketing():
 @frontend_bp.route('/ajustes')
 def ajustes():
     return render_template('ajustes/index.html', page='ajustes')
+
+
+@frontend_bp.route("/inventario")
+def inventario_dashboard():
+    return render_template("inventario/dashboard.html")
+
+
+@frontend_bp.route("/inventario/material/<int:material_id>")
+def inventario_material(material_id):
+    return render_template("inventario/material.html", material_id=material_id)
+
+
+@frontend_bp.route("/inventario/compras")
+def inventario_compras():
+    return render_template("inventario/compras.html")
+
+
+@frontend_bp.route("/inventario/movimientos")
+def inventario_movimientos():
+    return render_template("inventario/movimientos.html")
+
+
+@frontend_bp.route("/inventario/operatorios")
+def inventario_operatorios():
+    return render_template("inventario/operatorios.html")
+
+
+@frontend_bp.route("/inventario/importar")
+def inventario_importar():
+    return render_template("inventario/importar.html")
+
+
+@frontend_bp.route("/inventario/almacen")
+def inventario_almacen():
+    return render_template("inventario/almacen.html")
+
+
+@frontend_bp.route("/inventario/transferir")
+def inventario_transferir():
+    return render_template("inventario/transferir.html")

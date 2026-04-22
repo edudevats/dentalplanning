@@ -1,8 +1,17 @@
 <div class="flex flex-col h-full">
   <!-- Brand -->
   <div class="flex items-center gap-2.5 px-5 h-16 border-b border-border shrink-0">
-    <i data-lucide="stethoscope" class="h-6 w-6 text-primary-600"></i>
-    <span class="text-lg font-bold font-heading text-primary-800">DentalSaaS</span>
+    <img src="{{ url_for('static', filename='imagenes/02-fondoblanco.jpg.jpeg') }}" alt="Logo" class="h-8 w-8 object-contain rounded-md" />
+    <span class="text-lg font-bold font-heading text-primary-800">Dental Planning</span>
+  </div>
+
+  <!-- Cambiar de sistema -->
+  <div class="px-3 pt-3">
+    <a href="/selector"
+       class="flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold font-body text-primary-600 bg-primary-50 hover:bg-primary-100 transition-colors duration-150">
+      <i data-lucide="grid-2x2" class="h-4 w-4"></i>
+      Cambiar de Sistema
+    </a>
   </div>
 
   <!-- Navigation -->
@@ -37,6 +46,7 @@
         </li>
       </ul>
     </div>
+
 
     <div>
       <p class="px-3 mb-2 text-[11px] font-semibold tracking-wider text-text-muted uppercase font-body">FINANZAS</p>

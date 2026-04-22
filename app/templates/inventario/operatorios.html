@@ -1,0 +1,89 @@
+{% extends "inventario/_layout_cs.html" %}
+{% block title %}Operatorios — Central de Inventario{% endblock %}
+{% block cs_content %}
+
+<div class="space-y-8">
+
+  <div class="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4">
+    <div>
+      <h1 class="font-cs-display text-4xl font-bold text-cs-on-surface tracking-tight">
+        Gestión de <span class="text-cs-on-surface-var font-normal">Operatorios</span>
+      </h1>
+      <p class="mt-1.5 text-sm text-cs-on-surface-var max-w-xl">Supervisa la distribución de inventario en tiempo real en los espacios clínicos. Selecciona un operatorio para ver niveles de stock detallados.</p>
+    </div>
+    <div class="flex items-center gap-2">
+      <span class="inline-flex items-center gap-2 text-xs font-medium text-cs-on-surface-var px-3">
+        <span class="w-2 h-2 rounded-full bg-cs-primary animate-cs-pulse"></span>
+        Sincronización en Vivo
+      </span>
+      <button id="cs-new-operatory" class="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-cs-surface-container text-cs-on-surface text-sm font-semibold hover:bg-cs-surface-container-high transition-colors">
+        <i data-lucide="plus" class="h-4 w-4"></i>
+        Nuevo
+      </button>
+    </div>
+  </div>
+
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+
+    <section class="lg:col-span-2 p-6 rounded-lg bg-cs-surface-container">
+      <h2 class="font-cs-display text-base font-semibold text-cs-on-surface mb-4">Espacios Activos</h2>
+      <ul id="cs-ops-grid" class="grid grid-cols-1 sm:grid-cols-2 gap-3"></ul>
+    </section>
+
+    <aside id="cs-op-detail" class="p-6 rounded-lg bg-cs-surface-container-lowest hidden">
+      <div class="flex items-start justify-between mb-5">
+        <div>
+          <p class="text-xs font-semibold uppercase tracking-widest text-cs-primary">Seleccionado</p>
+          <h3 id="cs-op-detail-name" class="font-cs-display text-2xl font-bold text-cs-on-surface mt-1"></h3>
+          <p class="text-xs text-cs-on-surface-var mt-0.5">Detalle de Inventario del Operatorio</p>
+        </div>
+        <button id="cs-op-detail-close" class="p-1 rounded text-cs-on-surface-var hover:text-cs-on-surface" aria-label="Cerrar">
+          <i data-lucide="x" class="h-4 w-4"></i>
+        </button>
+      </div>
+
+      <div class="flex gap-2 mb-5">
+        <a href="/inventario/transferir" class="flex-1 inline-flex items-center justify-center gap-2 px-3 py-2 rounded-md bg-gradient-to-br from-cs-primary to-cs-primary-dim text-cs-on-primary text-sm font-semibold">
+          <i data-lucide="refresh-cw" class="h-4 w-4"></i> Solicitar Reposición
+        </a>
+        <button class="inline-flex items-center gap-2 px-3 py-2 rounded-md bg-cs-surface-container text-cs-on-surface text-sm font-semibold">
+          <i data-lucide="scan-line" class="h-4 w-4"></i> Escanear Artículo
+        </button>
+      </div>
+
+      <div class="flex items-center justify-between text-[10px] font-semibold uppercase tracking-widest text-cs-on-surface-var mb-2 px-2">
+        <span>Material</span>
+        <span class="flex gap-6"><span>En Sala</span><span>Almacén</span></span>
+      </div>
+      <ul id="cs-op-detail-items" class="space-y-2"></ul>
+    </aside>
+
+  </div>
+</div>
+
+<div id="cs-op-modal" class="hidden fixed inset-0 bg-black/30 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+  <form id="cs-op-form" class="bg-cs-surface-container-lowest rounded-lg p-6 w-full max-w-md space-y-4">
+    <h2 class="font-cs-display text-xl font-bold text-cs-on-surface">Nuevo operatorio</h2>
+    <label class="block">
+      <span class="block text-xs font-semibold uppercase tracking-widest text-cs-on-surface-var mb-1.5">Nombre</span>
+      <input name="nombre" required class="w-full rounded-md bg-cs-surface-container px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-cs-primary/30" />
+    </label>
+    <label class="block">
+      <span class="block text-xs font-semibold uppercase tracking-widest text-cs-on-surface-var mb-1.5">Orden</span>
+      <input name="orden" type="number" value="0" class="w-full rounded-md bg-cs-surface-container px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-cs-primary/30" />
+    </label>
+    <div class="flex justify-end gap-2 pt-2">
+      <button type="button" id="cs-op-cancel" class="px-4 py-2 rounded-md bg-cs-surface-container text-cs-on-surface text-sm font-semibold">Cancelar</button>
+      <button type="submit" class="px-4 py-2 rounded-md bg-cs-primary text-cs-on-primary text-sm font-semibold">Crear</button>
+    </div>
+  </form>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/inventario/api.js') }}"></script>
+<script src="{{ url_for('static', filename='js/inventario/dom.js') }}"></script>
+<script src="{{ url_for('static', filename='js/inventario/cs_shared.js') }}"></script>
+<script src="{{ url_for('static', filename='js/inventario/cs_operatorios.js') }}"></script>
+{% endblock %}

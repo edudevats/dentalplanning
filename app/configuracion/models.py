@@ -18,6 +18,7 @@ class ConfigConsultorio(db.Model):
     horas_sabado = db.Column(db.Float, default=0)
     horas_domingo = db.Column(db.Float, default=0)
     numero_unidades = db.Column(db.Integer, default=1)
+    dias_alerta_caducidad = db.Column(db.Integer, default=30, nullable=False)
     updated_at = db.Column(
         db.DateTime,
         default=lambda: datetime.now(timezone.utc),

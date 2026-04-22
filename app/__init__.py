@@ -25,6 +25,7 @@ def create_app(config_name=None):
     from app.edr.routes import edr_bp
     from app.dashboard.routes import dashboard_bp
     from app.ajustes.routes import ajustes_bp
+    from app.inventario.routes import inventario_bp
     from app.frontend.routes import frontend_bp
 
     app.register_blueprint(auth_bp)
@@ -34,6 +35,7 @@ def create_app(config_name=None):
     app.register_blueprint(edr_bp)
     app.register_blueprint(dashboard_bp)
     app.register_blueprint(ajustes_bp)
+    app.register_blueprint(inventario_bp)
     app.register_blueprint(frontend_bp)
 
     # Error handlers
@@ -48,10 +50,14 @@ def create_app(config_name=None):
         from app.tratamientos import models as tx_models  # noqa: F401
         from app.edr import models as edr_models  # noqa: F401
         from app.ajustes import models as ajustes_models  # noqa: F401
+        from app.inventario import models as inventario_models  # noqa: F401
 
     # Health check
     @app.route("/api/v1/health")
     def health():
-        return {"status": "ok", "app": "DentalSaaS"}
+        return {"status": "ok", "app": "Dental Planning"}
+
+    from app.inventario.cli import inventario_cli
+    app.cli.add_command(inventario_cli)
 
     return app

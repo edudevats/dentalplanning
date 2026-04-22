@@ -1,6 +1,18 @@
 {% extends "base.html" %}
 {% block body %}
 
+<!-- Auth gate: hide everything until JWT is verified -->
+<script>
+  if (!Auth.check()) {
+    // Auth.check() already redirects to /login — stop rendering
+    document.write('');
+    // Halt further execution
+    throw new Error('AUTH_REDIRECT');
+  }
+  // Token exists → make content visible immediately
+  document.documentElement.style.visibility = 'visible';
+</script>
+
 <!-- Mobile overlay -->
 <div id="sidebar-overlay" class="fixed inset-0 bg-black/40 z-40 lg:hidden hidden"></div>
 
@@ -51,7 +63,6 @@
   lucide.createIcons();
   setActiveNav();
   initMobileSidebar();
-  if (!Auth.check()) { /* redirected */ }
-  else loadUserInfo();
+  loadUserInfo();
 </script>
 {% endblock %}

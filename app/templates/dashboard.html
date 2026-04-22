@@ -30,6 +30,34 @@
   <!-- Stat cards -->
   <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4" id="stats-grid"></div>
 
+  <!-- Inventario alerts card -->
+  <a href="/inventario" id="card-inventario"
+     class="block bg-surface rounded-xl border border-border p-5 shadow-sm hover:shadow-md hover:border-primary-300 transition-all">
+    <div class="flex items-center justify-between">
+      <div>
+        <h3 class="text-sm font-semibold font-heading text-text-primary">Inventario</h3>
+        <p class="text-xs text-text-muted font-body mt-0.5">Alertas de stock y caducidades</p>
+      </div>
+      <div class="h-9 w-9 rounded-lg bg-primary-50 flex items-center justify-center shrink-0">
+        <i data-lucide="package" class="h-4 w-4 text-primary-600"></i>
+      </div>
+    </div>
+    <div class="mt-4 grid grid-cols-3 gap-4">
+      <div>
+        <p class="text-2xl font-bold font-heading tabular-nums text-warning-600" id="inv-bajo">–</p>
+        <p class="text-xs text-text-secondary font-body mt-0.5">Stock bajo</p>
+      </div>
+      <div>
+        <p class="text-2xl font-bold font-heading tabular-nums text-text-primary" id="inv-alto">–</p>
+        <p class="text-xs text-text-secondary font-body mt-0.5">Stock alto</p>
+      </div>
+      <div>
+        <p class="text-2xl font-bold font-heading tabular-nums text-danger-600" id="inv-caduca">–</p>
+        <p class="text-xs text-text-secondary font-body mt-0.5">Por caducar</p>
+      </div>
+    </div>
+  </a>
+
   <!-- Charts -->
   <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
     <div class="bg-surface rounded-xl border border-border shadow-sm">
@@ -287,4 +315,5 @@ async function loadDashboard() {
 
 loadDashboard();
 </script>
+<script src="{{ url_for('static', filename='js/dashboard_inventario_card.js') }}"></script>
 {% endblock %}

@@ -1,0 +1,84 @@
+{% extends "layout.html" %}
+{% block title %}Compras{% endblock %}
+{% block page_title %}Compras{% endblock %}
+{% block content %}
+<div id="compras-app" class="space-y-4">
+  <div class="flex flex-wrap items-end justify-between gap-3">
+    <div>
+      <h1 class="text-2xl font-bold font-heading text-text-primary">Registro de compras</h1>
+      <p class="mt-1 text-sm text-text-muted font-body">Historial de lotes recibidos</p>
+    </div>
+    <button id="btn-nueva-compra" class="px-4 py-2 rounded-lg bg-primary-600 text-white text-sm font-medium hover:bg-primary-700 cursor-pointer">+ Nueva compra</button>
+  </div>
+
+  <div class="bg-surface rounded-xl border border-border shadow-sm overflow-hidden">
+    <table id="tabla-compras" class="w-full text-sm">
+      <thead class="bg-surface-alt">
+        <tr>
+          <th class="text-left px-4 py-3 font-semibold text-text-secondary">Fecha</th>
+          <th class="text-left px-4 py-3 font-semibold text-text-secondary">Material</th>
+          <th class="text-right px-4 py-3 font-semibold text-text-secondary">Cantidad</th>
+          <th class="text-right px-4 py-3 font-semibold text-text-secondary">Precio</th>
+          <th class="text-left px-4 py-3 font-semibold text-text-secondary">Comentarios</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-border"></tbody>
+    </table>
+  </div>
+
+  <div id="modal-compra" class="hidden fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+    <form id="form-compra" class="bg-surface rounded-xl shadow-xl p-6 w-full max-w-md space-y-3">
+      <h2 class="text-lg font-semibold font-heading text-text-primary">Registrar compra</h2>
+      <label class="block text-sm">
+        <span class="block text-text-secondary mb-1">Material</span>
+        <select name="material_id" required class="block w-full rounded-lg border border-border px-3 py-2 bg-surface"></select>
+      </label>
+      <div class="grid grid-cols-2 gap-3">
+        <label class="block text-sm">
+          <span class="block text-text-secondary mb-1">Cantidad</span>
+          <input name="cantidad" type="number" min="1" required class="block w-full rounded-lg border border-border px-3 py-2 bg-surface" />
+        </label>
+        <label class="block text-sm">
+          <span class="block text-text-secondary mb-1">Precio unitario</span>
+          <input name="precio_unitario" type="number" step="0.01" required class="block w-full rounded-lg border border-border px-3 py-2 bg-surface" />
+        </label>
+      </div>
+      <label class="block text-sm">
+        <span class="block text-text-secondary mb-1">Fecha surtido</span>
+        <input name="fecha_surtido" type="date" required class="block w-full rounded-lg border border-border px-3 py-2 bg-surface" />
+      </label>
+      <label class="block text-sm">
+        <span class="block text-text-secondary mb-1">Ubicación destino</span>
+        <select name="operatorio_destino_id" class="block w-full rounded-lg border border-border px-3 py-2 bg-surface">
+          <option value="">Almacén</option>
+        </select>
+      </label>
+      <label class="flex items-center gap-2 text-sm text-text-secondary">
+        <input type="checkbox" name="no_caduca" /> No caduca
+      </label>
+      <label class="block text-sm">
+        <span class="block text-text-secondary mb-1">Fecha caducidad</span>
+        <input name="fecha_caducidad" type="date" class="block w-full rounded-lg border border-border px-3 py-2 bg-surface" />
+      </label>
+      <label class="block text-sm">
+        <span class="block text-text-secondary mb-1">Comentarios</span>
+        <textarea name="comentarios" class="block w-full rounded-lg border border-border px-3 py-2 bg-surface"></textarea>
+      </label>
+      <label class="flex items-center gap-2 text-sm text-text-secondary">
+        <input type="checkbox" name="actualizar_costo_master" checked />
+        Actualizar costo del material
+      </label>
+      <div class="flex justify-end gap-2 pt-2">
+        <button type="button" id="cancelar-compra" class="px-4 py-2 rounded-lg border border-border text-sm font-medium text-text-secondary hover:bg-surface-hover cursor-pointer">Cancelar</button>
+        <button type="submit" class="px-4 py-2 rounded-lg bg-primary-600 text-white text-sm font-medium hover:bg-primary-700 cursor-pointer">Guardar</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/inventario/api.js') }}"></script>
+<script src="{{ url_for('static', filename='js/inventario/dom.js') }}"></script>
+<script src="{{ url_for('static', filename='js/inventario/compras.js') }}"></script>
+{% endblock %}

@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 """
-manage.py — CLI para gestionar la aplicacion DentalSaaS.
+manage.py — CLI para gestionar la aplicacion Dental Planning.
 
 Uso:
   python manage.py runserver          # Inicia el servidor (API + frontend)
@@ -70,7 +70,7 @@ def shell_cmd():
             ctx.update({"User": User, "Material": Material, "Tratamiento": Tratamiento, "Ingreso": Ingreso, "Gasto": Gasto})
         except Exception:
             pass
-        click.echo("Shell DentalSaaS. Variables disponibles: " + ", ".join(ctx.keys()))
+        click.echo("Shell Dental Planning. Variables disponibles: " + ", ".join(ctx.keys()))
         code.interact(local=ctx)
 
 
@@ -144,7 +144,7 @@ if __name__ == "__main__":
                 ctx["User"] = User
             except Exception:
                 pass
-            click.echo("Shell DentalSaaS. Variables: " + ", ".join(ctx.keys()))
+            click.echo("Shell Dental Planning. Variables: " + ", ".join(ctx.keys()))
             code.interact(local=ctx)
 
     elif cmd == "create-admin":

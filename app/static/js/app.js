@@ -55,7 +55,7 @@ const Auth = {
 
   redirectIfLoggedIn() {
     if (this.getToken()) {
-      window.location.href = '/dashboard';
+      window.location.href = '/selector';
       return true;
     }
     return false;
