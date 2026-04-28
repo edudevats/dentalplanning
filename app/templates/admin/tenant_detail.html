@@ -1,0 +1,76 @@
+{% extends "admin/_layout_admin.html" %}
+{% block title %}Clínica — Panel SaaS{% endblock %}
+{% block admin_title %}Detalle de clínica{% endblock %}
+{% block admin_content %}
+
+<div class="space-y-6" data-tenant-id="{{ tenant_id }}">
+
+  <a href="/admin/tenants" class="inline-flex items-center gap-1.5 text-sm text-cs-on-surface-var hover:text-cs-on-surface transition-colors">
+    <i data-lucide="arrow-left" class="h-4 w-4"></i>
+    Volver al listado
+  </a>
+
+  <!-- Header del tenant -->
+  <div class="rounded-lg bg-cs-surface-container-lowest p-6 space-y-3">
+    <div class="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
+      <div class="space-y-1">
+        <h1 id="tenant-name" class="font-cs-display text-3xl font-bold text-cs-on-surface tracking-tight">—</h1>
+        <p id="tenant-slug" class="text-xs text-cs-on-surface-var font-mono">—</p>
+        <div class="flex items-center gap-2 pt-1.5">
+          <span id="tenant-status-slot"></span>
+          <span id="tenant-plan-slot" class="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-semibold tracking-wide bg-cs-surface-container text-cs-on-surface-var"></span>
+        </div>
+      </div>
+      <div id="tenant-actions" class="flex flex-wrap items-center gap-2"></div>
+    </div>
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 pt-2">
+      <div class="rounded-md bg-cs-surface-container px-3 py-2">
+        <p class="text-[10px] font-semibold uppercase tracking-wide text-cs-on-surface-var">Email contacto</p>
+        <p id="tenant-contact" class="text-sm text-cs-on-surface truncate">—</p>
+      </div>
+      <div class="rounded-md bg-cs-surface-container px-3 py-2">
+        <p class="text-[10px] font-semibold uppercase tracking-wide text-cs-on-surface-var">Aprobada</p>
+        <p id="tenant-approved" class="text-sm text-cs-on-surface">—</p>
+      </div>
+      <div class="rounded-md bg-cs-surface-container px-3 py-2">
+        <p class="text-[10px] font-semibold uppercase tracking-wide text-cs-on-surface-var">Próximo cobro</p>
+        <p id="tenant-next-payment" class="text-sm text-cs-on-surface">—</p>
+      </div>
+      <div class="rounded-md bg-cs-surface-container px-3 py-2">
+        <p class="text-[10px] font-semibold uppercase tracking-wide text-cs-on-surface-var">Notas internas</p>
+        <p id="tenant-notes-count" class="text-sm text-cs-on-surface">0</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tabs -->
+  <div class="border-b border-cs-outline-variant/40">
+    <nav class="flex gap-1 -mb-px overflow-x-auto" id="tabs-nav">
+      <button data-tab="general" class="tab-btn active px-4 py-2.5 text-sm font-semibold transition-colors cursor-pointer">General</button>
+      <button data-tab="users" class="tab-btn px-4 py-2.5 text-sm font-semibold transition-colors cursor-pointer">Usuarios</button>
+      <button data-tab="billing" class="tab-btn px-4 py-2.5 text-sm font-semibold transition-colors cursor-pointer">Suscripción y pagos</button>
+      <button data-tab="notes" class="tab-btn px-4 py-2.5 text-sm font-semibold transition-colors cursor-pointer">Notas internas</button>
+      <button data-tab="metrics" class="tab-btn px-4 py-2.5 text-sm font-semibold transition-colors cursor-pointer">Métricas</button>
+    </nav>
+  </div>
+
+  <!-- Tab panels -->
+  <section data-panel="general" class="tab-panel space-y-4"></section>
+  <section data-panel="users" class="tab-panel hidden space-y-4"></section>
+  <section data-panel="billing" class="tab-panel hidden space-y-4"></section>
+  <section data-panel="notes" class="tab-panel hidden space-y-4"></section>
+  <section data-panel="metrics" class="tab-panel hidden space-y-4"></section>
+
+</div>
+
+<style>
+  .tab-btn { color: var(--color-cs-on-surface-var); border-bottom: 2px solid transparent; }
+  .tab-btn:hover { color: var(--color-cs-on-surface); }
+  .tab-btn.active { color: var(--color-cs-primary); border-bottom-color: var(--color-cs-primary); }
+</style>
+
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/admin/admin_tenant_detail.js"></script>
+{% endblock %}

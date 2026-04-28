@@ -1,0 +1,43 @@
+{% extends "admin/_layout_admin.html" %}
+{% block title %}Planes — Panel SaaS{% endblock %}
+{% block admin_title %}Planes{% endblock %}
+{% block admin_content %}
+
+<div class="space-y-6">
+
+  <div class="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-6">
+    <div>
+      <h1 class="font-cs-display text-4xl font-bold text-cs-on-surface tracking-tight">Planes</h1>
+      <p class="mt-1.5 text-sm text-cs-on-surface-var max-w-xl">Define los planes comerciales y sus precios. Solo los planes activos pueden asignarse a nuevas clínicas.</p>
+    </div>
+    <button id="btn-nuevo-plan" class="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-gradient-to-br from-cs-primary to-cs-primary-dim text-cs-on-primary text-sm font-semibold shadow-sm hover:opacity-95 transition-opacity cursor-pointer">
+      <i data-lucide="plus" class="h-4 w-4"></i>
+      Nuevo plan
+    </button>
+  </div>
+
+  <div class="rounded-lg bg-cs-surface-container-lowest p-2 overflow-x-auto">
+    <table class="w-full text-sm">
+      <thead>
+        <tr class="text-left text-cs-on-surface-var">
+          <th class="px-4 py-3 font-semibold">Nombre</th>
+          <th class="px-4 py-3 font-semibold text-right">Precio mensual</th>
+          <th class="px-4 py-3 font-semibold">Descripción</th>
+          <th class="px-4 py-3 font-semibold text-center">Suscripciones</th>
+          <th class="px-4 py-3 font-semibold text-center">Estado</th>
+          <th class="px-4 py-3"></th>
+        </tr>
+      </thead>
+      <tbody id="planes-rows"></tbody>
+    </table>
+  </div>
+
+  <p id="empty-state" class="hidden text-center text-sm text-cs-on-surface-var py-10">Aún no hay planes definidos. Crea el primero para comenzar a aprobar clínicas.</p>
+
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/admin/admin_planes.js"></script>
+{% endblock %}

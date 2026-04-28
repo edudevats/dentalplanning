@@ -76,23 +76,71 @@ def shell_cmd():
 
 # ── create-admin ─────────────────────────────────────────────────────────────
 
+def _do_create_admin(email, password, name, super_admin, tenant_slug):
+    """Crea un User. Si super_admin=True, lo asocia al tenant __system__
+    y marca is_superuser=True. Si no, lo asocia al tenant_slug indicado."""
+    from app.auth.models import (
+        User, Tenant, SYSTEM_TENANT_SLUG, TENANT_STATUS_ACTIVE,
+    )
+
+    if User.query.filter_by(email=email).first():
+        click.echo(f"  Ya existe un usuario con el email {email}.")
+        sys.exit(1)
+
+    if super_admin:
+        tenant = Tenant.query.filter_by(slug=SYSTEM_TENANT_SLUG).first()
+        if not tenant:
+            tenant = Tenant(
+                name="System (super-admin)",
+                slug=SYSTEM_TENANT_SLUG,
+                plan="system",
+                is_active=True,
+                status=TENANT_STATUS_ACTIVE,
+            )
+            db.session.add(tenant)
+            db.session.flush()
+        role = "admin"
+        is_super = True
+    else:
+        if not tenant_slug:
+            click.echo("  Falta --tenant-slug para usuario no super-admin.")
+            sys.exit(1)
+        tenant = Tenant.query.filter_by(slug=tenant_slug).first()
+        if not tenant:
+            click.echo(f"  No existe el tenant con slug '{tenant_slug}'.")
+            sys.exit(1)
+        role = "admin"
+        is_super = False
+
+    user = User(
+        email=email,
+        name=name,
+        role=role,
+        tenant_id=tenant.id,
+        is_superuser=is_super,
+    )
+    user.set_password(password)
+    db.session.add(user)
+    db.session.commit()
+    if is_super:
+        click.echo(f"  Super-admin creado: {email} (tenant={tenant.slug})")
+    else:
+        click.echo(f"  Admin creado: {email} (tenant={tenant.slug})")
+
+
 @app.cli.command("create-admin")
 @click.option("--email", prompt="Email del admin")
 @click.option("--password", prompt="Password", hide_input=True, confirmation_prompt=True)
 @click.option("--name", prompt="Nombre", default="Admin", show_default=True)
-def create_admin(email, password, name):
-    """Crea un usuario administrador."""
+@click.option("--super/--no-super", "super_admin", default=True, show_default=True,
+              help="Crea super-admin global asociado al tenant __system__")
+@click.option("--tenant-slug", default=None,
+              help="Slug del tenant (solo si --no-super)")
+def create_admin(email, password, name, super_admin, tenant_slug):
+    """Crea un usuario administrador (por default, super-admin global)."""
     with app.app_context():
         try:
-            from app.auth.models import User
-            if User.query.filter_by(email=email).first():
-                click.echo(f"  Ya existe un usuario con el email {email}.")
-                sys.exit(1)
-            user = User(email=email, name=name)
-            user.set_password(password)
-            db.session.add(user)
-            db.session.commit()
-            click.echo(f"  Admin creado: {email}")
+            _do_create_admin(email, password, name, super_admin, tenant_slug)
         except Exception as e:
             click.echo(f"  Error: {e}")
             sys.exit(1)
@@ -149,19 +197,20 @@ if __name__ == "__main__":
 
     elif cmd == "create-admin":
         with app.app_context():
-            from app.auth.models import User
             email = input("Email: ")
             import getpass
             password = getpass.getpass("Password: ")
             name = input("Nombre [Admin]: ") or "Admin"
-            if User.query.filter_by(email=email).first():
-                click.echo("Ya existe ese usuario.")
+            ans = input("¿Super-admin global? [Y/n]: ").strip().lower()
+            super_admin = ans in ("", "y", "yes", "s", "si")
+            tenant_slug = None
+            if not super_admin:
+                tenant_slug = input("Tenant slug: ").strip()
+            try:
+                _do_create_admin(email, password, name, super_admin, tenant_slug)
+            except Exception as e:
+                click.echo(f"  Error: {e}")
                 sys.exit(1)
-            user = User(email=email, name=name)
-            user.set_password(password)
-            db.session.add(user)
-            db.session.commit()
-            click.echo(f"Admin creado: {email}")
 
     else:
         click.echo(f"Comando desconocido: {cmd}")

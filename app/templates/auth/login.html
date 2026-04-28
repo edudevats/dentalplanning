@@ -90,7 +90,18 @@
 {% block scripts %}
 <script>
 lucide.createIcons();
-Auth.redirectIfLoggedIn();
+
+// Si ya hay sesión activa, redirigir según rol.
+(function() {
+  if (!Auth.getToken()) return;
+  let user = null;
+  try { user = JSON.parse(localStorage.getItem('user') || 'null'); } catch (e) { user = null; }
+  if (user && user.is_superuser === true) {
+    window.location.href = '/admin';
+  } else {
+    window.location.href = '/selector';
+  }
+})();
 
 document.getElementById('login-form').addEventListener('submit', async (e) => {
   e.preventDefault();
@@ -127,7 +138,14 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
       body: JSON.stringify({ email, password }),
     });
     Auth.setToken(data.access_token);
-    window.location.href = '/selector';
+    if (data.user) {
+      try { localStorage.setItem('user', JSON.stringify(data.user)); } catch (e) {}
+    }
+    if (data.user && data.user.is_superuser === true) {
+      window.location.href = '/admin';
+    } else {
+      window.location.href = '/selector';
+    }
   } catch (err) {
     const msg = err.response?.data?.message || 'Credenciales incorrectas. Intenta de nuevo.';
     srvMsg.textContent = msg;

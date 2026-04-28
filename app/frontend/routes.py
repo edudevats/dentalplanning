@@ -130,3 +130,31 @@ def inventario_almacen():
 @frontend_bp.route("/inventario/transferir")
 def inventario_transferir():
     return render_template("inventario/transferir.html")
+
+
+# ── Panel Super-Admin ───────────────────────────────────────────────────────
+
+@frontend_bp.route("/admin")
+@frontend_bp.route("/admin/dashboard")
+def admin_dashboard():
+    return render_template("admin/dashboard.html")
+
+
+@frontend_bp.route("/admin/tenants")
+def admin_tenants():
+    return render_template("admin/tenants.html")
+
+
+@frontend_bp.route("/admin/tenants/<int:tenant_id>")
+def admin_tenant_detail(tenant_id):
+    return render_template("admin/tenant_detail.html", tenant_id=tenant_id)
+
+
+@frontend_bp.route("/admin/pagos")
+def admin_pagos():
+    return render_template("admin/pagos.html")
+
+
+@frontend_bp.route("/admin/planes")
+def admin_planes():
+    return render_template("admin/planes.html")

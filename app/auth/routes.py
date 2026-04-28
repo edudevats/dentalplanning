@@ -5,9 +5,12 @@ from flask_jwt_extended import (
     get_jwt_identity,
     jwt_required,
 )
-from marshmallow import ValidationError
 from app.extensions import db
-from app.auth.models import Tenant, User
+from app.auth.models import (
+    Tenant, User, SYSTEM_TENANT_SLUG,
+    TENANT_STATUS_PENDING, TENANT_STATUS_ACTIVE,
+    TENANT_STATUS_SUSPENDED, TENANT_STATUS_REJECTED,
+)
 from app.auth.schemas import RegisterSchema, LoginSchema, InviteSchema, ChangePasswordSchema
 from app.middleware.tenant import require_auth, require_role
 from app.configuracion.models import ConfigConsultorio
@@ -16,10 +19,20 @@ from app.ajustes.models import DistribucionConfig
 auth_bp = Blueprint("auth", __name__, url_prefix="/api/v1/auth")
 
 
+_LOGIN_STATUS_MESSAGES = {
+    TENANT_STATUS_PENDING: "Tu cuenta está pendiente de aprobación",
+    TENANT_STATUS_SUSPENDED: "Cuenta suspendida. Contacta al soporte",
+    TENANT_STATUS_REJECTED: "Tu solicitud fue rechazada",
+}
+
+
 @auth_bp.route("/register", methods=["POST"])
 def register():
     schema = RegisterSchema()
     data = schema.load(request.get_json())
+
+    if data["tenant_slug"] == SYSTEM_TENANT_SLUG:
+        return jsonify({"error": "Slug reservado"}), 409
 
     if Tenant.query.filter_by(slug=data["tenant_slug"]).first():
         return jsonify({"error": "Este slug ya está en uso"}), 409
@@ -27,7 +40,13 @@ def register():
     if User.query.filter_by(email=data["email"]).first():
         return jsonify({"error": "Este email ya está registrado"}), 409
 
-    tenant = Tenant(name=data["tenant_name"], slug=data["tenant_slug"])
+    tenant = Tenant(
+        name=data["tenant_name"],
+        slug=data["tenant_slug"],
+        status=TENANT_STATUS_PENDING,
+        contact_email=data.get("contact_email") or data["email"],
+        is_active=False,
+    )
     db.session.add(tenant)
     db.session.flush()
 
@@ -48,16 +67,15 @@ def register():
 
     db.session.commit()
 
-    access_token = create_access_token(identity=str(user.id))
-    refresh_token = create_refresh_token(identity=str(user.id))
-
     return jsonify({
-        "message": "Consultorio registrado exitosamente",
-        "tenant": {"id": tenant.id, "name": tenant.name, "slug": tenant.slug},
-        "user": {"id": user.id, "email": user.email, "name": user.name, "role": user.role},
-        "access_token": access_token,
-        "refresh_token": refresh_token,
-    }), 201
+        "message": "Solicitud recibida. Revisaremos tu cuenta y te contactaremos pronto.",
+        "tenant": {
+            "id": tenant.id,
+            "name": tenant.name,
+            "slug": tenant.slug,
+            "status": tenant.status,
+        },
+    }), 202
 
 
 @auth_bp.route("/login", methods=["POST"])
@@ -69,8 +87,10 @@ def login():
     if not user or not user.check_password(data["password"]):
         return jsonify({"error": "Credenciales inválidas"}), 401
 
-    if not user.tenant.is_active:
-        return jsonify({"error": "Cuenta desactivada"}), 403
+    # Super-admin bypassa el chequeo de status
+    if not user.is_superuser and user.tenant.status != TENANT_STATUS_ACTIVE:
+        msg = _LOGIN_STATUS_MESSAGES.get(user.tenant.status, "Cuenta no activa")
+        return jsonify({"error": msg, "status": user.tenant.status}), 403
 
     access_token = create_access_token(identity=str(user.id))
     refresh_token = create_refresh_token(identity=str(user.id))
@@ -81,6 +101,7 @@ def login():
             "email": user.email,
             "name": user.name,
             "role": user.role,
+            "is_superuser": user.is_superuser,
             "tenant_id": user.tenant_id,
             "tenant_name": user.tenant.name,
         },
@@ -146,10 +167,12 @@ def me():
         "email": user.email,
         "name": user.name,
         "role": user.role,
+        "is_superuser": user.is_superuser,
         "tenant": {
             "id": user.tenant.id,
             "name": user.tenant.name,
             "slug": user.tenant.slug,
             "plan": user.tenant.plan,
+            "status": user.tenant.status,
         },
     })

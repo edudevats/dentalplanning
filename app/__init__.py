@@ -26,6 +26,7 @@ def create_app(config_name=None):
     from app.dashboard.routes import dashboard_bp
     from app.ajustes.routes import ajustes_bp
     from app.inventario.routes import inventario_bp
+    from app.superadmin.routes import superadmin_bp
     from app.frontend.routes import frontend_bp
 
     app.register_blueprint(auth_bp)
@@ -36,6 +37,7 @@ def create_app(config_name=None):
     app.register_blueprint(dashboard_bp)
     app.register_blueprint(ajustes_bp)
     app.register_blueprint(inventario_bp)
+    app.register_blueprint(superadmin_bp)
     app.register_blueprint(frontend_bp)
 
     # Error handlers
@@ -51,6 +53,7 @@ def create_app(config_name=None):
         from app.edr import models as edr_models  # noqa: F401
         from app.ajustes import models as ajustes_models  # noqa: F401
         from app.inventario import models as inventario_models  # noqa: F401
+        from app.superadmin import models as superadmin_models  # noqa: F401
 
     # Health check
     @app.route("/api/v1/health")
