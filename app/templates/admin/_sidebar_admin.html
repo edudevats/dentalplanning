@@ -1,0 +1,66 @@
+<div class="flex flex-col h-full p-4">
+
+  <div class="px-2 mb-6">
+    <div class="inline-flex items-center gap-2 mb-1.5">
+      <i data-lucide="shield" class="h-4 w-4 text-cs-primary"></i>
+      <span class="text-[10px] font-bold tracking-[0.18em] uppercase text-cs-primary">Super-Admin</span>
+    </div>
+    <h2 class="font-cs-display text-lg font-bold text-cs-on-surface leading-tight">Panel SaaS</h2>
+    <p class="text-xs text-cs-on-surface-var mt-0.5" style="letter-spacing: 0.05rem;">Dental Planning</p>
+  </div>
+
+  <a href="/admin/tenants?status=pending" class="flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-gradient-to-br from-cs-primary to-cs-primary-dim text-cs-on-primary text-sm font-semibold shadow-sm hover:opacity-95 transition-opacity mb-6">
+    <i data-lucide="bell-dot" class="h-4 w-4"></i>
+    Solicitudes pendientes
+  </a>
+
+  <nav class="flex-1 space-y-0.5">
+    <a href="/admin" data-nav-path="/admin" class="cs-nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-cs-on-surface-var transition-colors duration-200">
+      <i data-lucide="layout-dashboard" class="h-[18px] w-[18px] shrink-0"></i>
+      Dashboard
+    </a>
+    <a href="/admin/tenants" data-nav-path="/admin/tenants" class="cs-nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-cs-on-surface-var transition-colors duration-200">
+      <i data-lucide="building-2" class="h-[18px] w-[18px] shrink-0"></i>
+      Clínicas
+    </a>
+    <a href="/admin/pagos" data-nav-path="/admin/pagos" class="cs-nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-cs-on-surface-var transition-colors duration-200">
+      <i data-lucide="wallet" class="h-[18px] w-[18px] shrink-0"></i>
+      Pagos
+    </a>
+    <a href="/admin/planes" data-nav-path="/admin/planes" class="cs-nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-cs-on-surface-var transition-colors duration-200">
+      <i data-lucide="tag" class="h-[18px] w-[18px] shrink-0"></i>
+      Planes
+    </a>
+  </nav>
+
+  <div class="mt-auto pt-4 space-y-0.5">
+    <a href="/selector" class="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-cs-on-surface-var hover:bg-cs-surface-container transition-colors duration-200">
+      <i data-lucide="grid-2x2" class="h-[18px] w-[18px] shrink-0"></i>
+      Cambiar de Sistema
+    </a>
+    <button data-action="logout" class="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-cs-on-surface-var hover:bg-cs-surface-container transition-colors duration-200 cursor-pointer">
+      <i data-lucide="log-out" class="h-[18px] w-[18px] shrink-0"></i>
+      Cerrar sesión
+    </button>
+
+    <div class="mt-3 flex items-center gap-3 px-3 py-2.5 rounded-lg bg-cs-surface-container-lowest">
+      <div class="w-9 h-9 rounded-md bg-cs-primary-container text-cs-on-primary-container flex items-center justify-center text-sm font-semibold font-cs-display shrink-0">
+        <span data-user-initials>??</span>
+      </div>
+      <div class="flex-1 min-w-0">
+        <p class="text-sm font-semibold text-cs-on-surface truncate" data-user-name>Super-Admin</p>
+        <p class="text-xs text-cs-on-surface-var truncate" data-user-email>—</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+  .cs-nav-link:hover { background-color: var(--color-cs-surface-container); color: var(--color-cs-on-surface); }
+  .cs-nav-link.active {
+    background-color: var(--color-cs-surface-container-lowest);
+    color: var(--color-cs-primary);
+    font-weight: 600;
+    box-shadow: inset 3px 0 0 0 var(--color-cs-primary);
+  }
+</style>

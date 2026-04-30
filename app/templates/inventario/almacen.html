@@ -1,0 +1,86 @@
+{% extends "inventario/_layout_cs.html" %}
+{% block title %}Almacén Principal — Central de Inventario{% endblock %}
+{% block cs_content %}
+
+<div class="space-y-8">
+
+  <div class="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-6">
+    <div>
+      <h1 class="font-cs-display text-4xl font-bold text-cs-on-surface tracking-tight">Almacén Principal</h1>
+      <p class="mt-1.5 text-sm text-cs-on-surface-var max-w-xl">Gestiona y supervisa los niveles de inventario, fechas de caducidad y umbrales de stock crítico.</p>
+    </div>
+    <div class="flex items-center gap-2">
+      <a href="/inventario/transferir" class="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-cs-surface-container text-cs-on-surface text-sm font-semibold hover:bg-cs-surface-container-high transition-colors">
+        <i data-lucide="arrow-right-left" class="h-4 w-4"></i>
+        Transferir a Operatorio
+      </a>
+      <a href="/inventario/compras" class="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-gradient-to-br from-cs-primary to-cs-primary-dim text-cs-on-primary text-sm font-semibold shadow-sm hover:opacity-95 transition-opacity">
+        <i data-lucide="plus" class="h-4 w-4"></i>
+        Agregar Material
+      </a>
+    </div>
+  </div>
+
+  <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+    <div class="p-5 rounded-lg bg-cs-surface-container-lowest">
+      <p class="text-xs font-semibold uppercase tracking-widest text-cs-on-surface-var">Valor Total</p>
+      <p class="mt-3 font-cs-display text-3xl font-bold text-cs-on-surface" data-kpi="total-value">—</p>
+    </div>
+    <div class="p-5 rounded-lg bg-cs-surface-container-lowest">
+      <p class="text-xs font-semibold uppercase tracking-widest text-cs-on-surface-var">Alertas de Stock Bajo</p>
+      <p class="mt-3 font-cs-display text-3xl font-bold text-cs-error" data-kpi="low-count">—</p>
+      <p class="mt-1 text-xs text-cs-on-surface-var">Requiere reposición inmediata</p>
+    </div>
+    <div class="p-5 rounded-lg bg-cs-surface-container-lowest">
+      <p class="text-xs font-semibold uppercase tracking-widest text-cs-on-surface-var">Próximos a Caducar</p>
+      <p class="mt-3 font-cs-display text-3xl font-bold text-cs-on-surface" data-kpi="exp-count">—</p>
+      <p class="mt-1 text-xs text-cs-on-surface-var">En los próximos 30 días</p>
+    </div>
+  </div>
+
+  <section class="p-6 rounded-lg bg-cs-surface-container-lowest">
+    <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 mb-5">
+      <div class="relative flex-1">
+        <i data-lucide="search" class="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-cs-outline"></i>
+        <input id="cs-search" placeholder="Filtrar materiales..." class="w-full pl-10 pr-3 py-2 rounded-md bg-cs-surface-container text-sm placeholder:text-cs-outline focus:outline-none focus:ring-2 focus:ring-cs-primary/30" />
+      </div>
+      <select id="cs-categoria" class="rounded-md bg-cs-surface-container px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-cs-primary/30">
+        <option value="">Todas las categorías</option>
+      </select>
+      <select id="cs-alerta" disabled title="Filtro por estado próximamente" class="rounded-md bg-cs-surface-container px-3 py-2 text-sm opacity-50 cursor-not-allowed focus:outline-none">
+        <option value="">Todos los estados</option>
+        <option value="bajo">Stock bajo</option>
+        <option value="alto">Exceso de stock</option>
+        <option value="caduca">Por caducar</option>
+      </select>
+    </div>
+
+    <div class="overflow-x-auto">
+      <table class="w-full">
+        <thead>
+          <tr class="text-left">
+            <th class="py-3 pr-4 text-[11px] font-semibold uppercase tracking-widest text-cs-on-surface-var">Nombre del Material</th>
+            <th class="py-3 px-4 text-[11px] font-semibold uppercase tracking-widest text-cs-on-surface-var text-right">Stock Actual</th>
+            <th class="py-3 px-4 text-[11px] font-semibold uppercase tracking-widest text-cs-on-surface-var text-right">Mín / Máx</th>
+            <th class="py-3 px-4 text-[11px] font-semibold uppercase tracking-widest text-cs-on-surface-var">Estado</th>
+            <th class="py-3 px-4 text-[11px] font-semibold uppercase tracking-widest text-cs-on-surface-var">Caducidad</th>
+            <th class="py-3 pl-4 text-[11px] font-semibold uppercase tracking-widest text-cs-on-surface-var text-right">Acciones</th>
+          </tr>
+        </thead>
+        <tbody id="cs-almacen-body"></tbody>
+      </table>
+      <p id="cs-almacen-empty" class="hidden py-8 text-center text-sm text-cs-on-surface-var">No se encontraron materiales con los filtros actuales.</p>
+    </div>
+
+    <p id="cs-almacen-footer" class="mt-4 text-xs text-cs-on-surface-var"></p>
+  </section>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/inventario/api.js') }}"></script>
+<script src="{{ url_for('static', filename='js/inventario/dom.js') }}"></script>
+<script src="{{ url_for('static', filename='js/inventario/cs_shared.js') }}"></script>
+<script src="{{ url_for('static', filename='js/inventario/cs_almacen.js') }}"></script>
+{% endblock %}

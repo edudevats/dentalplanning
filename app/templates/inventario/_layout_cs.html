@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block body %}
+
+<!-- Auth gate: hide everything until JWT is verified -->
+<script>
+  if (!Auth.check()) {
+    document.write('');
+    throw new Error('AUTH_REDIRECT');
+  }
+  document.documentElement.style.visibility = 'visible';
+</script>
+
+<div class="min-h-screen bg-cs-surface font-cs-body text-cs-on-surface">
+
+  <div id="sidebar-overlay" class="fixed inset-0 bg-black/30 z-40 lg:hidden hidden"></div>
+
+  <aside class="hidden lg:flex lg:flex-col lg:fixed lg:inset-y-0 lg:left-0 lg:w-64 bg-cs-surface-container-low z-30">
+    {% include "inventario/_sidebar_cs.html" %}
+  </aside>
+
+  <aside id="mobile-sidebar" class="fixed inset-y-0 left-0 w-64 bg-cs-surface-container-low z-50 flex flex-col transform -translate-x-full transition-transform duration-200 ease-in-out lg:hidden">
+    {% include "inventario/_sidebar_cs.html" %}
+    <button id="sidebar-close" class="absolute top-4 right-4 p-1 rounded-lg text-cs-on-surface-var hover:text-cs-on-surface transition-colors cursor-pointer" aria-label="Cerrar menu">
+      <i data-lucide="x" class="h-5 w-5"></i>
+    </button>
+  </aside>
+
+  <header class="sticky top-0 z-20 h-16 backdrop-blur-xl bg-cs-surface-bright/80 lg:ml-64">
+    <div class="flex items-center justify-between h-full px-4 lg:px-8 gap-4">
+      <div class="flex items-center gap-3 flex-1 max-w-xl">
+        <button id="sidebar-toggle" class="p-2 rounded-lg text-cs-on-surface-var hover:bg-cs-surface-container transition-colors cursor-pointer lg:hidden" aria-label="Abrir menu">
+          <i data-lucide="menu" class="h-5 w-5"></i>
+        </button>
+        <div class="relative flex-1">
+          <i data-lucide="search" class="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-cs-outline"></i>
+          <input id="cs-global-search" type="text" placeholder="Buscar en inventario..." class="w-full pl-10 pr-3 py-2 rounded-lg bg-cs-surface-container text-sm placeholder:text-cs-outline focus:outline-none focus:ring-2 focus:ring-cs-primary/30 transition-all" />
+        </div>
+      </div>
+      <div class="flex items-center gap-2">
+        <span class="hidden md:inline-flex items-center gap-2 text-xs font-medium text-cs-on-surface-var px-3">
+          <span class="w-2 h-2 rounded-full bg-cs-primary animate-cs-pulse"></span>
+          Actualización en Vivo
+        </span>
+        <a href="/inventario/transferir" class="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-gradient-to-br from-cs-primary to-cs-primary-dim text-cs-on-primary text-sm font-semibold shadow-sm hover:opacity-95 transition-opacity">
+          <i data-lucide="arrow-right-left" class="h-4 w-4"></i>
+          Transferir
+        </a>
+      </div>
+    </div>
+  </header>
+
+  <main class="lg:ml-64 p-4 lg:p-10 max-w-7xl mx-auto">
+    {% block cs_content %}{% endblock %}
+  </main>
+</div>
+
+{% block scripts %}{% endblock %}
+
+<script>
+  if (typeof lucide !== 'undefined' && typeof lucide.createIcons === 'function') lucide.createIcons();
+  if (typeof setActiveNav === 'function') setActiveNav();
+  if (typeof initMobileSidebar === 'function') initMobileSidebar();
+  if (typeof loadUserInfo === 'function') loadUserInfo();
+</script>
+
+<style>
+  @keyframes cs-pulse {
+    0%, 100% { opacity: 1.0; }
+    50%      { opacity: 0.4; }
+  }
+  .animate-cs-pulse { animation: cs-pulse 2s ease-in-out infinite; }
+</style>
+{% endblock %}

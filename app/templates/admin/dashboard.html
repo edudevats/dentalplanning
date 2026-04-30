@@ -1,0 +1,82 @@
+{% extends "admin/_layout_admin.html" %}
+{% block title %}Dashboard — Panel SaaS{% endblock %}
+{% block admin_title %}Dashboard{% endblock %}
+{% block admin_content %}
+
+<div class="space-y-8">
+
+  <div class="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-6">
+    <div>
+      <h1 class="font-cs-display text-4xl font-bold text-cs-on-surface tracking-tight">Resumen ejecutivo</h1>
+      <p class="mt-1.5 text-sm text-cs-on-surface-var max-w-xl">Estado global del SaaS — clínicas activas, ingresos recurrentes y salud operativa.</p>
+    </div>
+    <div class="flex items-center gap-2">
+      <a href="/admin/tenants?status=pending" class="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-cs-surface-container text-cs-on-surface text-sm font-semibold hover:bg-cs-surface-container-high transition-colors">
+        <i data-lucide="bell-dot" class="h-4 w-4"></i>
+        Solicitudes pendientes
+      </a>
+    </div>
+  </div>
+
+  <!-- KPIs -->
+  <div id="kpi-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4"></div>
+
+  <!-- MRR + Salud -->
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <div class="lg:col-span-2 rounded-lg bg-cs-surface-container-lowest p-6 space-y-4">
+      <div class="flex items-center justify-between">
+        <div>
+          <h2 class="font-cs-display text-lg font-semibold text-cs-on-surface">Ingresos recurrentes (MRR)</h2>
+          <p class="text-xs text-cs-on-surface-var">Cobranza mensual los últimos 12 meses</p>
+        </div>
+        <p class="font-cs-display text-2xl font-bold text-cs-primary" id="mrr-actual">—</p>
+      </div>
+      <div class="h-56">
+        <canvas id="mrr-chart"></canvas>
+      </div>
+    </div>
+
+    <div class="rounded-lg bg-cs-surface-container-lowest p-6 space-y-4">
+      <h2 class="font-cs-display text-lg font-semibold text-cs-on-surface">Salud operativa</h2>
+      <div id="salud-list" class="space-y-3"></div>
+    </div>
+  </div>
+
+  <!-- Top tenants -->
+  <div class="rounded-lg bg-cs-surface-container-lowest p-6 space-y-4">
+    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+      <div>
+        <h2 class="font-cs-display text-lg font-semibold text-cs-on-surface">Top 10 clínicas</h2>
+        <p class="text-xs text-cs-on-surface-var">Ranking por uso del producto</p>
+      </div>
+      <div class="flex items-center gap-2">
+        <label class="text-xs font-semibold text-cs-on-surface-var">Métrica</label>
+        <select id="uso-metric" class="px-3 py-1.5 rounded-lg bg-cs-surface-container text-sm text-cs-on-surface focus:outline-none focus:ring-2 focus:ring-cs-primary/30">
+          <option value="tratamientos">Tratamientos</option>
+          <option value="users">Usuarios</option>
+          <option value="materiales">Materiales</option>
+        </select>
+      </div>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="text-left text-cs-on-surface-var">
+            <th class="pb-3 font-semibold">#</th>
+            <th class="pb-3 font-semibold">Clínica</th>
+            <th class="pb-3 font-semibold text-right">Total</th>
+            <th class="pb-3"></th>
+          </tr>
+        </thead>
+        <tbody id="uso-rows"></tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/admin/admin_dashboard.js"></script>
+{% endblock %}

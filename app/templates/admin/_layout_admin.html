@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+{% block body %}
+
+<!-- Auth gate: hide everything until JWT is verified AND user is super-admin -->
+<script>
+  (function() {
+    if (!Auth.check()) {
+      throw new Error('AUTH_REDIRECT');
+    }
+    let user = null;
+    try { user = JSON.parse(localStorage.getItem('user') || 'null'); } catch (e) { user = null; }
+    if (!user || user.is_superuser !== true) {
+      window.location.href = '/dashboard';
+      throw new Error('NOT_SUPERUSER');
+    }
+    document.documentElement.style.visibility = 'visible';
+  })();
+</script>
+
+<div class="min-h-screen bg-cs-surface font-cs-body text-cs-on-surface">
+
+  <div id="sidebar-overlay" class="fixed inset-0 bg-black/30 z-40 lg:hidden hidden"></div>
+
+  <aside class="hidden lg:flex lg:flex-col lg:fixed lg:inset-y-0 lg:left-0 lg:w-64 bg-cs-surface-container-low z-30">
+    {% include "admin/_sidebar_admin.html" %}
+  </aside>
+
+  <aside id="mobile-sidebar" class="fixed inset-y-0 left-0 w-64 bg-cs-surface-container-low z-50 flex flex-col transform -translate-x-full transition-transform duration-200 ease-in-out lg:hidden">
+    {% include "admin/_sidebar_admin.html" %}
+    <button id="sidebar-close" class="absolute top-4 right-4 p-1 rounded-lg text-cs-on-surface-var hover:text-cs-on-surface transition-colors cursor-pointer" aria-label="Cerrar menu">
+      <i data-lucide="x" class="h-5 w-5"></i>
+    </button>
+  </aside>
+
+  <header class="sticky top-0 z-20 h-16 backdrop-blur-xl bg-cs-surface-bright/80 lg:ml-64">
+    <div class="flex items-center justify-between h-full px-4 lg:px-8 gap-4">
+      <div class="flex items-center gap-3 flex-1">
+        <button id="sidebar-toggle" class="p-2 rounded-lg text-cs-on-surface-var hover:bg-cs-surface-container transition-colors cursor-pointer lg:hidden" aria-label="Abrir menu">
+          <i data-lucide="menu" class="h-5 w-5"></i>
+        </button>
+        <div class="flex items-center gap-3 min-w-0">
+          <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-cs-primary-container text-cs-on-primary-container text-[10px] font-bold tracking-[0.15em] uppercase">
+            <i data-lucide="shield" class="h-3 w-3"></i>
+            Super-Admin
+          </span>
+          <h1 class="font-cs-display text-base font-semibold text-cs-on-surface truncate">{% block admin_title %}Panel SaaS{% endblock %}</h1>
+        </div>
+      </div>
+      <div class="flex items-center gap-2">
+        <span class="hidden md:inline-flex items-center gap-2 text-xs font-medium text-cs-on-surface-var px-3">
+          <span class="w-2 h-2 rounded-full bg-cs-primary animate-cs-pulse"></span>
+          Métricas en vivo
+        </span>
+      </div>
+    </div>
+  </header>
+
+  <main class="lg:ml-64 p-4 lg:p-10 max-w-7xl mx-auto">
+    {% block admin_content %}{% endblock %}
+  </main>
+</div>
+
+<script src="/static/js/inventario/dom.js"></script>
+<script src="/static/js/inventario/cs_shared.js"></script>
+<script src="/static/js/admin/admin_shared.js"></script>
+
+{% block scripts %}{% endblock %}
+
+<script>
+  if (typeof lucide !== 'undefined' && typeof lucide.createIcons === 'function') lucide.createIcons();
+  if (typeof initMobileSidebar === 'function') initMobileSidebar();
+
+  // Active nav con clases Clinical Sanctuary (no usar setActiveNav global que añade clases cyan).
+  (function() {
+    const path = window.location.pathname;
+    document.querySelectorAll('.cs-nav-link[data-nav-path]').forEach(el => {
+      const navPath = el.getAttribute('data-nav-path');
+      const isActive = path === navPath || (navPath !== '/admin' && path.startsWith(navPath + '/'));
+      el.classList.toggle('active', isActive);
+    });
+  })();
+
+  // Cargar info del usuario y persistir en localStorage para el gate del layout.
+  if (typeof loadUserInfo === 'function') {
+    loadUserInfo().then(user => {
+      if (user) {
+        try { localStorage.setItem('user', JSON.stringify(user)); } catch (e) {}
+        document.querySelectorAll('[data-user-email]').forEach(el => { el.textContent = user.email || '—'; });
+      }
+    });
+  }
+
+  document.querySelectorAll('[data-action="logout"]').forEach(b => {
+    b.addEventListener('click', () => {
+      try { localStorage.removeItem('user'); } catch (e) {}
+      Auth.logout();
+    });
+  });
+</script>
+
+<style>
+  @keyframes cs-pulse {
+    0%, 100% { opacity: 1.0; }
+    50%      { opacity: 0.4; }
+  }
+  .animate-cs-pulse { animation: cs-pulse 2s ease-in-out infinite; }
+</style>
+{% endblock %}

@@ -1,0 +1,77 @@
+{% extends "admin/_layout_admin.html" %}
+{% block title %}Pagos — Panel SaaS{% endblock %}
+{% block admin_title %}Pagos{% endblock %}
+{% block admin_content %}
+
+<div class="space-y-6">
+
+  <div class="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-6">
+    <div>
+      <h1 class="font-cs-display text-4xl font-bold text-cs-on-surface tracking-tight">Pagos</h1>
+      <p class="mt-1.5 text-sm text-cs-on-surface-var max-w-xl">Cobros recibidos de las clínicas. Filtra por fecha y registra pagos manuales.</p>
+    </div>
+    <button id="btn-nuevo-pago" class="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-gradient-to-br from-cs-primary to-cs-primary-dim text-cs-on-primary text-sm font-semibold shadow-sm hover:opacity-95 transition-opacity cursor-pointer">
+      <i data-lucide="plus" class="h-4 w-4"></i>
+      Registrar pago
+    </button>
+  </div>
+
+  <!-- Filtros -->
+  <div class="rounded-lg bg-cs-surface-container-lowest p-4 grid grid-cols-1 md:grid-cols-4 gap-3">
+    <label class="block space-y-1">
+      <span class="text-xs font-semibold text-cs-on-surface-var">Clínica</span>
+      <select id="filter-tenant" class="w-full px-3 py-2 rounded-lg bg-cs-surface-container text-sm text-cs-on-surface focus:outline-none focus:ring-2 focus:ring-cs-primary/30">
+        <option value="">Todas</option>
+      </select>
+    </label>
+    <label class="block space-y-1">
+      <span class="text-xs font-semibold text-cs-on-surface-var">Desde</span>
+      <input id="filter-desde" type="date" class="w-full px-3 py-2 rounded-lg bg-cs-surface-container text-sm text-cs-on-surface focus:outline-none focus:ring-2 focus:ring-cs-primary/30" />
+    </label>
+    <label class="block space-y-1">
+      <span class="text-xs font-semibold text-cs-on-surface-var">Hasta</span>
+      <input id="filter-hasta" type="date" class="w-full px-3 py-2 rounded-lg bg-cs-surface-container text-sm text-cs-on-surface focus:outline-none focus:ring-2 focus:ring-cs-primary/30" />
+    </label>
+    <div class="flex items-end">
+      <button id="btn-clear-filters" class="px-3 py-2 rounded-lg bg-cs-surface-container text-cs-on-surface text-sm font-semibold hover:bg-cs-surface-container-high transition-colors cursor-pointer">
+        Limpiar filtros
+      </button>
+    </div>
+  </div>
+
+  <!-- Tabla -->
+  <div class="rounded-lg bg-cs-surface-container-lowest p-2 overflow-x-auto">
+    <table class="w-full text-sm">
+      <thead>
+        <tr class="text-left text-cs-on-surface-var">
+          <th class="px-4 py-3 font-semibold">Fecha</th>
+          <th class="px-4 py-3 font-semibold">Clínica</th>
+          <th class="px-4 py-3 font-semibold text-right">Monto</th>
+          <th class="px-4 py-3 font-semibold">Método</th>
+          <th class="px-4 py-3 font-semibold">Periodo</th>
+          <th class="px-4 py-3 font-semibold">Comentarios</th>
+          <th class="px-4 py-3"></th>
+        </tr>
+      </thead>
+      <tbody id="pagos-rows"></tbody>
+    </table>
+  </div>
+
+  <p id="empty-state" class="hidden text-center text-sm text-cs-on-surface-var py-10">No hay pagos para los filtros seleccionados.</p>
+
+  <!-- Footer total -->
+  <div class="rounded-lg bg-cs-primary-container/40 px-6 py-4 flex items-center justify-between">
+    <div>
+      <p class="text-[10px] font-semibold uppercase tracking-wide text-cs-on-primary-container">Total filtrado</p>
+      <p id="total-pagos" class="font-cs-display text-2xl font-bold text-cs-on-primary-container">$0.00</p>
+    </div>
+    <span id="conteo-pagos" class="text-sm font-medium text-cs-on-primary-container">0 pagos</span>
+  </div>
+
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/admin/admin_pagos.js"></script>
+{% endblock %}

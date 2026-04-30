@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{% block title %}Finanzas Personales — Dental Planning{% endblock %}</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/poppins@5.0.8/index.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/open-sans@5.0.13/index.min.css">
+<style>
+  :root { --font-heading: 'Poppins', system-ui, sans-serif; --font-body: 'Open Sans', system-ui, sans-serif; }
+  html, body { margin: 0; padding: 0; font-family: var(--font-body); color: #164e63; background: #f8fafc; }
+  html { visibility: hidden; }
+</style>
+<script>
+  (function () {
+    if (!localStorage.getItem('token')) {
+      window.location.replace('/login');
+      throw new Error('AUTH_REDIRECT');
+    }
+    document.documentElement.style.visibility = 'visible';
+  })();
+  window.FP_SCREEN = "{{ fp_screen }}";
+  {% if fp_category_id is defined %}window.FP_CATEGORY_ID = "{{ fp_category_id }}";{% endif %}
+</script>
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" crossorigin></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" crossorigin></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js"></script>
+</head>
+<body>
+<div id="fp-root"></div>
+<script type="text/babel" src="{{ url_for('static', filename='js/finanzas_personales/Atoms.jsx') }}"></script>
+<script type="text/babel" src="{{ url_for('static', filename='js/finanzas_personales/Charts.jsx') }}"></script>
+<script type="text/babel" src="{{ url_for('static', filename='js/finanzas_personales/api.jsx') }}"></script>
+<script type="text/babel" src="{{ url_for('static', filename='js/finanzas_personales/Shell.jsx') }}"></script>
+<script type="text/babel" src="{{ url_for('static', filename='js/finanzas_personales/AddMovementModal.jsx') }}"></script>
+<script type="text/babel" src="{{ url_for('static', filename='js/finanzas_personales/Dashboard.jsx') }}"></script>
+<script type="text/babel" src="{{ url_for('static', filename='js/finanzas_personales/screens.jsx') }}"></script>
+<script type="text/babel" src="{{ url_for('static', filename='js/finanzas_personales/Budgets.jsx') }}"></script>
+<script type="text/babel" src="{{ url_for('static', filename='js/finanzas_personales/main.jsx') }}"></script>
+</body>
+</html>
