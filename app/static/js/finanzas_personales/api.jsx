@@ -52,6 +52,13 @@ const FP = {
   createMeta: (data) => fpRequest('/metas', { method: 'POST', body: JSON.stringify(data) }),
   updateMeta: (id, data) => fpRequest('/metas/' + id, { method: 'PUT', body: JSON.stringify(data) }),
   deleteMeta: (id) => fpRequest('/metas/' + id, { method: 'DELETE' }),
+
+  dashboardAnual: (year) => fpRequest(`/dashboard/anual?year=${year}`),
+  getSaldoInicial: (year) => fpRequest(`/saldo-inicial?year=${year}`),
+  upsertSaldoInicial: (año, monto) =>
+    fpRequest('/saldo-inicial', { method: 'POST', body: JSON.stringify({ año, monto }) }),
+  cerrarAño: (año) =>
+    fpRequest('/cerrar-año', { method: 'POST', body: JSON.stringify({ año }) }),
 };
 
 window.FP = FP;

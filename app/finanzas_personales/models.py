@@ -112,3 +112,19 @@ class MetaAhorro(db.Model):
     __table_args__ = (
         db.Index("ix_meta_ahorro_user", "tenant_id", "user_id"),
     )
+
+
+class SaldoInicial(db.Model):
+    __tablename__ = "saldos_iniciales"
+
+    id         = db.Column(db.Integer, primary_key=True)
+    tenant_id  = db.Column(db.Integer, db.ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False)
+    user_id    = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    año        = db.Column(db.Integer, nullable=False)
+    monto      = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+
+    __table_args__ = (
+        db.UniqueConstraint("tenant_id", "user_id", "año", name="uq_saldo_inicial_user_año"),
+        db.Index("ix_saldo_inicial_user", "tenant_id", "user_id"),
+    )

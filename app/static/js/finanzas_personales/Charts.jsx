@@ -91,4 +91,83 @@ function ProgressArc({ value, max, label, sub }) {
   );
 }
 
-Object.assign(window, { Donut, CategoryLegend, BarChart, ProgressArc });
+function Sparkline({ data, width = 120, height = 32, color = '#0e7490' }) {
+  if (!data || data.length < 2) return null;
+  const values = data.map(d => d.pct);
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const range = max - min || 1;
+  const pts = values.map((v, i) => {
+    const x = (i / (values.length - 1)) * (width - 4) + 2;
+    const y = height - 2 - ((v - min) / range) * (height - 8);
+    return `${x},${y}`;
+  }).join(' ');
+  return (
+    <svg width={width} height={height} style={{ overflow: 'visible' }}>
+      <polyline points={pts} fill="none" stroke={color} strokeWidth={1.5} strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function LineChart({ data, height = 240 }) {
+  const W = 520, H = height, PL = 72, PR = 16, PT = 12, PB = 28;
+  const chartW = W - PL - PR;
+  const chartH = H - PT - PB;
+
+  const realData = data.filter(d => d.saldo_acum !== null);
+  if (realData.length === 0) {
+    return (
+      <div style={{ height, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8', fontSize: 13, fontFamily: 'var(--font-body)' }}>
+        Sin datos para mostrar
+      </div>
+    );
+  }
+
+  const values = realData.map(d => d.saldo_acum);
+  const minV = Math.min(...values, 0);
+  const maxV = Math.max(...values, 0);
+  const range = maxV - minV || 1;
+
+  const toX = (i) => PL + (i / 11) * chartW;
+  const toY = (v) => PT + chartH - ((v - minV) / range) * chartH;
+  const zeroY = toY(0);
+
+  const realPath = data
+    .map((d, i) => (d.saldo_acum !== null ? `${i === 0 || data[i - 1].saldo_acum === null ? 'M' : 'L'} ${toX(i)} ${toY(d.saldo_acum)}` : null))
+    .filter(Boolean)
+    .join(' ');
+
+  const fmtY = (v) => {
+    const a = Math.abs(v);
+    if (a >= 1000000) return '$' + (v / 1000000).toFixed(1) + 'M';
+    if (a >= 1000) return '$' + (v / 1000).toFixed(0) + 'k';
+    return '$' + Math.round(v);
+  };
+
+  const yTicks = [minV, minV + range * 0.5, maxV].map(v => Math.round(v));
+
+  return (
+    <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{ overflow: 'visible', display: 'block' }}>
+      {yTicks.map((v, i) => (
+        <g key={i}>
+          <line x1={PL} y1={toY(v)} x2={W - PR} y2={toY(v)} stroke="#f1f5f9" strokeWidth={1} />
+          <text x={PL - 6} y={toY(v) + 4} textAnchor="end" fontSize={9} fill="#94a3b8" fontFamily="var(--font-body)">
+            {fmtY(v)}
+          </text>
+        </g>
+      ))}
+      <line x1={PL} y1={zeroY} x2={W - PR} y2={zeroY} stroke="#e2e8f0" strokeWidth={1} strokeDasharray="4 2" />
+      <path d={realPath} fill="none" stroke="#0891b2" strokeWidth={2} strokeLinejoin="round" />
+      {data.map((d, i) => d.saldo_acum !== null && (
+        <circle key={i} cx={toX(i)} cy={toY(d.saldo_acum)} r={3} fill="#0891b2" />
+      ))}
+      {data.map((d, i) => (
+        <text key={i} x={toX(i)} y={H - 4} textAnchor="middle" fontSize={9} fill="#94a3b8" fontFamily="var(--font-body)">
+          {d.name}
+        </text>
+      ))}
+    </svg>
+  );
+}
+
+Object.assign(window, { Donut, CategoryLegend, BarChart, ProgressArc, Sparkline, LineChart });

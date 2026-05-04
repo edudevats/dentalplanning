@@ -1,4 +1,5 @@
 from flask import Blueprint, request, jsonify, g
+from datetime import date
 from marshmallow import ValidationError
 
 from app.extensions import db
@@ -6,17 +7,18 @@ from app.middleware.tenant import require_auth
 from app.finanzas_personales.models import (
     CategoriaPersonal, FuenteIngreso,
     IngresoPersonal, GastoPersonal,
-    PresupuestoCategoria, MetaAhorro,
+    PresupuestoCategoria, MetaAhorro, SaldoInicial,
 )
 from app.finanzas_personales.schemas import (
     CategoriaPersonalSchema, FuenteIngresoSchema,
     IngresoPersonalSchema, GastoPersonalSchema,
     PresupuestoCategoriaSchema, MetaAhorroSchema,
-    DashboardQuerySchema,
+    DashboardQuerySchema, SaldoInicialSchema,
 )
 from app.finanzas_personales.services import (
     seed_defaults_for_user, build_dashboard_summary,
     list_movements, build_category_detail, _month_bounds,
+    build_dashboard_anual, cerrar_año,
 )
 
 
@@ -433,3 +435,79 @@ def eliminar_meta(m_id):
     db.session.delete(m)
     db.session.commit()
     return jsonify({"message": "Meta eliminada"})
+
+
+# ── Dashboard anual ────────────────────────────────────────────────────────
+
+@finanzas_personales_bp.route("/dashboard/anual", methods=["GET"])
+@require_auth
+def dashboard_anual():
+    tenant_id, user_id = _scope()
+    try:
+        year = int(request.args.get("year", date.today().year))
+        if not (2000 <= year <= 2100):
+            raise ValueError
+    except (TypeError, ValueError):
+        return jsonify({"errors": {"year": ["Año inválido"]}}), 400
+    seed_defaults_for_user(tenant_id, user_id)
+    return jsonify(build_dashboard_anual(tenant_id, user_id, year))
+
+
+# ── Saldo inicial ──────────────────────────────────────────────────────────
+
+@finanzas_personales_bp.route("/saldo-inicial", methods=["GET"])
+@require_auth
+def get_saldo_inicial():
+    tenant_id, user_id = _scope()
+    try:
+        year = int(request.args.get("year", date.today().year))
+        if not (2000 <= year <= 2100):
+            raise ValueError
+    except (TypeError, ValueError):
+        return jsonify({"errors": {"year": ["Año inválido"]}}), 400
+    si = SaldoInicial.query.filter_by(tenant_id=tenant_id, user_id=user_id, año=year).first()
+    if not si:
+        return jsonify({"año": year, "monto": 0.0, "exists": False})
+    return jsonify({**SaldoInicialSchema().dump(si), "exists": True})
+
+
+@finanzas_personales_bp.route("/saldo-inicial", methods=["POST"])
+@require_auth
+def upsert_saldo_inicial():
+    tenant_id, user_id = _scope()
+    data = request.get_json() or {}
+    try:
+        año = int(data.get("año", 0))
+        monto = float(data.get("monto", 0))
+        if not (2000 <= año <= 2100):
+            raise ValueError
+    except (TypeError, ValueError):
+        return jsonify({"errors": {"año": ["Año o monto inválido"]}}), 400
+    si = SaldoInicial.query.filter_by(tenant_id=tenant_id, user_id=user_id, año=año).first()
+    if si:
+        si.monto = monto
+    else:
+        si = SaldoInicial(tenant_id=tenant_id, user_id=user_id, año=año, monto=monto)
+        db.session.add(si)
+    db.session.commit()
+    return jsonify(SaldoInicialSchema().dump(si)), 201
+
+
+# ── Cierre de año ──────────────────────────────────────────────────────────
+
+@finanzas_personales_bp.route("/cerrar-año", methods=["POST"])
+@require_auth
+def cerrar_año_endpoint():
+    tenant_id, user_id = _scope()
+    data = request.get_json() or {}
+    try:
+        año = int(data.get("año", 0))
+        if not (2000 <= año <= 2100):
+            raise ValueError
+    except (TypeError, ValueError):
+        return jsonify({"errors": {"año": ["Año inválido"]}}), 400
+    try:
+        nuevo = cerrar_año(tenant_id, user_id, año)
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 409
+    return jsonify({"año_siguiente": año + 1, "monto": float(nuevo.monto)}), 201

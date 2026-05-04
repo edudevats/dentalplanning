@@ -14,12 +14,12 @@ def selector():
 
 @frontend_bp.route('/login')
 def login():
-    return render_template('auth/login.html')
+    return render_template('auth/login.html', public_page=True)
 
 
 @frontend_bp.route('/register')
 def register():
-    return render_template('auth/register.html')
+    return render_template('auth/register.html', public_page=True)
 
 
 @frontend_bp.route('/dashboard')

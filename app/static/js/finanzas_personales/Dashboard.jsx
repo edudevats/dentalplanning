@@ -47,6 +47,35 @@ function InsightStrip({ insight }) {
   );
 }
 
+function YTDBand({ saldoAcumuladoYtd, tasaAhorro12m }) {
+  const saldoColor = saldoAcumuladoYtd >= 0 ? '#0e7490' : '#dc2626';
+  return (
+    <div style={{
+      background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12,
+      padding: '14px 20px', display: 'flex', alignItems: 'center', gap: 24, flexWrap: 'wrap',
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <Icon name="calendar-range" size={16} color="#64748b" />
+        <span style={{ fontSize: 12, color: '#64748b', fontFamily: 'var(--font-body)' }}>Posición del año</span>
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1 }}>
+        <span style={{ fontSize: 13, fontWeight: 700, color: saldoColor, fontFamily: 'var(--font-body)' }}>
+          Saldo acumulado: {fmt(saldoAcumuladoYtd)}
+        </span>
+        <span style={{ fontSize: 12, color: '#94a3b8', fontFamily: 'var(--font-body)' }}>
+          (ingresos − gastos desde enero + fondo inicial)
+        </span>
+      </div>
+      {tasaAhorro12m && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontSize: 11, color: '#94a3b8', fontFamily: 'var(--font-body)' }}>Ahorro 12m</span>
+          <Sparkline data={tasaAhorro12m} width={100} height={28} color="#0891b2" />
+        </div>
+      )}
+    </div>
+  );
+}
+
 function CategoryListItem({ cat }) {
   return (
     <a href={`/finanzas-personales/categoria/${cat.id}`} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 0', borderBottom: '1px solid #f1f5f9', textDecoration: 'none' }}>
@@ -88,10 +117,7 @@ function MovementRow({ m }) {
   );
 }
 
-function Dashboard() {
-  const today = new Date();
-  const [year, setYear] = useState(today.getFullYear());
-  const [month, setMonth] = useState(today.getMonth() + 1);
+function DashboardMes({ year, month }) {
   const [summary, setSummary] = useState(null);
   const [loading, setLoading] = useState(true);
 
@@ -107,23 +133,19 @@ function Dashboard() {
   }
 
   const t = summary.totals;
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', flexWrap: 'wrap', gap: 16 }}>
-        <div>
-          <div style={{ fontSize: 24, fontWeight: 700, fontFamily: 'var(--font-heading)', color: '#164e63' }}>Estado de Resultados Personal</div>
-          <div style={{ fontSize: 14, color: '#94a3b8', marginTop: 4, fontFamily: 'var(--font-body)' }}>Resumen del mes</div>
-        </div>
-        <MonthSelector year={year} month={month} onChange={(y, m) => { setYear(y); setMonth(m); }} />
-      </div>
-
       <InsightStrip insight={summary.insight} />
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16 }}>
-        <StatCard label="Ingresos" value={fmt(t.ingresos)} icon="trending-up"  valueColor="#065f46" sub="vs mes anterior" trend={summary.trends.ingresos} />
-        <StatCard label="Gastos"   value={fmt(t.gastos)}   icon="trending-down" valueColor="#164e63" sub="vs mes anterior" trend={summary.trends.gastos} />
-        <StatCard label="Balance"  value={fmt(t.balance)}  icon="wallet"        valueColor={t.balance >= 0 ? '#0e7490' : '#dc2626'} sub="ingresos − gastos" />
-        <StatCard label="Ahorro"   value={t.ahorroPct + '%'} icon="piggy-bank"  valueColor="#0e7490" sub="del ingreso del mes" />
+      <YTDBand saldoAcumuladoYtd={summary.saldo_acumulado_ytd} tasaAhorro12m={summary.tasa_ahorro_12m} />
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 16 }}>
+        <StatCard label="Ingresos"      value={fmt(t.ingresos)}                   icon="trending-up"   valueColor="#065f46" sub="vs mes anterior" trend={summary.trends.ingresos} />
+        <StatCard label="Gastos"        value={fmt(t.gastos)}                     icon="trending-down" valueColor="#164e63" sub="vs mes anterior" trend={summary.trends.gastos} />
+        <StatCard label="Balance"       value={fmt(t.balance)}                    icon="wallet"        valueColor={t.balance >= 0 ? '#0e7490' : '#dc2626'} sub="ingresos − gastos" />
+        <StatCard label="Ahorro"        value={t.ahorroPct + '%'}                 icon="piggy-bank"    valueColor="#0e7490" sub="del ingreso del mes" />
+        <StatCard label="Clínica (mes)" value={fmt(summary.ingreso_clinica || 0)} icon="building-2"    valueColor="#475569" sub="ingresos consultorio" />
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1.1fr 1fr', gap: 20 }}>
@@ -174,4 +196,38 @@ function Dashboard() {
   );
 }
 
-Object.assign(window, { Dashboard, MonthSelector, InsightStrip, CategoryListItem, MovementRow });
+function Dashboard() {
+  const today = new Date();
+  const [view, setView] = useState('mes');
+  const [year, setYear] = useState(today.getFullYear());
+  const [month, setMonth] = useState(today.getMonth() + 1);
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', flexWrap: 'wrap', gap: 16 }}>
+        <div>
+          <div style={{ fontSize: 24, fontWeight: 700, fontFamily: 'var(--font-heading)', color: '#164e63' }}>
+            {view === 'mes' ? 'Estado de Resultados Personal' : 'Resumen Anual'}
+          </div>
+          <div style={{ fontSize: 14, color: '#94a3b8', marginTop: 4, fontFamily: 'var(--font-body)' }}>
+            {view === 'mes' ? 'Resumen del mes' : 'Balance acumulado del año'}
+          </div>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <ViewToggle value={view} onChange={setView} />
+          {view === 'mes'
+            ? <MonthSelector year={year} month={month} onChange={(y, m) => { setYear(y); setMonth(m); }} />
+            : <YearSelector year={year} onChange={setYear} />
+          }
+        </div>
+      </div>
+
+      {view === 'mes'
+        ? <DashboardMes year={year} month={month} />
+        : <DashboardAnual year={year} />
+      }
+    </div>
+  );
+}
+
+Object.assign(window, { Dashboard, MonthSelector, InsightStrip, CategoryListItem, MovementRow, DashboardMes });

@@ -57,3 +57,10 @@ class DashboardQuerySchema(Schema):
     """Query string for /dashboard?year=2026&month=4"""
     year = fields.Int(required=True, validate=validate.Range(min=2000, max=2100))
     month = fields.Int(required=True, validate=validate.Range(min=1, max=12))
+
+
+class SaldoInicialSchema(Schema):
+    id         = fields.Int(dump_only=True)
+    año        = fields.Int(required=True, validate=validate.Range(min=2000, max=2100))
+    monto      = fields.Decimal(as_string=True, places=2, load_default=0)
+    created_at = fields.DateTime(dump_only=True)

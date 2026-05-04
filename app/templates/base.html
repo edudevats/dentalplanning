@@ -111,6 +111,23 @@
   <!-- Shared utilities (cargado primero para que todos los scripts inline puedan usarlo) -->
   <script src="{{ url_for('static', filename='js/app.js') }}"></script>
 
+  <!-- Auth gate global: redirige a /login si no hay JWT antes de renderizar cualquier contenido -->
+  {% if not public_page %}
+  <script>
+    if (!Auth.getToken()) {
+      // Redirigir inmediatamente sin hacer visible la página
+      window.location.replace('/login');
+      // Detener la ejecución para que no se procese nada del body
+      document.write('');
+      throw new Error('AUTH_REDIRECT');
+    }
+    // Token presente → hacer visible la página
+    document.documentElement.style.visibility = 'visible';
+  </script>
+  {% else %}
+  <script>document.documentElement.style.visibility = 'visible';</script>
+  {% endif %}
+
   {% block body %}{% endblock %}
 </body>
 </html>

@@ -1,5 +1,5 @@
 from __future__ import annotations
-from calendar import monthrange
+from calendar import isleap, monthrange
 from datetime import date
 from typing import Optional
 
@@ -9,8 +9,9 @@ from app.extensions import db
 from app.finanzas_personales.models import (
     CategoriaPersonal, FuenteIngreso,
     IngresoPersonal, GastoPersonal,
-    PresupuestoCategoria,
+    PresupuestoCategoria, SaldoInicial,
 )
+from app.edr.models import Ingreso
 
 
 DEFAULT_CATEGORIES = [
@@ -64,6 +65,55 @@ def _money(x) -> float:
     if x is None:
         return 0.0
     return float(x)
+
+
+def _saldo_acumulado_ytd(tenant_id: int, user_id: int, year: int, month: int) -> float:
+    si = SaldoInicial.query.filter_by(tenant_id=tenant_id, user_id=user_id, año=year).first()
+    saldo_inicial = _money(si.monto) if si else 0.0
+    ytd_start = date(year, 1, 1)
+    ytd_end = _month_bounds(year, month)[1]
+    ingresos = _money(db.session.query(func.coalesce(func.sum(IngresoPersonal.monto), 0)).filter(
+        IngresoPersonal.tenant_id == tenant_id, IngresoPersonal.user_id == user_id,
+        IngresoPersonal.fecha >= ytd_start, IngresoPersonal.fecha <= ytd_end,
+    ).scalar())
+    gastos = _money(db.session.query(func.coalesce(func.sum(GastoPersonal.monto), 0)).filter(
+        GastoPersonal.tenant_id == tenant_id, GastoPersonal.user_id == user_id,
+        GastoPersonal.fecha >= ytd_start, GastoPersonal.fecha <= ytd_end,
+    ).scalar())
+    return saldo_inicial + ingresos - gastos
+
+
+def _ingreso_clinica(tenant_id: int, year: int, month: int) -> float:
+    start, end = _month_bounds(year, month)
+    return _money(db.session.query(func.coalesce(func.sum(Ingreso.monto), 0)).filter(
+        Ingreso.tenant_id == tenant_id,
+        Ingreso.fecha >= start, Ingreso.fecha <= end,
+    ).scalar())
+
+
+def _tasa_ahorro_12m(tenant_id: int, user_id: int, year: int, month: int) -> list:
+    month_names_es = ["Ene", "Feb", "Mar", "Abr", "May", "Jun",
+                      "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"]
+    months_back = []
+    yy, mm = year, month
+    for _ in range(12):
+        months_back.append((yy, mm))
+        yy, mm = _prev_month(yy, mm)
+    months_back.reverse()
+    result = []
+    for yy, mm in months_back:
+        ms, me = _month_bounds(yy, mm)
+        i = _money(db.session.query(func.coalesce(func.sum(IngresoPersonal.monto), 0)).filter(
+            IngresoPersonal.tenant_id == tenant_id, IngresoPersonal.user_id == user_id,
+            IngresoPersonal.fecha >= ms, IngresoPersonal.fecha <= me,
+        ).scalar())
+        g = _money(db.session.query(func.coalesce(func.sum(GastoPersonal.monto), 0)).filter(
+            GastoPersonal.tenant_id == tenant_id, GastoPersonal.user_id == user_id,
+            GastoPersonal.fecha >= ms, GastoPersonal.fecha <= me,
+        ).scalar())
+        pct = round(((i - g) / i) * 100) if i > 0 else 0
+        result.append({"name": month_names_es[mm - 1], "pct": pct})
+    return result
 
 
 def build_dashboard_summary(tenant_id: int, user_id: int, year: int, month: int) -> dict:
@@ -187,7 +237,175 @@ def build_dashboard_summary(tenant_id: int, user_id: int, year: int, month: int)
         "history6m": history6m,
         "recent": recent,
         "insight": insight,
+        "saldo_acumulado_ytd": _saldo_acumulado_ytd(tenant_id, user_id, year, month),
+        "ingreso_clinica": _ingreso_clinica(tenant_id, year, month),
+        "tasa_ahorro_12m": _tasa_ahorro_12m(tenant_id, user_id, year, month),
     }
+
+
+def build_dashboard_anual(tenant_id: int, user_id: int, year: int) -> dict:
+    today = date.today()
+    year_start = date(year, 1, 1)
+    year_end = date(year, 12, 31)
+
+    si = SaldoInicial.query.filter_by(tenant_id=tenant_id, user_id=user_id, año=year).first()
+    saldo_inicial = _money(si.monto) if si else 0.0
+
+    ingresos_anuales = _money(db.session.query(func.coalesce(func.sum(IngresoPersonal.monto), 0)).filter(
+        IngresoPersonal.tenant_id == tenant_id, IngresoPersonal.user_id == user_id,
+        IngresoPersonal.fecha >= year_start, IngresoPersonal.fecha <= year_end,
+    ).scalar())
+    gastos_anuales = _money(db.session.query(func.coalesce(func.sum(GastoPersonal.monto), 0)).filter(
+        GastoPersonal.tenant_id == tenant_id, GastoPersonal.user_id == user_id,
+        GastoPersonal.fecha >= year_start, GastoPersonal.fecha <= year_end,
+    ).scalar())
+
+    balance_anual = ingresos_anuales - gastos_anuales
+    saldo_acumulado = saldo_inicial + balance_anual
+    ahorro_pct = round((balance_anual / ingresos_anuales) * 100) if ingresos_anuales else 0
+
+    meses_con_datos = 0
+    for mes in range(1, 13):
+        ms, me = _month_bounds(year, mes)
+        if ms > today:
+            break
+        has_mov = (
+            db.session.query(IngresoPersonal.id).filter(
+                IngresoPersonal.tenant_id == tenant_id, IngresoPersonal.user_id == user_id,
+                IngresoPersonal.fecha >= ms, IngresoPersonal.fecha <= me,
+            ).first() or
+            db.session.query(GastoPersonal.id).filter(
+                GastoPersonal.tenant_id == tenant_id, GastoPersonal.user_id == user_id,
+                GastoPersonal.fecha >= ms, GastoPersonal.fecha <= me,
+            ).first()
+        )
+        if has_mov:
+            meses_con_datos += 1
+
+    if meses_con_datos > 0:
+        ritmo = balance_anual / meses_con_datos
+        mes_actual = today.month if today.year == year else 12
+        proyeccion_cierre = round(saldo_acumulado + ritmo * (12 - mes_actual), 2)
+    else:
+        proyeccion_cierre = round(saldo_acumulado, 2)
+
+    if today.year == year:
+        dias_transcurridos = (today - year_start).days + 1
+    else:
+        dias_transcurridos = 366 if isleap(year) else 365
+    gasto_diario = gastos_anuales / dias_transcurridos if dias_transcurridos > 0 else 0
+    dias_reserva = round(saldo_acumulado / gasto_diario) if (gasto_diario > 0 and saldo_acumulado > 0) else None
+
+    month_names_es = ["Ene", "Feb", "Mar", "Abr", "May", "Jun",
+                      "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"]
+    history12m = []
+    saldo_corriente = saldo_inicial
+    for mes in range(1, 13):
+        ms, me = _month_bounds(year, mes)
+        if ms > today:
+            history12m.append({
+                "name": month_names_es[mes - 1],
+                "ingresos": None, "gastos": None, "balance": None, "saldo_acum": None,
+            })
+        else:
+            i = _money(db.session.query(func.coalesce(func.sum(IngresoPersonal.monto), 0)).filter(
+                IngresoPersonal.tenant_id == tenant_id, IngresoPersonal.user_id == user_id,
+                IngresoPersonal.fecha >= ms, IngresoPersonal.fecha <= me,
+            ).scalar())
+            g = _money(db.session.query(func.coalesce(func.sum(GastoPersonal.monto), 0)).filter(
+                GastoPersonal.tenant_id == tenant_id, GastoPersonal.user_id == user_id,
+                GastoPersonal.fecha >= ms, GastoPersonal.fecha <= me,
+            ).scalar())
+            b = i - g
+            saldo_corriente += b
+            history12m.append({
+                "name": month_names_es[mes - 1],
+                "ingresos": i, "gastos": g, "balance": b, "saldo_acum": saldo_corriente,
+            })
+
+    fuente_colors = ["#0891b2", "#059669", "#8b5cf6", "#f59e0b", "#ec4899"]
+    fuente_rows = db.session.query(
+        FuenteIngreso.id, FuenteIngreso.nombre, FuenteIngreso.icon,
+        func.coalesce(func.sum(IngresoPersonal.monto), 0),
+    ).outerjoin(
+        IngresoPersonal,
+        (IngresoPersonal.fuente_id == FuenteIngreso.id)
+        & (IngresoPersonal.fecha >= year_start) & (IngresoPersonal.fecha <= year_end)
+        & (IngresoPersonal.tenant_id == tenant_id) & (IngresoPersonal.user_id == user_id),
+    ).filter(
+        FuenteIngreso.tenant_id == tenant_id,
+        FuenteIngreso.user_id == user_id,
+        FuenteIngreso.activo.is_(True),
+    ).group_by(FuenteIngreso.id).all()
+
+    by_fuente = []
+    color_idx = 0
+    for fid, nombre, icon, suma in fuente_rows:
+        v = _money(suma)
+        if v <= 0:
+            continue
+        by_fuente.append({
+            "id": fid, "label": nombre, "icon": icon,
+            "color": fuente_colors[color_idx % len(fuente_colors)],
+            "value": v,
+            "pct": round((v / ingresos_anuales) * 100) if ingresos_anuales else 0,
+        })
+        color_idx += 1
+    by_fuente.sort(key=lambda f: f["value"], reverse=True)
+
+    return {
+        "year": year,
+        "saldo_inicial": saldo_inicial,
+        "totales": {
+            "ingresos": ingresos_anuales,
+            "gastos": gastos_anuales,
+            "balance": balance_anual,
+            "ahorroPct": ahorro_pct,
+        },
+        "saldo_acumulado": saldo_acumulado,
+        "proyeccion_cierre": proyeccion_cierre,
+        "dias_reserva": dias_reserva,
+        "history12m": history12m,
+        "by_fuente": by_fuente,
+    }
+
+
+def cerrar_año(tenant_id: int, user_id: int, year: int) -> "SaldoInicial":
+    existing = SaldoInicial.query.filter_by(
+        tenant_id=tenant_id, user_id=user_id, año=year + 1,
+    ).first()
+    if existing:
+        raise ValueError(
+            f"Ya existe un saldo inicial para {year + 1}. "
+            "Use el endpoint POST /saldo-inicial para sobrescribirlo manualmente."
+        )
+
+    year_start = date(year, 1, 1)
+    year_end = date(year, 12, 31)
+
+    ingresos = _money(db.session.query(func.coalesce(func.sum(IngresoPersonal.monto), 0)).filter(
+        IngresoPersonal.tenant_id == tenant_id, IngresoPersonal.user_id == user_id,
+        IngresoPersonal.fecha >= year_start, IngresoPersonal.fecha <= year_end,
+    ).scalar())
+    gastos = _money(db.session.query(func.coalesce(func.sum(GastoPersonal.monto), 0)).filter(
+        GastoPersonal.tenant_id == tenant_id, GastoPersonal.user_id == user_id,
+        GastoPersonal.fecha >= year_start, GastoPersonal.fecha <= year_end,
+    ).scalar())
+
+    si_actual = SaldoInicial.query.filter_by(
+        tenant_id=tenant_id, user_id=user_id, año=year
+    ).first()
+    saldo_apertura = _money(si_actual.monto) if si_actual else 0.0
+
+    nuevo = SaldoInicial(
+        tenant_id=tenant_id,
+        user_id=user_id,
+        año=year + 1,
+        monto=saldo_apertura + ingresos - gastos,
+    )
+    db.session.add(nuevo)
+    db.session.commit()
+    return nuevo
 
 
 def _build_insight(balance: float, ahorro_pct: int, by_cat: list, prev_gas: float) -> str:
