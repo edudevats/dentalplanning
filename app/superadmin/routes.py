@@ -292,6 +292,7 @@ def reset_password(user_id):
         return jsonify({"error": "No se puede resetear un super-admin"}), 403
     temp = _generate_temp_password()
     user.set_password(temp)
+    user.must_change_password = True
     db.session.commit()
     return jsonify({
         "message": "Password temporal generado. Compártelo de forma segura.",

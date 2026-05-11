@@ -1,8 +1,11 @@
-from marshmallow import Schema, fields, validate
+from marshmallow import Schema, fields, validate, EXCLUDE
 from app.superadmin.models import SUBSCRIPTION_ESTADOS, PAYMENT_METODOS
 
 
 class PlanSchema(Schema):
+    class Meta:
+        unknown = EXCLUDE
+
     id = fields.Int(dump_only=True)
     nombre = fields.Str(required=True, validate=validate.Length(min=2, max=50))
     precio_mensual = fields.Float(required=True, validate=validate.Range(min=0))
@@ -21,6 +24,9 @@ class RejectTenantSchema(Schema):
 
 
 class TenantUpdateSchema(Schema):
+    class Meta:
+        unknown = EXCLUDE
+
     name = fields.Str(validate=validate.Length(min=2, max=200))
     contact_email = fields.Email(allow_none=True)
     plan = fields.Str(validate=validate.Length(max=20))
@@ -44,6 +50,9 @@ class TenantNoteSchema(Schema):
 
 
 class SubscriptionUpdateSchema(Schema):
+    class Meta:
+        unknown = EXCLUDE
+
     plan_id = fields.Int()
     proximo_cobro = fields.Date(allow_none=True)
     estado = fields.Str(validate=validate.OneOf(SUBSCRIPTION_ESTADOS))

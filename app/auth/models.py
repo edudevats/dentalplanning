@@ -62,6 +62,7 @@ class User(db.Model):
     role = db.Column(db.String(20), default="editor")  # admin / editor / viewer
     is_superuser = db.Column(db.Boolean, default=False, nullable=False)
     name = db.Column(db.String(200), nullable=False)
+    must_change_password = db.Column(db.Boolean, default=False, nullable=False)
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
 
     def set_password(self, password):

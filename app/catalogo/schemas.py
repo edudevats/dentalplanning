@@ -1,4 +1,4 @@
-from marshmallow import Schema, fields, validate
+from marshmallow import Schema, fields, validate, EXCLUDE
 
 
 class MaterialMasterSchema(Schema):
@@ -9,6 +9,9 @@ class MaterialMasterSchema(Schema):
 
 
 class MaterialSchema(Schema):
+    class Meta:
+        unknown = EXCLUDE
+
     id = fields.Int(dump_only=True)
     master_id = fields.Int(allow_none=True)
     nombre = fields.Str(required=True, validate=validate.Length(min=1, max=200))

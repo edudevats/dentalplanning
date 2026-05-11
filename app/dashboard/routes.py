@@ -6,7 +6,7 @@ from app.middleware.tenant import require_auth
 from app.edr.models import Ingreso, GastoOperativo, PagoDoctor
 from app.tratamientos.models import Tratamiento
 from app.configuracion.models import ConfigConsultorio
-from app.ajustes.models import DistribucionConfig
+from app.ajustes.models import DistribucionConfig, DistribucionCategoria, DIST_CATEGORIAS_DEFAULT
 from app.engine.pricing_engine import generar_dashboard_ganancias
 
 dashboard_bp = Blueprint("dashboard", __name__, url_prefix="/api/v1")
@@ -71,13 +71,15 @@ def resumen_mensual():
     total_gastos_variables = sum(g_.monto for g_ in gastos if g_.tipo == "variable")
     total_impuestos = sum(g_.monto for g_ in gastos if g_.tipo == "impuesto")
 
-    # Pagos a doctores
+    # Pagos a doctores (unificados: salario + comision)
     pagos = PagoDoctor.query.filter(
         PagoDoctor.tenant_id == g.tenant_id,
         extract("year", PagoDoctor.fecha) == year,
         extract("month", PagoDoctor.fecha) == month,
     ).all()
-    total_pagos_doctores = sum(p.monto for p in pagos)
+    total_pagos_doctores   = sum(p.monto for p in pagos)
+    pagos_doctores_salarios  = sum(p.monto for p in pagos if p.tipo == "salario")
+    pagos_doctores_comisiones = sum(p.monto for p in pagos if p.tipo == "comision")
 
     # Estado de resultados
     total_egresos = (
@@ -160,10 +162,15 @@ def resumen_mensual():
         "total_comisiones_especialistas": round(total_comisiones_doctores, 2),
         "ingresos_efectivo": round(ingresos_efectivo, 2),
         "ingresos_banco": round(ingresos_banco, 2),
-        # ── Egresos (legacy) ──
+        # ── Egresos ──
         "gastos_fijos": round(total_gastos_fijos, 2),
         "gastos_variables": round(total_gastos_variables, 2),
+        # Pagos a doctores: métrica unificada + desglose por tipo
         "total_pagos_doctores": round(total_pagos_doctores, 2),
+        "pagos_doctores_desglose": {
+            "salarios":  round(pagos_doctores_salarios, 2),
+            "comisiones": round(pagos_doctores_comisiones, 2),
+        },
         "total_egresos": round(total_egresos, 2),
         "utilidad_neta": round(utilidad_neta, 2),
         # ── Estado de Resultados ──
@@ -307,29 +314,48 @@ def distribucion():
 
     ingreso_neto = float(total_ingresos) - float(total_gastos_var) - float(total_comisiones) - float(total_gastos_fijos) - float(total_pagos_doc)
 
-    dist = DistribucionConfig.query.filter_by(tenant_id=g.tenant_id).first()
-    if not dist:
-        dist_data = {"pct_sueldo": 50, "pct_bonos": 10, "pct_mcmp": 20, "pct_fondo_emergencia": 10, "pct_marketing": 10}
+    # Use DistribucionCategoria (dynamic) — falls back to DistribucionConfig if not seeded yet
+    cats = DistribucionCategoria.query.filter_by(
+        tenant_id=g.tenant_id
+    ).order_by(DistribucionCategoria.sort_order).all()
+
+    if cats:
+        cat_list = [{"id": c.id, "nombre": c.nombre, "color": c.color, "porcentaje": float(c.porcentaje)} for c in cats]
     else:
-        dist_data = {
-            "pct_sueldo": dist.pct_sueldo,
-            "pct_bonos": dist.pct_bonos,
-            "pct_mcmp": dist.pct_mcmp,
-            "pct_fondo_emergencia": dist.pct_fondo_emergencia,
-            "pct_marketing": dist.pct_marketing,
+        # Fallback: read from legacy DistribucionConfig
+        dist_cfg = DistribucionConfig.query.filter_by(tenant_id=g.tenant_id).first()
+        cat_list = [
+            {
+                "id": None,
+                "nombre": d["nombre"],
+                "color": d["color"],
+                "porcentaje": float(getattr(dist_cfg, d["clave"], d["porcentaje"])) if dist_cfg else float(d["porcentaje"]),
+            }
+            for d in DIST_CATEGORIAS_DEFAULT
+        ]
+
+    # Build dynamic categorias response
+    categorias_resp = [
+        {
+            "id": c["id"],
+            "nombre": c["nombre"],
+            "color": c["color"],
+            "porcentaje": c["porcentaje"],
+            "monto": round(ingreso_neto * c["porcentaje"] / 100, 2),
         }
+        for c in cat_list
+    ]
+
+    # Legacy keys kept for backward compat with existing consumers
+    legacy_pcts = {c["nombre"].lower().replace(" ", "_"): c["porcentaje"] for c in cat_list}
+    legacy_dist = {c["nombre"].lower().replace(" ", "_"): round(ingreso_neto * c["porcentaje"] / 100, 2) for c in cat_list}
 
     return jsonify({
         "mes": f"{year}-{month:02d}",
         "ingreso_neto": round(ingreso_neto, 2),
-        "distribucion": {
-            "sueldo": round(ingreso_neto * dist_data["pct_sueldo"] / 100, 2),
-            "bonos": round(ingreso_neto * dist_data["pct_bonos"] / 100, 2),
-            "mcmp": round(ingreso_neto * dist_data["pct_mcmp"] / 100, 2),
-            "fondo_emergencia": round(ingreso_neto * dist_data["pct_fondo_emergencia"] / 100, 2),
-            "marketing": round(ingreso_neto * dist_data["pct_marketing"] / 100, 2),
-        },
-        "porcentajes": dist_data,
+        "categorias": categorias_resp,
+        "distribucion": legacy_dist,
+        "porcentajes": legacy_pcts,
     })
 
 

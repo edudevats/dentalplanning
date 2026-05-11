@@ -13,6 +13,7 @@ from app.auth.models import (
 )
 from app.auth.schemas import RegisterSchema, LoginSchema, InviteSchema, ChangePasswordSchema
 from app.middleware.tenant import require_auth, require_role
+from app.middleware.rate_limit import rate_limit
 from app.configuracion.models import ConfigConsultorio
 from app.ajustes.models import DistribucionConfig
 
@@ -27,18 +28,19 @@ _LOGIN_STATUS_MESSAGES = {
 
 
 @auth_bp.route("/register", methods=["POST"])
+@rate_limit(max_calls=3, period_seconds=60)
 def register():
     schema = RegisterSchema()
     data = schema.load(request.get_json())
 
     if data["tenant_slug"] == SYSTEM_TENANT_SLUG:
-        return jsonify({"error": "Slug reservado"}), 409
+        return jsonify({"error": "No se pudo completar el registro"}), 409
 
     if Tenant.query.filter_by(slug=data["tenant_slug"]).first():
-        return jsonify({"error": "Este slug ya está en uso"}), 409
+        return jsonify({"error": "No se pudo completar el registro"}), 409
 
     if User.query.filter_by(email=data["email"]).first():
-        return jsonify({"error": "Este email ya está registrado"}), 409
+        return jsonify({"error": "No se pudo completar el registro"}), 409
 
     tenant = Tenant(
         name=data["tenant_name"],
@@ -79,6 +81,7 @@ def register():
 
 
 @auth_bp.route("/login", methods=["POST"])
+@rate_limit(max_calls=5, period_seconds=60)
 def login():
     schema = LoginSchema()
     data = schema.load(request.get_json())
@@ -114,7 +117,14 @@ def login():
 @jwt_required(refresh=True)
 def refresh():
     user_id = get_jwt_identity()
-    access_token = create_access_token(identity=str(user_id))
+    user = User.query.get(int(user_id))
+    if not user:
+        return jsonify({"error": "Usuario no encontrado"}), 401
+    # Super-admin bypasses tenant check
+    if not user.is_superuser:
+        if not user.tenant or user.tenant.status != TENANT_STATUS_ACTIVE:
+            return jsonify({"error": "Cuenta no activa"}), 403
+    access_token = create_access_token(identity=str(user.id))
     return jsonify({"access_token": access_token})
 
 
@@ -146,6 +156,7 @@ def invite():
 
 @auth_bp.route("/password", methods=["PUT"])
 @require_auth
+@rate_limit(max_calls=5, period_seconds=60)
 def change_password():
     schema = ChangePasswordSchema()
     data = schema.load(request.get_json())
@@ -154,6 +165,7 @@ def change_password():
         return jsonify({"error": "Contraseña actual incorrecta"}), 400
 
     g.current_user.set_password(data["new_password"])
+    g.current_user.must_change_password = False
     db.session.commit()
     return jsonify({"message": "Contraseña actualizada"})
 

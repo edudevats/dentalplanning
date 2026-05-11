@@ -1,5 +1,5 @@
 from functools import wraps
-from flask import g, jsonify
+from flask import g, jsonify, request
 from flask_jwt_extended import get_jwt_identity, verify_jwt_in_request
 from app.extensions import db
 from app.auth.models import (
@@ -31,6 +31,12 @@ def require_auth(f):
         if user.tenant.status != TENANT_STATUS_ACTIVE:
             msg = _STATUS_MESSAGES.get(user.tenant.status, "Cuenta no activa")
             return jsonify({"error": msg}), 403
+        # Force password change if flagged (allow only /auth/password)
+        if user.must_change_password and request.path != "/api/v1/auth/password":
+            return jsonify({
+                "error": "Debes cambiar tu contraseña temporal",
+                "must_change_password": True,
+            }), 403
         g.current_user = user
         g.tenant_id = user.tenant_id
         return f(*args, **kwargs)

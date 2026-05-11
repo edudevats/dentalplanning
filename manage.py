@@ -34,7 +34,7 @@ app = create_app()
 @app.cli.command("runserver")
 @click.option("--host", default="127.0.0.1", show_default=True, help="Direccion de escucha")
 @click.option("--port", default=5000, show_default=True, help="Puerto")
-@click.option("--debug/--no-debug", default=True, show_default=True, help="Modo debug")
+@click.option("--debug/--no-debug", default=False, show_default=True, help="Modo debug")
 def runserver(host, port, debug):
     """Inicia el servidor Flask (API + frontend)."""
     click.echo(f"  Servidor iniciado en http://{host}:{port}")
@@ -160,7 +160,7 @@ if __name__ == "__main__":
         # Parsear flags manualmente para el entry point directo
         host = "127.0.0.1"
         port = 5000
-        debug = True
+        debug = False
         args = sys.argv[2:]
         i = 0
         while i < len(args):

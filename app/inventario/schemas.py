@@ -1,4 +1,4 @@
-from marshmallow import Schema, fields, validate
+from marshmallow import Schema, fields, validate, EXCLUDE
 
 
 class CategoriaSchema(Schema):
@@ -8,6 +8,9 @@ class CategoriaSchema(Schema):
 
 
 class OperatorioSchema(Schema):
+    class Meta:
+        unknown = EXCLUDE
+
     id = fields.Int(dump_only=True)
     nombre = fields.Str(required=True, validate=validate.Length(min=1, max=100))
     orden = fields.Int(load_default=0)
@@ -21,6 +24,9 @@ class UmbralesUbicacionSchema(Schema):
 
 
 class MaterialInventarioSchema(Schema):
+    class Meta:
+        unknown = EXCLUDE
+
     id = fields.Int(dump_only=True)
     nombre = fields.Str(required=True)
     categorias = fields.List(fields.Int(), load_default=[])
@@ -31,6 +37,9 @@ class MaterialInventarioSchema(Schema):
 
 
 class CompraSchema(Schema):
+    class Meta:
+        unknown = EXCLUDE
+
     id = fields.Int(dump_only=True)
     material_id = fields.Int(required=True)
     cantidad = fields.Int(required=True, validate=validate.Range(min=1))
@@ -40,7 +49,7 @@ class CompraSchema(Schema):
     no_caduca = fields.Bool(load_default=False)
     operatorio_destino_id = fields.Int(allow_none=True, load_default=None)
     comentarios = fields.Str(allow_none=True)
-    actualizar_costo_master = fields.Bool(load_default=True)
+    actualizar_costo_master = fields.Bool(load_default=False)
 
 
 class TransferenciaSchema(Schema):

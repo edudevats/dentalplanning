@@ -14,9 +14,17 @@
       class="px-5 py-2 rounded-lg text-sm font-semibold font-body text-text-secondary hover:text-text-primary transition-all">
       Trimestral
     </button>
+    <button id="tab-reporteanual" onclick="switchTab('reporteanual')"
+      class="px-5 py-2 rounded-lg text-sm font-semibold font-body text-text-secondary hover:text-text-primary transition-all">
+      Anual
+    </button>
     <button id="tab-comparativa" onclick="switchTab('comparativa')"
       class="px-5 py-2 rounded-lg text-sm font-semibold font-body text-text-secondary hover:text-text-primary transition-all">
-      Comparativa
+      Comparativa Mensual
+    </button>
+    <button id="tab-anual" onclick="switchTab('anual')"
+      class="px-5 py-2 rounded-lg text-sm font-semibold font-body text-text-secondary hover:text-text-primary transition-all">
+      Comparativa Anual
     </button>
   </div>
 
@@ -57,6 +65,7 @@
           <div class="h-9 w-9 rounded-lg bg-primary-50 flex items-center justify-center"><i data-lucide="user-check" class="h-4 w-4 text-primary-600"></i></div>
         </div>
         <p class="mt-3 text-2xl font-bold font-heading tabular-nums text-text-primary" id="m-stat-pag">-</p>
+        <p class="mt-1 text-xs text-text-muted font-body" id="m-stat-pag-sub">Salarios + Comisiones</p>
       </div>
       <div class="bg-surface rounded-xl border border-border p-5 shadow-sm">
         <div class="flex items-center justify-between">
@@ -352,6 +361,183 @@
     </div>
   </div>
 
+  <!-- ════════════════════ ANUAL PANEL ════════════════════ -->
+  <div id="panel-anual" class="hidden space-y-6">
+
+    <!-- Selector de años -->
+    <div class="bg-surface rounded-xl border border-border p-5 shadow-sm">
+      <h3 class="text-sm font-semibold font-heading text-text-primary mb-4">Seleccionar años a comparar</h3>
+      <div class="flex flex-wrap gap-3 items-end">
+        <div class="w-32">
+          <label class="block text-sm font-medium text-text-secondary mb-1 font-body">Año</label>
+          <select id="a-add-year" class="block w-full rounded-lg border border-border px-3 py-2.5 text-sm font-body min-h-[44px] bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-500"></select>
+        </div>
+        <button id="a-btn-add" onclick="anualAddYear()"
+          class="min-h-[44px] px-5 py-2.5 rounded-lg bg-primary-600 hover:bg-primary-700 text-white text-sm font-semibold font-body transition-colors flex items-center gap-2 cursor-pointer">
+          <i data-lucide="plus" class="h-4 w-4"></i>
+          Agregar año
+        </button>
+      </div>
+      <div id="a-chips" class="flex flex-wrap gap-2 mt-4"></div>
+    </div>
+
+    <!-- Empty state -->
+    <div id="a-empty" class="bg-surface rounded-xl border border-border shadow-sm p-12 flex flex-col items-center gap-3 text-center">
+      <div class="h-12 w-12 rounded-full bg-surface-alt flex items-center justify-center">
+        <i data-lucide="calendar-range" class="h-6 w-6 text-text-muted"></i>
+      </div>
+      <p class="text-sm font-semibold text-text-primary font-heading">Agrega al menos un año para visualizar</p>
+      <p class="text-sm text-text-muted font-body max-w-xs">Selecciona los años que quieres comparar y pulsa "Agregar año".</p>
+    </div>
+
+    <!-- Resultados -->
+    <div id="a-results" class="hidden space-y-6">
+
+      <!-- KPI cards por año -->
+      <div id="a-stats-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+
+      <!-- Gráfica agrupada por mes -->
+      <div class="bg-surface rounded-xl border border-border shadow-sm">
+        <div class="px-5 py-4 border-b border-border flex items-center justify-between">
+          <div>
+            <h3 class="text-sm font-semibold font-heading text-text-primary">Ingresos mensuales por año</h3>
+            <p class="text-xs text-text-muted mt-0.5 font-body">Comparativa mes a mes entre los años seleccionados</p>
+          </div>
+          <div class="flex items-center gap-3">
+            <label class="flex items-center gap-1.5 cursor-pointer select-none">
+              <input type="checkbox" id="a-chk-gas" class="rounded accent-primary-600">
+              <span class="text-xs font-medium text-text-secondary font-body">Mostrar gastos</span>
+            </label>
+          </div>
+        </div>
+        <div class="p-4" style="height:340px"><canvas id="a-bar-chart"></canvas></div>
+      </div>
+
+      <!-- Tabla mensual -->
+      <div class="bg-surface rounded-xl border border-border shadow-sm overflow-x-auto">
+        <div class="px-5 py-4 border-b border-border">
+          <h3 class="text-sm font-semibold font-heading text-text-primary">Desglose mensual</h3>
+        </div>
+        <div id="a-tbl-wrap"></div>
+      </div>
+
+      <!-- Resumen totales anuales -->
+      <div class="bg-surface rounded-xl border border-border shadow-sm overflow-x-auto">
+        <div class="px-5 py-4 border-b border-border">
+          <h3 class="text-sm font-semibold font-heading text-text-primary">Totales anuales</h3>
+        </div>
+        <div id="a-totales-wrap"></div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ════════════════════ REPORTE ANUAL PANEL (réplica Excel) ════════════════════ -->
+  <div id="panel-reporteanual" class="hidden space-y-6">
+
+    <!-- Filtros -->
+    <div class="flex flex-wrap gap-3 items-end">
+      <div class="w-28">
+        <label class="block text-sm font-medium text-text-secondary mb-1 font-body">Anio</label>
+        <select id="ra-sel-year" class="block w-full rounded-lg border border-border px-3 py-2.5 text-sm font-body min-h-[44px] bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-500"></select>
+      </div>
+    </div>
+
+    <!-- Stats anuales -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div class="bg-surface rounded-xl border border-border p-5 shadow-sm">
+        <div class="flex items-center justify-between">
+          <p class="text-sm font-medium text-text-secondary font-body">Total Anual</p>
+          <div class="h-9 w-9 rounded-lg bg-primary-50 flex items-center justify-center"><i data-lucide="dollar-sign" class="h-4 w-4 text-primary-600"></i></div>
+        </div>
+        <p class="mt-3 text-2xl font-bold font-heading tabular-nums text-text-primary" id="ra-stat-total">-</p>
+      </div>
+      <div class="bg-surface rounded-xl border border-border p-5 shadow-sm">
+        <div class="flex items-center justify-between">
+          <p class="text-sm font-medium text-text-secondary font-body">Promedio Mensual</p>
+          <div class="h-9 w-9 rounded-lg bg-primary-50 flex items-center justify-center"><i data-lucide="bar-chart-2" class="h-4 w-4 text-primary-600"></i></div>
+        </div>
+        <p class="mt-3 text-2xl font-bold font-heading tabular-nums text-text-primary" id="ra-stat-prom">-</p>
+      </div>
+      <div class="bg-surface rounded-xl border border-border p-5 shadow-sm">
+        <div class="flex items-center justify-between">
+          <p class="text-sm font-medium text-text-secondary font-body">Mejor Mes</p>
+          <div class="h-9 w-9 rounded-lg bg-accent-50 flex items-center justify-center"><i data-lucide="trending-up" class="h-4 w-4 text-accent-700"></i></div>
+        </div>
+        <p class="mt-3 text-2xl font-bold font-heading tabular-nums text-accent-700" id="ra-stat-best">-</p>
+        <p class="text-xs text-text-muted font-body mt-1" id="ra-stat-best-label">-</p>
+      </div>
+      <div class="bg-surface rounded-xl border border-border p-5 shadow-sm">
+        <div class="flex items-center justify-between">
+          <p class="text-sm font-medium text-text-secondary font-body">Mejor Trimestre</p>
+          <div class="h-9 w-9 rounded-lg bg-accent-50 flex items-center justify-center"><i data-lucide="award" class="h-4 w-4 text-accent-700"></i></div>
+        </div>
+        <p class="mt-3 text-2xl font-bold font-heading tabular-nums text-accent-700" id="ra-stat-bestq">-</p>
+        <p class="text-xs text-text-muted font-body mt-1" id="ra-stat-bestq-label">-</p>
+      </div>
+    </div>
+
+    <!-- Bar chart anual -->
+    <div id="ra-chart-card" class="hidden bg-surface rounded-xl border border-border shadow-sm">
+      <div class="px-5 py-4 border-b border-border">
+        <h3 class="text-sm font-semibold font-heading text-text-primary">Ventas Mensuales</h3>
+      </div>
+      <div class="p-4" style="height:320px"><canvas id="ra-bar-chart"></canvas></div>
+    </div>
+
+    <!-- PROMEDIOS TRIMESTRALES (réplica Excel) -->
+    <div class="bg-surface rounded-xl border border-border shadow-sm">
+      <div class="px-5 py-4 border-b border-border">
+        <h3 class="text-sm font-semibold font-heading text-text-primary">Promedios Trimestrales</h3>
+        <p class="text-xs text-text-muted mt-0.5 font-body">Ventas mensuales, totales y promedios por trimestre, crecimiento mes-a-mes</p>
+      </div>
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-0">
+        <div class="border-r border-border">
+          <table class="w-full text-sm">
+            <tbody id="ra-tbl-meses" class="divide-y divide-border"></tbody>
+          </table>
+        </div>
+        <div class="border-r border-border">
+          <table class="w-full text-sm">
+            <tbody id="ra-tbl-trims" class="divide-y divide-border"></tbody>
+          </table>
+        </div>
+        <div>
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="bg-surface-alt">
+                <th colspan="2" class="px-4 py-2.5 text-xs font-semibold uppercase tracking-wide text-text-secondary font-body text-center">% de Crecimiento</th>
+              </tr>
+            </thead>
+            <tbody id="ra-tbl-crec" class="divide-y divide-border"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- SISTEMA DE AHORRO (réplica Excel) -->
+    <div class="bg-surface rounded-xl border border-border shadow-sm">
+      <div class="px-5 py-4 border-b border-border">
+        <h3 class="text-sm font-semibold font-heading text-text-primary">Sistema de Ahorro</h3>
+        <p class="text-xs text-text-muted mt-0.5 font-body">Distribución mensual de las ventas según porcentajes configurados (Ajustes › Distribución)</p>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead id="ra-thead-ahorro">
+            <tr class="bg-surface-alt border-b border-border">
+              <th class="px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-text-secondary font-body w-28"></th>
+              <th class="px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-text-secondary font-body">Mes</th>
+              <th class="px-3 py-2.5 text-right text-xs font-semibold uppercase tracking-wide text-text-secondary font-body">Ventas</th>
+              <!-- category headers injected dynamically by loadReporteAnual() -->
+            </tr>
+          </thead>
+          <tbody id="ra-tbl-ahorro" class="divide-y divide-border"></tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+
 </div>
 {% endblock %}
 
@@ -372,6 +558,10 @@ let mLineChart = null, mPieChart = null;
 let tSelQuarter = String(Math.ceil((now.getMonth() + 1) / 3)), tSelYear = String(now.getFullYear());
 let tBarChart = null, tPieChart = null;
 
+// Reporte Anual state (réplica Excel)
+let raSelYear = String(now.getFullYear());
+let raBarChart = null;
+
 // ── Selects ──
 populateSelect(document.getElementById('m-sel-month'), buildMonthOptions(mSelMonth), mSelMonth);
 buildYearOptions(mSelYear).forEach(o => document.getElementById('m-sel-year').appendChild(o));
@@ -388,9 +578,13 @@ document.getElementById('m-sel-year').addEventListener('change', e => { mSelYear
 document.getElementById('t-sel-quarter').addEventListener('change', e => { tSelQuarter = e.target.value; loadTrimestral(); });
 document.getElementById('t-sel-year').addEventListener('change', e => { tSelYear = e.target.value; loadTrimestral(); });
 
+// Reporte Anual select
+buildYearOptions(raSelYear).forEach(o => document.getElementById('ra-sel-year').appendChild(o));
+document.getElementById('ra-sel-year').addEventListener('change', e => { raSelYear = e.target.value; loadReporteAnual(); });
+
 // ── Tab switch ──
 function switchTab(tab) {
-  ['mensual', 'trimestral', 'comparativa'].forEach(t => {
+  ['mensual', 'trimestral', 'comparativa', 'anual', 'reporteanual'].forEach(t => {
     document.getElementById('panel-' + t).classList.toggle('hidden', t !== tab);
     const btn = document.getElementById('tab-' + t);
     btn.className = t === tab
@@ -399,7 +593,9 @@ function switchTab(tab) {
   });
   if (tab === 'mensual') loadMensual();
   else if (tab === 'trimestral') loadTrimestral();
-  else initComparativa();
+  else if (tab === 'comparativa') initComparativa();
+  else if (tab === 'anual') initAnual();
+  else if (tab === 'reporteanual') loadReporteAnual();
 }
 
 // ── Shared: render distribution section ──
@@ -457,6 +653,87 @@ function renderDistribucion(netoId, netoCardId, chartCardId, canvasId, tblId, da
   ], cats, 'Sin datos de distribucion', false);
 }
 
+// ── Desglose de Gastos con fila expandible "Pagos a Doctores" ──
+function renderGastosDesglose(containerId, d) {
+  const wrap = document.getElementById(containerId);
+  if (!wrap) return;
+  wrap.replaceChildren();
+
+  const rowCls  = 'flex justify-between items-center px-5 py-3 border-b border-border last:border-0';
+
+  function makeStaticRow(label, monto) {
+    const row   = domEl('div', rowCls);
+    row.appendChild(domEl('span', 'text-sm font-body text-text-secondary', label));
+    row.appendChild(domEl('span', 'text-sm font-semibold tabular-nums text-text-primary', fmt(monto)));
+    return row;
+  }
+
+  const container = domEl('div', 'divide-y divide-border');
+
+  // Filas estáticas
+  container.appendChild(makeStaticRow('Gastos Fijos',     d.gastos_fijos));
+  container.appendChild(makeStaticRow('Gastos Variables', d.gastos_variables));
+
+  // ── Fila "Pagos a Doctores" (clickable) ──
+  const pagRow = domEl('div', rowCls + ' cursor-pointer select-none hover:bg-surface-hover transition-colors group');
+  pagRow.id = 'gas-pag-row';
+  pagRow.setAttribute('onclick', 'togglePagosDoctores()');
+
+  // Label con chevron
+  const labelWrap = domEl('span', 'text-sm font-body text-text-secondary flex items-center gap-2 group-hover:text-text-primary transition-colors');
+  labelWrap.appendChild(domEl('span', '', 'Pagos a Doctores'));
+
+  const chevron = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  chevron.id = 'gas-pag-chevron';
+  chevron.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+  chevron.setAttribute('viewBox', '0 0 24 24');
+  chevron.setAttribute('fill', 'none');
+  chevron.setAttribute('stroke', 'currentColor');
+  chevron.setAttribute('stroke-width', '2.5');
+  chevron.setAttribute('stroke-linecap', 'round');
+  chevron.setAttribute('stroke-linejoin', 'round');
+  chevron.setAttribute('class', 'h-3.5 w-3.5 text-text-muted transition-transform duration-200');
+  const poly = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
+  poly.setAttribute('points', '6 9 12 15 18 9');
+  chevron.appendChild(poly);
+  labelWrap.appendChild(chevron);
+
+  pagRow.appendChild(labelWrap);
+  pagRow.appendChild(domEl('span', 'text-sm font-semibold tabular-nums text-text-primary', fmt(d.total_pagos_doctores)));
+  container.appendChild(pagRow);
+
+  // ── Panel de desglose (oculto por defecto) ──
+  const detail = domEl('div', 'hidden overflow-hidden bg-surface-alt');
+  detail.id = 'gas-pag-detail';
+
+  function makeSubRow(dotColor, label, monto, extra) {
+    const r = domEl('div', 'flex justify-between items-center px-5 py-2.5 border-b border-border ' + (extra || ''));
+    const lw = domEl('span', 'text-xs font-body text-text-muted pl-4 flex items-center gap-1.5');
+    const dot = domEl('span', 'w-2 h-2 rounded-full inline-block shrink-0');
+    dot.style.backgroundColor = dotColor;
+    lw.appendChild(dot);
+    lw.appendChild(domEl('span', '', label));
+    r.appendChild(lw);
+    r.appendChild(domEl('span', 'text-xs tabular-nums text-text-secondary font-medium', fmt(monto)));
+    return r;
+  }
+
+  detail.appendChild(makeSubRow('#34d399', 'Salarios',   d.salarios));
+  detail.appendChild(makeSubRow('#a78bfa', 'Comisiones', d.comisiones, 'last:border-0'));
+  container.appendChild(detail);
+
+  wrap.appendChild(container);
+}
+
+function togglePagosDoctores() {
+  const detail  = document.getElementById('gas-pag-detail');
+  const chevron = document.getElementById('gas-pag-chevron');
+  if (!detail || !chevron) return;
+  const open = !detail.classList.contains('hidden');
+  detail.classList.toggle('hidden', open);
+  chevron.style.transform = open ? '' : 'rotate(180deg)';
+}
+
 // ── MENSUAL ──
 async function loadMensual() {
   try {
@@ -473,6 +750,12 @@ async function loadMensual() {
     document.getElementById('m-stat-ing').textContent = fmt(ing);
     document.getElementById('m-stat-gas').textContent = fmt(gas);
     document.getElementById('m-stat-pag').textContent = fmt(pag);
+    // Subtexto desglose pagos doctores
+    const _des = resumen.pagos_doctores_desglose || {};
+    const _sal = _des.salarios  || 0;
+    const _com = _des.comisiones || 0;
+    document.getElementById('m-stat-pag-sub').textContent =
+      'Sal: ' + fmt(_sal) + '  |  Com: ' + fmt(_com);
     const ganEl = document.getElementById('m-stat-gan');
     ganEl.textContent = fmt(gan);
     ganEl.className = 'mt-3 text-2xl font-bold font-heading tabular-nums ' + (gan >= 0 ? 'text-accent-700' : 'text-danger-600');
@@ -514,11 +797,16 @@ async function loadMensual() {
       { concepto: 'Com. Bancarias', monto: resumen.total_comisiones_bancarias || 0 },
       { concepto: 'Com. Especialistas', monto: resumen.total_comisiones_especialistas || 0 },
     ], 'Sin datos', false);
-    renderTable('m-tbl-gas', montoCol, [
-      { concepto: 'Gastos Fijos', monto: resumen.gastos_fijos || 0 },
-      { concepto: 'Gastos Variables', monto: resumen.gastos_variables || 0 },
-      { concepto: 'Pagos Doctores', monto: resumen.total_pagos_doctores || 0 },
-    ], 'Sin datos', false);
+    const desglose   = resumen.pagos_doctores_desglose || {};
+    const salarios   = desglose.salarios   || 0;
+    const comisiones = desglose.comisiones || 0;
+    renderGastosDesglose('m-tbl-gas', {
+      gastos_fijos:          resumen.gastos_fijos || 0,
+      gastos_variables:      resumen.gastos_variables || 0,
+      total_pagos_doctores:  resumen.total_pagos_doctores || 0,
+      salarios,
+      comisiones,
+    });
 
     // Estado de Resultados
     const er = resumen.estado_de_resultados || {};
@@ -631,6 +919,274 @@ async function loadTrimestral() {
     renderDistribucion('t-dist-neto', 't-dist-neto-card', 't-dist-chart-card', 't-pie-chart', 't-dist-tbl',
       aggDist, tPieChart, c => { tPieChart = c; });
   } catch { Toast.error('Error al cargar el reporte trimestral'); }
+}
+
+// ── REPORTE ANUAL (réplica hoja PROMEDIOS TRIMESTRALES + SISTEMA DE AHORRO del Excel) ──
+const RA_MES_FULL = ['','Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+const RA_TRIM_LABELS = ['1° Trimestre', '2° Trimestre', '3° Trimestre', '4° Trimestre'];
+const RA_CREC_LABELS = ['ENE-FEB','FEB-MAR','MAR-ABR','ABR-MAY','MAY-JUN','JUN-JUL','JUL-AGO','AGO-SEP','SEP-OCT','OCT-NOV','NOV-DIC'];
+
+function raPctCell(v) {
+  const span = document.createElement('span');
+  if (v == null || !isFinite(v)) { span.textContent = '-'; span.className = 'text-text-muted'; return span; }
+  const pct = v * 100;
+  span.textContent = (pct >= 0 ? '+' : '') + pct.toFixed(0) + '%';
+  span.className = 'tabular-nums font-semibold ' + (pct >= 0 ? 'text-accent-700' : 'text-danger-600');
+  return span;
+}
+
+async function loadReporteAnual() {
+  try {
+    const [trim, dist] = await Promise.all([
+      API.get('/reportes/trimestral?year=' + raSelYear),
+      API.get('/reportes/distribucion?mes=' + raSelYear + '-01'),
+    ]);
+
+    const meses = trim.meses || [];
+    const trimestres = trim.trimestres || [];
+    const crecimiento = trim.crecimiento || [];
+
+    // Stats
+    document.getElementById('ra-stat-total').textContent = fmt(trim.total_anual || 0);
+    document.getElementById('ra-stat-prom').textContent  = fmt(trim.promedio_mensual || 0);
+
+    const mejorMes = meses.reduce((acc, m) => (m.total > (acc?.total || 0) ? m : acc), null);
+    if (mejorMes && mejorMes.total > 0) {
+      document.getElementById('ra-stat-best').textContent = fmt(mejorMes.total);
+      document.getElementById('ra-stat-best-label').textContent = RA_MES_FULL[mejorMes.mes];
+    } else {
+      document.getElementById('ra-stat-best').textContent = '-';
+      document.getElementById('ra-stat-best-label').textContent = '-';
+    }
+
+    const mejorTrim = trimestres.reduce((acc, t) => (t.total > (acc?.total || 0) ? t : acc), null);
+    if (mejorTrim && mejorTrim.total > 0) {
+      document.getElementById('ra-stat-bestq').textContent = fmt(mejorTrim.total);
+      document.getElementById('ra-stat-bestq-label').textContent = RA_TRIM_LABELS[mejorTrim.trimestre - 1];
+    } else {
+      document.getElementById('ra-stat-bestq').textContent = '-';
+      document.getElementById('ra-stat-bestq-label').textContent = '-';
+    }
+
+    // Bar chart anual
+    const raChartCard = document.getElementById('ra-chart-card');
+    if (meses.some(m => m.total > 0)) {
+      raChartCard.classList.remove('hidden');
+      if (raBarChart) raBarChart.destroy();
+      raBarChart = new Chart(document.getElementById('ra-bar-chart'), {
+        type: 'bar',
+        data: {
+          labels: meses.map(m => RA_MES_FULL[m.mes]),
+          datasets: [{ label: 'Ventas', data: meses.map(m => m.total || 0), backgroundColor: '#0891b2', borderRadius: 4 }],
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => fmt(ctx.raw) } } },
+          scales: {
+            x: { grid: { color: '#e2e8f0' }, ticks: { color: '#94a3b8', font: { size: 11 } } },
+            y: { grid: { color: '#e2e8f0' }, border: { display: false }, ticks: { color: '#94a3b8', font: { size: 11 }, callback: v => '$' + (v/1000).toFixed(0) + 'k' } },
+          },
+        },
+      });
+    } else { raChartCard.classList.add('hidden'); }
+
+    // ── PROMEDIOS TRIMESTRALES ──
+    const tblMeses = document.getElementById('ra-tbl-meses');
+    tblMeses.replaceChildren();
+    const TRIM_BG = ['bg-emerald-50/40','bg-amber-50/40','bg-rose-50/40','bg-violet-50/40'];
+    meses.forEach((m, idx) => {
+      const tr = document.createElement('tr');
+      tr.className = TRIM_BG[Math.floor(idx / 3)];
+      const tdName = document.createElement('td');
+      tdName.className = 'px-4 py-2 font-medium text-text-primary font-body';
+      tdName.textContent = RA_MES_FULL[m.mes].toUpperCase();
+      const tdVal = document.createElement('td');
+      tdVal.className = 'px-4 py-2 text-right tabular-nums font-semibold text-text-primary';
+      tdVal.textContent = fmt(m.total || 0);
+      tr.appendChild(tdName); tr.appendChild(tdVal);
+      tblMeses.appendChild(tr);
+    });
+
+    const tblTrims = document.getElementById('ra-tbl-trims');
+    tblTrims.replaceChildren();
+    trimestres.forEach((t, i) => {
+      const trT = document.createElement('tr');
+      trT.className = TRIM_BG[i];
+      const tdTN = document.createElement('td');
+      tdTN.className = 'px-4 py-2 font-medium text-text-primary font-body';
+      tdTN.textContent = 'Total ' + (i+1) + '° trimestre';
+      const tdTV = document.createElement('td');
+      tdTV.className = 'px-4 py-2 text-right tabular-nums font-semibold text-text-primary';
+      tdTV.textContent = fmt(t.total || 0);
+      trT.appendChild(tdTN); trT.appendChild(tdTV);
+      tblTrims.appendChild(trT);
+
+      const trP = document.createElement('tr');
+      trP.className = TRIM_BG[i];
+      const tdPN = document.createElement('td');
+      tdPN.className = 'px-4 py-2 text-text-secondary font-body italic';
+      tdPN.textContent = 'Promedio ' + (i+1) + '° trimestre';
+      const tdPV = document.createElement('td');
+      tdPV.className = 'px-4 py-2 text-right tabular-nums text-text-secondary';
+      tdPV.textContent = fmt(t.promedio || 0);
+      trP.appendChild(tdPN); trP.appendChild(tdPV);
+      tblTrims.appendChild(trP);
+    });
+    const trTA = document.createElement('tr');
+    trTA.className = 'bg-primary-50';
+    const tdTAN = document.createElement('td');
+    tdTAN.className = 'px-4 py-2 font-bold text-primary-900 font-body';
+    tdTAN.textContent = 'Total anual';
+    const tdTAV = document.createElement('td');
+    tdTAV.className = 'px-4 py-2 text-right tabular-nums font-bold text-primary-900';
+    tdTAV.textContent = fmt(trim.total_anual || 0);
+    trTA.appendChild(tdTAN); trTA.appendChild(tdTAV);
+    tblTrims.appendChild(trTA);
+
+    const trPA = document.createElement('tr');
+    trPA.className = 'bg-primary-50';
+    const tdPAN = document.createElement('td');
+    tdPAN.className = 'px-4 py-2 font-bold text-primary-900 font-body italic';
+    tdPAN.textContent = 'Promedio anual';
+    const tdPAV = document.createElement('td');
+    tdPAV.className = 'px-4 py-2 text-right tabular-nums font-bold text-primary-900';
+    tdPAV.textContent = fmt(trim.promedio_mensual || 0);
+    trPA.appendChild(tdPAN); trPA.appendChild(tdPAV);
+    tblTrims.appendChild(trPA);
+
+    const tblCrec = document.getElementById('ra-tbl-crec');
+    tblCrec.replaceChildren();
+    crecimiento.forEach((c, i) => {
+      const tr = document.createElement('tr');
+      const tdN = document.createElement('td');
+      tdN.className = 'px-4 py-2 font-medium text-text-primary font-body';
+      tdN.textContent = RA_CREC_LABELS[i] || (c.de_mes + '-' + c.a_mes);
+      const tdV = document.createElement('td');
+      tdV.className = 'px-4 py-2 text-right';
+      tdV.appendChild(raPctCell(c.porcentaje));
+      tr.appendChild(tdN); tr.appendChild(tdV);
+      tblCrec.appendChild(tr);
+    });
+
+    // ── SISTEMA DE AHORRO (dinámico) ──
+    // dist.categorias = [{id, nombre, color, porcentaje, monto}, ...]
+    const distCats = dist.categorias || [];
+
+    // Build column header cells dynamically
+    const theadRow = document.querySelector('#ra-thead-ahorro tr');
+    // Remove any previously-injected TH (keep first 3: trimestre, mes, ventas)
+    while (theadRow.children.length > 3) theadRow.removeChild(theadRow.lastChild);
+    distCats.forEach(cat => {
+      const th = document.createElement('th');
+      th.className = 'px-3 py-2.5 text-right text-xs font-semibold font-body';
+      th.style.backgroundColor = cat.color + '22'; // 13% opacity tint
+      th.style.color = cat.color;
+      th.textContent = cat.porcentaje + '% ' + cat.nombre;
+      theadRow.appendChild(th);
+    });
+
+    // Build factor list from categories
+    const factorList = distCats.map(c => (c.porcentaje || 0) / 100);
+    // Col background tints (use inline style so any color works)
+    const colColor = distCats.map(c => c.color);
+
+    const tblAhorro = document.getElementById('ra-tbl-ahorro');
+    tblAhorro.replaceChildren();
+
+    const TRIM_LABEL_CLS = ['bg-emerald-100 text-emerald-800','bg-amber-100 text-amber-800','bg-rose-100 text-rose-800','bg-violet-100 text-violet-800'];
+
+    for (let q = 0; q < 4; q++) {
+      const mesesQ = meses.slice(q * 3, q * 3 + 3);
+      mesesQ.forEach((m, mi) => {
+        const tr = document.createElement('tr');
+        if (mi === 0) {
+          const tdL = document.createElement('td');
+          tdL.rowSpan = 6;
+          tdL.className = 'px-3 py-2 align-middle text-center text-xs font-bold uppercase tracking-wide font-heading ' + TRIM_LABEL_CLS[q];
+          tdL.textContent = (q+1) + '° TRIM.';
+          tr.appendChild(tdL);
+        }
+        const tdM = document.createElement('td');
+        tdM.className = 'px-3 py-2 text-text-primary font-body';
+        tdM.textContent = RA_MES_FULL[m.mes];
+        const tdV = document.createElement('td');
+        tdV.className = 'px-3 py-2 text-right tabular-nums font-medium text-text-primary';
+        tdV.textContent = fmt(m.total || 0);
+        tr.appendChild(tdM); tr.appendChild(tdV);
+        factorList.forEach((f, ci) => {
+          const td = document.createElement('td');
+          td.className = 'px-3 py-2 text-right tabular-nums';
+          td.style.backgroundColor = colColor[ci] + '11'; // subtle tint
+          td.textContent = fmt((m.total || 0) * f);
+          tr.appendChild(td);
+        });
+        tblAhorro.appendChild(tr);
+      });
+
+      const totalQ = mesesQ.reduce((s, m) => s + (m.total || 0), 0);
+      const countQ = mesesQ.filter(m => (m.total || 0) > 0).length;
+      const promQ = countQ ? totalQ / countQ : 0;
+
+      const trT = document.createElement('tr');
+      trT.className = 'bg-blue-100/60 border-t border-blue-200';
+      const tdTM = document.createElement('td');
+      tdTM.className = 'px-3 py-2 font-semibold text-blue-900 font-body';
+      tdTM.textContent = 'Total trimestre';
+      const tdTV = document.createElement('td');
+      tdTV.className = 'px-3 py-2 text-right tabular-nums font-bold text-blue-900';
+      tdTV.textContent = fmt(totalQ);
+      trT.appendChild(tdTM); trT.appendChild(tdTV);
+      factorList.forEach((f, ci) => {
+        const td = document.createElement('td');
+        td.className = 'px-3 py-2 text-right tabular-nums font-bold text-blue-900';
+        td.style.backgroundColor = colColor[ci] + '22';
+        td.textContent = fmt(totalQ * f);
+        trT.appendChild(td);
+      });
+      tblAhorro.appendChild(trT);
+
+      const trP = document.createElement('tr');
+      trP.className = 'bg-surface-alt';
+      const tdPM = document.createElement('td');
+      tdPM.className = 'px-3 py-2 italic text-text-secondary font-body';
+      tdPM.textContent = 'Promedio mensual';
+      const tdPV = document.createElement('td');
+      tdPV.className = 'px-3 py-2 text-right tabular-nums italic text-text-secondary';
+      tdPV.textContent = fmt(promQ);
+      trP.appendChild(tdPM); trP.appendChild(tdPV);
+      factorList.forEach((f, ci) => {
+        const td = document.createElement('td');
+        td.className = 'px-3 py-2 text-right tabular-nums italic text-text-secondary';
+        td.style.backgroundColor = colColor[ci] + '11';
+        td.textContent = fmt(promQ * f);
+        trP.appendChild(td);
+      });
+      tblAhorro.appendChild(trP);
+
+      const trS = document.createElement('tr');
+      trS.className = 'bg-orange-50/60 border-b-2 border-border';
+      const tdSL = document.createElement('td');
+      tdSL.className = 'px-3 py-2 text-xs font-semibold text-orange-900 font-body uppercase tracking-wide';
+      tdSL.textContent = 'Ahorro semanal';
+      const tdSV = document.createElement('td');
+      tdSV.className = 'px-3 py-2 text-right tabular-nums font-bold text-orange-900';
+      tdSV.textContent = fmt(promQ / 4);
+      trS.appendChild(tdSL); trS.appendChild(tdSV);
+      factorList.forEach((f, ci) => {
+        const td = document.createElement('td');
+        td.className = 'px-3 py-2 text-right tabular-nums font-bold text-orange-900';
+        td.style.backgroundColor = colColor[ci] + '22';
+        td.textContent = fmt((promQ * f) / 4);
+        trS.appendChild(td);
+      });
+      tblAhorro.appendChild(trS);
+    }
+
+    lucide.createIcons();
+  } catch (e) {
+    console.error('loadReporteAnual error:', e);
+    Toast.error('Error al cargar el reporte anual');
+  }
 }
 
 // ── COMPARATIVA ──
@@ -833,6 +1389,354 @@ async function initComparativa() {
     compMeses.sort((a, b) => a.mes.localeCompare(b.mes));
     renderComparativa();
   } catch { /* silently ignore, user can add manually */ }
+}
+
+// ══════════════════════════════════════════════════════════
+// ── COMPARATIVA ANUAL ──
+// ══════════════════════════════════════════════════════════
+const YEAR_COLORS = ['#0891b2','#059669','#f59e0b','#8b5cf6','#ec4899','#ef4444'];
+const MONTH_SHORT = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+
+let anualYears = [];   // [{year, data}]  data = respuesta de /reportes/trimestral
+let aBarChart  = null;
+
+// Poblar selector de años (año actual y los 5 anteriores)
+(function buildAnualYearSelect() {
+  const sel = document.getElementById('a-add-year');
+  const y0  = now.getFullYear();
+  for (let y = y0; y >= y0 - 5; y--) {
+    const opt = document.createElement('option');
+    opt.value = y;
+    opt.textContent = y;
+    sel.appendChild(opt);
+  }
+})();
+
+document.getElementById('a-chk-gas').addEventListener('change', renderAnualChart);
+
+// ── Agregar año ──
+async function anualAddYear() {
+  const year = document.getElementById('a-add-year').value;
+  if (anualYears.find(y => String(y.year) === String(year))) {
+    Toast.warning('Ese año ya fue agregado'); return;
+  }
+  if (anualYears.length >= 5) {
+    Toast.warning('Maximo 5 años a la vez'); return;
+  }
+  const btn = document.getElementById('a-btn-add');
+  btn.disabled = true;
+  try {
+    const data = await API.get('/reportes/trimestral?year=' + year);
+    anualYears.push({ year: parseInt(year), data });
+    anualYears.sort((a, b) => a.year - b.year);
+    renderAnual();
+  } catch { Toast.error('Error al cargar el año ' + year); }
+  finally { btn.disabled = false; }
+}
+
+function anualRemoveYear(year) {
+  anualYears = anualYears.filter(y => y.year !== parseInt(year));
+  renderAnual();
+}
+
+// ── Render principal ──
+function renderAnual() {
+  // Chips
+  const chipsEl = document.getElementById('a-chips');
+  chipsEl.replaceChildren();
+  anualYears.forEach((y, i) => {
+    const chip = domEl('div', 'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold font-body text-white');
+    chip.style.backgroundColor = YEAR_COLORS[i % YEAR_COLORS.length];
+    chip.appendChild(domEl('span', '', String(y.year)));
+    const x = domEl('button', 'ml-0.5 opacity-80 hover:opacity-100 cursor-pointer leading-none', '×');
+    x.onclick = () => anualRemoveYear(y.year);
+    chip.appendChild(x);
+    chipsEl.appendChild(chip);
+  });
+
+  const hasData = anualYears.length > 0;
+  document.getElementById('a-empty').classList.toggle('hidden', hasData);
+  document.getElementById('a-results').classList.toggle('hidden', !hasData);
+  if (!hasData) return;
+
+  renderAnualStats();
+  renderAnualChart();
+  renderAnualTable();
+  renderAnualTotales();
+  lucide.createIcons();
+}
+
+// ── KPI cards por año ──
+function renderAnualStats() {
+  const grid = document.getElementById('a-stats-grid');
+  grid.replaceChildren();
+
+  anualYears.forEach((y, i) => {
+    const meses     = y.data.meses || [];
+    const totalIng  = meses.reduce((s, m) => s + (m.total   || 0), 0);
+    const totalGas  = meses.reduce((s, m) => s + (m.gastos  || 0), 0);
+    const utilidad  = totalIng - totalGas;
+    const mejorMes  = meses.reduce((best, m) => (m.total > (best?.total || 0) ? m : best), null);
+
+    const card = domEl('div', 'bg-surface rounded-xl border border-border p-5 shadow-sm');
+
+    // Barra de color del año
+    const bar = domEl('div', 'h-1 w-10 rounded-full mb-4');
+    bar.style.backgroundColor = YEAR_COLORS[i % YEAR_COLORS.length];
+    card.appendChild(bar);
+
+    card.appendChild(domEl('p', 'text-base font-bold font-heading text-text-primary mb-4', String(y.year)));
+
+    const kpis = [
+      ['Ingresos',  fmt(totalIng),  'text-text-primary'],
+      ['Gastos Op.', fmt(totalGas), 'text-danger-600'],
+      ['Utilidad',  fmt(utilidad),  utilidad >= 0 ? 'text-accent-700' : 'text-danger-600'],
+      ['Mejor mes', mejorMes ? MONTH_SHORT[mejorMes.mes - 1] + ' ' + fmt(mejorMes.total) : '-', 'text-text-secondary'],
+    ];
+
+    kpis.forEach(([label, val, cls]) => {
+      const row = domEl('div', 'flex justify-between items-baseline py-1.5 border-b border-border last:border-0');
+      row.appendChild(domEl('span', 'text-xs text-text-muted font-body', label));
+      row.appendChild(domEl('span', 'text-sm font-semibold tabular-nums font-heading ' + cls, val));
+      card.appendChild(row);
+    });
+
+    grid.appendChild(card);
+  });
+}
+
+// ── Gráfica agrupada (barras por mes, un dataset por año) ──
+function renderAnualChart() {
+  if (!anualYears.length) return;
+  const showGas = document.getElementById('a-chk-gas').checked;
+
+  const datasets = [];
+  anualYears.forEach((y, i) => {
+    const color  = YEAR_COLORS[i % YEAR_COLORS.length];
+    const meses  = y.data.meses || [];
+
+    // Dataset ingresos
+    datasets.push({
+      label:           String(y.year) + ' Ingresos',
+      data:            MONTH_SHORT.map((_, mi) => meses[mi]?.total  || 0),
+      backgroundColor: color,
+      borderRadius:    3,
+      stack:           'ing-' + i,
+    });
+
+    // Dataset gastos (opcional)
+    if (showGas) {
+      datasets.push({
+        label:           String(y.year) + ' Gastos',
+        data:            MONTH_SHORT.map((_, mi) => meses[mi]?.gastos || 0),
+        backgroundColor: color + '55',   // mismo color, semitransparente
+        borderColor:     color,
+        borderWidth:     1,
+        borderRadius:    3,
+        stack:           'gas-' + i,
+      });
+    }
+  });
+
+  if (aBarChart) aBarChart.destroy();
+  aBarChart = new Chart(document.getElementById('a-bar-chart'), {
+    type: 'bar',
+    data: { labels: MONTH_SHORT, datasets },
+    options: {
+      responsive:          true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { position: 'top', labels: { font: { size: 11 }, color: '#475569', boxWidth: 12 } },
+        tooltip: { callbacks: { label: ctx => ctx.dataset.label + ': ' + fmt(ctx.raw) } },
+      },
+      scales: {
+        x: { grid: { color: '#e2e8f0' }, ticks: { color: '#94a3b8', font: { size: 11 } } },
+        y: {
+          grid:   { color: '#e2e8f0' },
+          border: { display: false },
+          ticks:  { color: '#94a3b8', font: { size: 11 }, callback: v => '$' + (v / 1000).toFixed(0) + 'k' },
+        },
+      },
+    },
+  });
+}
+
+// ── Tabla mensual (filas = meses, columnas = años) ──
+function renderAnualTable() {
+  const wrap = document.getElementById('a-tbl-wrap');
+  wrap.replaceChildren();
+
+  // Cabecera
+  const table = document.createElement('table');
+  table.className = 'w-full text-sm font-body';
+
+  const thead = document.createElement('thead');
+  const hrow  = document.createElement('tr');
+  hrow.className = 'border-b border-border';
+
+  const thMes = document.createElement('th');
+  thMes.className = 'px-5 py-3 text-left text-xs font-semibold text-text-muted uppercase tracking-wide';
+  thMes.textContent = 'Mes';
+  hrow.appendChild(thMes);
+
+  anualYears.forEach((y, i) => {
+    const th = document.createElement('th');
+    th.className = 'px-5 py-3 text-right text-xs font-semibold uppercase tracking-wide';
+    th.style.color = YEAR_COLORS[i % YEAR_COLORS.length];
+    th.textContent = y.year;
+    th.colSpan = 2;
+    hrow.appendChild(th);
+  });
+  thead.appendChild(hrow);
+
+  // Sub-cabecera Ingresos / Utilidad
+  const subrow = document.createElement('tr');
+  subrow.className = 'border-b border-border bg-surface-alt';
+  const thEmpty = document.createElement('th');
+  subrow.appendChild(thEmpty);
+  anualYears.forEach(() => {
+    ['Ingresos', 'Utilidad'].forEach(lbl => {
+      const th = document.createElement('th');
+      th.className = 'px-4 py-2 text-right text-xs text-text-muted font-medium';
+      th.textContent = lbl;
+      subrow.appendChild(th);
+    });
+  });
+  thead.appendChild(subrow);
+  table.appendChild(thead);
+
+  // Cuerpo
+  const tbody = document.createElement('tbody');
+  MONTH_SHORT.forEach((mes, mi) => {
+    const tr = document.createElement('tr');
+    tr.className = 'border-b border-border last:border-0 hover:bg-surface-hover transition-colors';
+
+    const tdMes = document.createElement('td');
+    tdMes.className = 'px-5 py-3 text-sm font-medium text-text-secondary';
+    tdMes.textContent = mes;
+    tr.appendChild(tdMes);
+
+    anualYears.forEach(y => {
+      const m       = (y.data.meses || [])[mi] || {};
+      const ing     = m.total  || 0;
+      const gas     = m.gastos || 0;
+      const util    = ing - gas;
+      const isEmpty = ing === 0 && gas === 0;
+
+      [ing, util].forEach((val, vi) => {
+        const td = document.createElement('td');
+        td.className = 'px-4 py-3 text-right tabular-nums text-sm';
+        if (isEmpty) {
+          td.textContent = '—';
+          td.className += ' text-text-muted';
+        } else if (vi === 1) {
+          td.textContent = fmt(val);
+          td.className  += val >= 0 ? ' text-accent-700 font-medium' : ' text-danger-600 font-medium';
+        } else {
+          td.textContent = fmt(val);
+          td.className  += ' text-text-primary font-medium';
+        }
+        tr.appendChild(td);
+      });
+    });
+
+    tbody.appendChild(tr);
+  });
+  table.appendChild(tbody);
+  wrap.appendChild(table);
+}
+
+// ── Tabla de totales anuales ──
+function renderAnualTotales() {
+  const wrap = document.getElementById('a-totales-wrap');
+  wrap.replaceChildren();
+
+  const cols = [
+    { label: 'Año',        fn: y => String(y.year) },
+    { label: 'Ingresos',   fn: y => fmt(y.data.meses.reduce((s, m) => s + (m.total  || 0), 0)) },
+    { label: 'Gastos Op.', fn: y => fmt(y.data.meses.reduce((s, m) => s + (m.gastos || 0), 0)) },
+    { label: 'Utilidad',   fn: y => {
+        const ing  = y.data.meses.reduce((s, m) => s + (m.total  || 0), 0);
+        const gas  = y.data.meses.reduce((s, m) => s + (m.gastos || 0), 0);
+        return fmt(ing - gas);
+      },
+      colorFn: y => {
+        const ing = y.data.meses.reduce((s, m) => s + (m.total  || 0), 0);
+        const gas = y.data.meses.reduce((s, m) => s + (m.gastos || 0), 0);
+        return (ing - gas) >= 0 ? 'text-accent-700' : 'text-danger-600';
+      }
+    },
+    { label: 'Mejor mes',  fn: y => {
+        const best = (y.data.meses || []).reduce((b, m) => (m.total > (b?.total || 0) ? m : b), null);
+        return best ? MONTH_SHORT[best.mes - 1] : '—';
+      }
+    },
+    { label: 'Prom. mensual', fn: y => {
+        const meses     = y.data.meses || [];
+        const activos   = meses.filter(m => m.total > 0);
+        const totalIng  = meses.reduce((s, m) => s + (m.total || 0), 0);
+        return activos.length ? fmt(totalIng / activos.length) : '—';
+      }
+    },
+  ];
+
+  const table = document.createElement('table');
+  table.className = 'w-full text-sm font-body';
+
+  // Header
+  const thead = document.createElement('thead');
+  const hrow  = document.createElement('tr');
+  hrow.className = 'border-b border-border bg-surface-alt';
+  cols.forEach(c => {
+    const th = document.createElement('th');
+    th.className = 'px-5 py-3 text-left text-xs font-semibold text-text-muted uppercase tracking-wide';
+    th.textContent = c.label;
+    hrow.appendChild(th);
+  });
+  thead.appendChild(hrow);
+  table.appendChild(thead);
+
+  // Body
+  const tbody = document.createElement('tbody');
+  anualYears.forEach((y, yi) => {
+    const tr = document.createElement('tr');
+    tr.className = 'border-b border-border last:border-0 hover:bg-surface-hover transition-colors';
+    cols.forEach(c => {
+      const td = document.createElement('td');
+      td.className = 'px-5 py-3 tabular-nums ' + (c.colorFn ? c.colorFn(y) + ' font-semibold' : 'text-text-primary');
+      if (yi === 0 && c.label === 'Año') {
+        td.className += ' font-bold';
+        const dot = domEl('span', 'inline-block w-2.5 h-2.5 rounded-full mr-2');
+        dot.style.backgroundColor = YEAR_COLORS[yi % YEAR_COLORS.length];
+        td.appendChild(dot);
+        td.appendChild(domEl('span', '', c.fn(y)));
+      } else {
+        td.textContent = c.fn(y);
+        if (c.label === 'Año') {
+          const dot = domEl('span', 'inline-block w-2.5 h-2.5 rounded-full mr-2');
+          dot.style.backgroundColor = YEAR_COLORS[yi % YEAR_COLORS.length];
+          td.prepend(dot);
+        }
+      }
+      tr.appendChild(td);
+    });
+    tbody.appendChild(tr);
+  });
+  table.appendChild(tbody);
+  wrap.appendChild(table);
+}
+
+// ── Init anual: pre-carga año actual y anterior ──
+async function initAnual() {
+  if (anualYears.length > 0) return;
+  const yearsToLoad = [now.getFullYear() - 1, now.getFullYear()].filter(y => y > 2000);
+  try {
+    const results = await Promise.all(yearsToLoad.map(y => API.get('/reportes/trimestral?year=' + y)));
+    yearsToLoad.forEach((y, i) => {
+      anualYears.push({ year: y, data: results[i] });
+    });
+    renderAnual();
+  } catch { /* el usuario puede agregar manualmente */ }
 }
 
 // Init default tab

@@ -67,7 +67,7 @@ def importar_master():
 def listar():
     """Listar materiales del tenant (paginado, filtrable)."""
     page = request.args.get("page", 1, type=int)
-    per_page = request.args.get("per_page", 50, type=int)
+    per_page = min(request.args.get("per_page", 50, type=int), 200)
     q = request.args.get("q")
 
     query = Material.query.filter_by(tenant_id=g.tenant_id)

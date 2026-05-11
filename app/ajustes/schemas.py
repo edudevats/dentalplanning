@@ -1,7 +1,10 @@
-from marshmallow import Schema, fields, validate, validates_schema, ValidationError
+from marshmallow import Schema, fields, validate, validates_schema, ValidationError, EXCLUDE
 
 
 class EspecialistaSchema(Schema):
+    class Meta:
+        unknown = EXCLUDE
+
     id = fields.Int(dump_only=True)
     nombre = fields.Str(required=True, validate=validate.Length(min=1, max=200))
     comision_pct = fields.Float(load_default=0, validate=validate.Range(min=0, max=100))
@@ -9,12 +12,18 @@ class EspecialistaSchema(Schema):
 
 
 class MetodoPagoSchema(Schema):
+    class Meta:
+        unknown = EXCLUDE
+
     id = fields.Int(dump_only=True)
     nombre = fields.Str(required=True, validate=validate.Length(min=1, max=100))
     comision_pct = fields.Float(load_default=0, validate=validate.Range(min=0, max=100))
 
 
 class GastoConceptoSchema(Schema):
+    class Meta:
+        unknown = EXCLUDE
+
     id = fields.Int(dump_only=True)
     nombre = fields.Str(required=True, validate=validate.Length(min=1, max=200))
     tipo = fields.Str(
@@ -28,11 +37,17 @@ class GastoConceptoSchema(Schema):
 
 
 class EstrategiaMarketingSchema(Schema):
+    class Meta:
+        unknown = EXCLUDE
+
     id = fields.Int(dump_only=True)
     nombre = fields.Str(required=True, validate=validate.Length(min=1, max=200))
 
 
 class DistribucionConfigSchema(Schema):
+    class Meta:
+        unknown = EXCLUDE
+
     pct_sueldo = fields.Float(required=True, validate=validate.Range(min=0, max=100))
     pct_bonos = fields.Float(required=True, validate=validate.Range(min=0, max=100))
     pct_mcmp = fields.Float(required=True, validate=validate.Range(min=0, max=100))
@@ -48,4 +63,34 @@ class DistribucionConfigSchema(Schema):
         if abs(total - 100) > 0.01:
             raise ValidationError(
                 f"Los porcentajes deben sumar 100%. Total actual: {total}%"
+            )
+
+
+class DistribucionCategoriaSchema(Schema):
+    class Meta:
+        unknown = EXCLUDE
+
+    id = fields.Int(dump_only=True)
+    nombre = fields.Str(required=True, validate=validate.Length(min=1, max=100))
+    clave = fields.Str(dump_only=True, allow_none=True)
+    color = fields.Str(load_default="#6b7280", validate=validate.Regexp(r'^#[0-9a-fA-F]{6}$'))
+    porcentaje = fields.Float(required=True, validate=validate.Range(min=0, max=100))
+    es_sistema = fields.Bool(dump_only=True)
+    sort_order = fields.Int(load_default=99)
+
+
+class DistribucionBatchSchema(Schema):
+    """Validates a full list of category updates for batch save."""
+    class Meta:
+        unknown = EXCLUDE
+
+    categorias = fields.List(fields.Dict(), required=True)
+
+    @validates_schema
+    def validate_total(self, data, **kwargs):
+        cats = data.get("categorias", [])
+        total = sum(float(c.get("porcentaje", 0)) for c in cats)
+        if abs(total - 100) > 0.01:
+            raise ValidationError(
+                f"Los porcentajes deben sumar 100%. Total actual: {total:.1f}%"
             )

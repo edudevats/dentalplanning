@@ -1,7 +1,10 @@
-from marshmallow import Schema, fields, validate
+from marshmallow import Schema, fields, validate, EXCLUDE
 
 
 class CategoriaPersonalSchema(Schema):
+    class Meta:
+        unknown = EXCLUDE
+
     id = fields.Int(dump_only=True)
     nombre = fields.Str(required=True, validate=validate.Length(min=1, max=80))
     icon = fields.Str(load_default="circle", validate=validate.Length(max=40))
@@ -11,6 +14,9 @@ class CategoriaPersonalSchema(Schema):
 
 
 class FuenteIngresoSchema(Schema):
+    class Meta:
+        unknown = EXCLUDE
+
     id = fields.Int(dump_only=True)
     nombre = fields.Str(required=True, validate=validate.Length(min=1, max=80))
     icon = fields.Str(load_default="briefcase", validate=validate.Length(max=40))
@@ -19,6 +25,9 @@ class FuenteIngresoSchema(Schema):
 
 
 class IngresoPersonalSchema(Schema):
+    class Meta:
+        unknown = EXCLUDE
+
     id = fields.Int(dump_only=True)
     fecha = fields.Date(required=True)
     fuente_id = fields.Int(allow_none=True, load_default=None)
@@ -28,6 +37,9 @@ class IngresoPersonalSchema(Schema):
 
 
 class GastoPersonalSchema(Schema):
+    class Meta:
+        unknown = EXCLUDE
+
     id = fields.Int(dump_only=True)
     fecha = fields.Date(required=True)
     categoria_id = fields.Int(allow_none=True, load_default=None)
@@ -37,6 +49,9 @@ class GastoPersonalSchema(Schema):
 
 
 class PresupuestoCategoriaSchema(Schema):
+    class Meta:
+        unknown = EXCLUDE
+
     id = fields.Int(dump_only=True)
     categoria_id = fields.Int(required=True)
     monto_mensual = fields.Decimal(required=True, as_string=True, places=2, validate=validate.Range(min=0))
@@ -44,6 +59,9 @@ class PresupuestoCategoriaSchema(Schema):
 
 
 class MetaAhorroSchema(Schema):
+    class Meta:
+        unknown = EXCLUDE
+
     id = fields.Int(dump_only=True)
     label = fields.Str(required=True, validate=validate.Length(min=1, max=120))
     icon = fields.Str(load_default="target", validate=validate.Length(max=40))

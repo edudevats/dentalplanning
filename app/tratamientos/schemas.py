@@ -1,4 +1,4 @@
-from marshmallow import Schema, fields, validate
+from marshmallow import Schema, fields, validate, EXCLUDE
 
 
 class TratamientoMaterialInputSchema(Schema):
@@ -7,6 +7,9 @@ class TratamientoMaterialInputSchema(Schema):
 
 
 class TratamientoSchema(Schema):
+    class Meta:
+        unknown = EXCLUDE
+
     id = fields.Int(dump_only=True)
     nombre = fields.Str(required=True, validate=validate.Length(min=1, max=200))
     horas_invertidas = fields.Float(load_default=1.0, validate=validate.Range(min=0))

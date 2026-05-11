@@ -1,7 +1,10 @@
-from marshmallow import Schema, fields, validate
+from marshmallow import Schema, fields, validate, EXCLUDE
 
 
 class IngresoSchema(Schema):
+    class Meta:
+        unknown = EXCLUDE
+
     id = fields.Int(dump_only=True)
     fecha = fields.Date(required=True)
     tratamiento_id = fields.Int(allow_none=True)
@@ -23,6 +26,9 @@ class IngresoSchema(Schema):
 
 
 class GastoOperativoSchema(Schema):
+    class Meta:
+        unknown = EXCLUDE
+
     id = fields.Int(dump_only=True)
     fecha = fields.Date(required=True)
     concepto_id = fields.Int(allow_none=True)
@@ -36,13 +42,16 @@ class GastoOperativoSchema(Schema):
 
 
 class PagoDoctorSchema(Schema):
+    class Meta:
+        unknown = EXCLUDE
+
     id = fields.Int(dump_only=True)
     fecha = fields.Date(required=True)
     especialista_id = fields.Int(allow_none=True)
     concepto = fields.Str(required=True)
     tipo = fields.Str(
-        load_default="variable",
-        validate=validate.OneOf(["fijo", "variable"]),
+        load_default="comision",
+        validate=validate.OneOf(["salario", "comision"]),
     )
     monto = fields.Float(required=True, validate=validate.Range(min=0))
     especialista_nombre = fields.Str(dump_only=True)

@@ -74,7 +74,11 @@ def registrar_compra(
 
 
 def _lotes_disponibles(tenant_id, material_id, operatorio_id):
-    material = Material.query.get(material_id)
+    material = Material.query.filter_by(
+        id=material_id, tenant_id=tenant_id
+    ).first()
+    if not material:
+        raise ValueError("Material no existe")
     q = (
         db.session.query(LoteUbicacion, Lote)
         .join(Lote, LoteUbicacion.lote_id == Lote.id)
@@ -110,12 +114,16 @@ def transferir(
         )
 
     if lote_id is not None:
+        lote = Lote.query.filter_by(
+            id=lote_id, tenant_id=tenant_id
+        ).first()
+        if not lote:
+            raise ValueError("Lote no encontrado")
         lu = LoteUbicacion.query.filter_by(
             lote_id=lote_id, operatorio_id=origen_operatorio_id
         ).first()
         if not lu or lu.cantidad_restante == 0:
             raise ValueError("Lote sin stock en la ubicación de origen")
-        lote = Lote.query.get(lote_id)
         lotes = [(lu, lote)]
     else:
         lotes = _lotes_disponibles(tenant_id, material_id, origen_operatorio_id)
@@ -181,6 +189,11 @@ def ajustar(
     su.cantidad = cantidad_nueva
 
     if lote_id:
+        lote = Lote.query.filter_by(
+            id=lote_id, tenant_id=tenant_id
+        ).first()
+        if not lote:
+            raise ValueError("Lote no encontrado")
         lu = LoteUbicacion.query.filter_by(
             lote_id=lote_id, operatorio_id=operatorio_id
         ).first()

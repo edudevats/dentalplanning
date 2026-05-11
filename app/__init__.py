@@ -9,13 +9,20 @@ def create_app(config_name=None):
         config_name = os.getenv("FLASK_ENV", "development")
 
     app = Flask(__name__)
-    app.config.from_object(config_by_name[config_name])
+    config_cls = config_by_name[config_name]
+    app.config.from_object(config_cls)
+
+    # Let config classes run boot-time validation (e.g. secret checks)
+    if hasattr(config_cls, "init_app"):
+        config_cls.init_app(app)
 
     # Init extensions
     db.init_app(app)
     migrate.init_app(app, db)
     jwt.init_app(app)
-    cors.init_app(app)
+    cors.init_app(app, resources={
+        r"/api/*": {"origins": app.config.get("CORS_ORIGINS", ["*"])}
+    })
 
     # Register blueprints
     from app.auth.routes import auth_bp

@@ -66,17 +66,38 @@
 
     <!-- DISTRIBUCION -->
     <div id="panel-distribucion" class="hidden space-y-6">
+      <!-- Bar visual -->
       <div class="bg-surface rounded-xl border border-border shadow-sm">
-        <div class="px-5 py-4 border-b border-border"><h3 class="text-sm font-semibold font-heading text-text-primary">Porcentajes de Distribucion</h3></div>
-        <div class="p-5 space-y-4">
-          <div class="flex h-8 rounded-lg overflow-hidden border border-border" id="dist-bar"></div>
-          <div class="grid grid-cols-2 sm:grid-cols-5 gap-3" id="dist-inputs"></div>
-          <div class="flex items-center justify-between px-4 py-3 rounded-lg" id="dist-total-row">
-            <span class="text-sm font-medium font-body">Total</span>
-            <span class="text-sm font-bold tabular-nums" id="dist-total-val">0.0%</span>
+        <div class="px-5 py-4 border-b border-border flex items-center justify-between">
+          <h3 class="text-sm font-semibold font-heading text-text-primary">Distribucion de Ingresos</h3>
+          <div class="flex items-center justify-between px-3 py-1.5 rounded-lg text-xs font-medium" id="dist-total-row">
+            <span class="font-body mr-2">Total:</span>
+            <span class="font-bold tabular-nums" id="dist-total-val">0.0%</span>
           </div>
         </div>
+        <div class="p-5 space-y-4">
+          <div class="flex h-8 rounded-lg overflow-hidden border border-border" id="dist-bar"></div>
+        </div>
       </div>
+
+      <!-- Category rows -->
+      <div class="bg-surface rounded-xl border border-border shadow-sm">
+        <div class="px-5 py-4 border-b border-border flex items-center justify-between">
+          <h3 class="text-sm font-semibold font-heading text-text-primary">Categorias</h3>
+          <button id="btn-add-cat" type="button"
+            class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border bg-surface hover:bg-surface-hover text-xs font-medium font-body text-text-secondary transition-colors cursor-pointer">
+            <i data-lucide="plus" class="h-3.5 w-3.5"></i> Nueva categoria
+          </button>
+        </div>
+        <div id="dist-cat-list" class="divide-y divide-border"></div>
+      </div>
+
+      <!-- Help text -->
+      <p class="text-xs text-text-muted font-body px-1">
+        Los porcentajes representan como se distribuye cada peso de ingreso mensual. La suma debe ser exactamente 100%.
+        Las categorias del sistema no se pueden eliminar pero si renombrar y recolorear.
+      </p>
+
       <div class="flex justify-end">
         <button id="btn-save-dist" class="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-accent-600 hover:bg-accent-700 text-white text-sm font-medium font-body transition-colors cursor-pointer min-h-[44px] disabled:opacity-50 disabled:cursor-not-allowed">
           <i data-lucide="save" class="h-4 w-4"></i> Guardar Distribucion
@@ -407,7 +428,258 @@ function openDeleteModal(tab, item) {
   Modal.open('modal-delete');
 }
 
+document.getElementById('modal-crud-close').addEventListener('click', () => Modal.close('modal-crud'));
+document.getElementById('modal-crud-backdrop').addEventListener('click', () => Modal.close('modal-crud'));
+document.getElementById('modal-delete-close').addEventListener('click', () => Modal.close('modal-delete'));
+document.getElementById('modal-delete-cancel').addEventListener('click', () => Modal.close('modal-delete'));
+document.getElementById('modal-delete-backdrop').addEventListener('click', () => Modal.close('modal-delete'));
+
+// ── DISTRIBUCION (dynamic categories) ────────────────────
+let distCats = [];        // array of {id, nombre, clave, color, porcentaje, es_sistema}
+let distPendingDelete = null;
+
+// ── helpers ──────────────────────────────────────────────
+function distGetTotal() {
+  return distCats.reduce((s, c) => {
+    const inp = document.getElementById('dc-pct-' + c.id);
+    return s + (inp ? (Number(inp.value) || 0) : (c.porcentaje || 0));
+  }, 0);
+}
+
+function distReadRow(cat) {
+  const pctEl  = document.getElementById('dc-pct-'   + cat.id);
+  const nomEl  = document.getElementById('dc-nom-'   + cat.id);
+  const colEl  = document.getElementById('dc-col-'   + cat.id);
+  return {
+    id:         cat.id,
+    nombre:     nomEl  ? nomEl.value  : cat.nombre,
+    color:      colEl  ? colEl.value  : cat.color,
+    porcentaje: pctEl  ? (Number(pctEl.value) || 0) : cat.porcentaje,
+  };
+}
+
+function updateDistBar() {
+  const total = distGetTotal();
+  const ok    = Math.abs(total - 100) < 0.01;
+
+  // bar
+  const bar = document.getElementById('dist-bar');
+  bar.replaceChildren();
+  distCats.forEach(c => {
+    const pctEl = document.getElementById('dc-pct-' + c.id);
+    const colEl = document.getElementById('dc-col-' + c.id);
+    const w = pctEl ? (Number(pctEl.value) || 0) : (c.porcentaje || 0);
+    const col = colEl ? colEl.value : c.color;
+    if (w <= 0) return;
+    const seg = domEl('div', 'flex items-center justify-center text-[10px] font-bold text-white transition-all duration-300');
+    seg.style.width = w + '%';
+    seg.style.backgroundColor = col;
+    seg.title = c.nombre + ': ' + w + '%';
+    seg.textContent = w >= 8 ? (w + '%') : '';
+    bar.appendChild(seg);
+  });
+
+  // total badge
+  const row = document.getElementById('dist-total-row');
+  row.className = 'flex items-center px-3 py-1.5 rounded-lg text-xs font-medium ' +
+    (ok ? 'bg-accent-50 text-accent-700' : 'bg-danger-50 text-danger-700');
+  document.getElementById('dist-total-val').textContent = total.toFixed(1) + '%';
+
+  // save btn
+  document.getElementById('btn-save-dist').disabled = !ok;
+}
+
+// ── render rows ───────────────────────────────────────────
+function buildDistList() {
+  const list = document.getElementById('dist-cat-list');
+  list.replaceChildren();
+
+  distCats.forEach(c => {
+    const row = domEl('div', 'flex items-center gap-3 px-5 py-3');
+    row.id = 'dc-row-' + c.id;
+
+    // color picker
+    const colWrap = domEl('div', 'flex-shrink-0');
+    const colInp = document.createElement('input');
+    colInp.type = 'color'; colInp.id = 'dc-col-' + c.id;
+    colInp.value = c.color || '#6b7280';
+    colInp.className = 'w-8 h-8 rounded-md border border-border cursor-pointer p-0.5';
+    colInp.title = 'Color';
+    colInp.addEventListener('input', updateDistBar);
+    colWrap.appendChild(colInp);
+
+    // nombre
+    const nomInp = document.createElement('input');
+    nomInp.type = 'text'; nomInp.id = 'dc-nom-' + c.id;
+    nomInp.value = c.nombre;
+    nomInp.className = 'flex-1 min-w-0 border border-border rounded-lg px-3 py-2 text-sm font-body bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-500';
+    if (c.es_sistema) {
+      nomInp.title = 'Categoria del sistema';
+    }
+
+    // porcentaje
+    const pctWrap = domEl('div', 'relative flex-shrink-0 w-24');
+    const pctInp = document.createElement('input');
+    pctInp.type = 'number'; pctInp.id = 'dc-pct-' + c.id;
+    pctInp.value = c.porcentaje; pctInp.step = '0.1'; pctInp.min = '0'; pctInp.max = '100';
+    pctInp.className = 'w-full border border-border rounded-lg px-3 py-2 pr-7 text-sm text-right tabular-nums focus:ring-2 focus:ring-primary-300 focus:border-primary-500 outline-none';
+    pctInp.addEventListener('input', updateDistBar);
+    const pctSuf = domEl('span', 'absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-text-muted pointer-events-none', '%');
+    pctWrap.appendChild(pctInp); pctWrap.appendChild(pctSuf);
+
+    // sistema badge / delete btn
+    const actWrap = domEl('div', 'flex-shrink-0 w-8 flex justify-center');
+    if (c.es_sistema) {
+      const badge = domEl('span', 'text-[10px] text-text-muted font-body', 'SYS');
+      badge.title = 'Categoria del sistema';
+      actWrap.appendChild(badge);
+    } else {
+      const delBtn = domEl('button', 'p-1.5 rounded-md text-text-muted hover:text-danger-600 hover:bg-danger-50 transition-colors cursor-pointer');
+      delBtn.type = 'button'; delBtn.title = 'Eliminar categoria';
+      delBtn.appendChild(domIcon('trash-2', 'h-4 w-4'));
+      delBtn.addEventListener('click', () => openDistDeleteModal(c));
+      actWrap.appendChild(delBtn);
+    }
+
+    row.appendChild(colWrap);
+    row.appendChild(nomInp);
+    row.appendChild(pctWrap);
+    row.appendChild(actWrap);
+    list.appendChild(row);
+  });
+
+  lucide.createIcons();
+  updateDistBar();
+}
+
+async function loadDist() {
+  try {
+    distCats = await API.get('/ajustes/distribucion/categorias');
+    buildDistList();
+  } catch { Toast.error('Error al cargar distribucion'); }
+}
+
+// ── save ──────────────────────────────────────────────────
+document.getElementById('btn-save-dist').addEventListener('click', async () => {
+  const payload = { categorias: distCats.map(c => distReadRow(c)) };
+  const total = payload.categorias.reduce((s, c) => s + c.porcentaje, 0);
+  if (Math.abs(total - 100) > 0.01) {
+    Toast.error('Los porcentajes deben sumar 100%. Total: ' + total.toFixed(1) + '%');
+    return;
+  }
+  try {
+    distCats = await API.put('/ajustes/distribucion/categorias/batch', payload);
+    buildDistList();
+    Toast.success('Distribucion guardada');
+  } catch (e) { Toast.error(e?.error || 'Error al guardar'); }
+});
+
+// ── add new category ──────────────────────────────────────
+document.getElementById('btn-add-cat').addEventListener('click', () => {
+  openDistAddModal();
+});
+
+function openDistAddModal() {
+  const body = document.getElementById('modal-crud-body');
+  body.replaceChildren();
+  document.getElementById('modal-crud-title').textContent = 'Nueva Categoria';
+
+  // nombre
+  const nomWrap = domEl('div', '');
+  nomWrap.appendChild(domEl('label', 'block text-sm font-medium text-text-secondary mb-1 font-body', 'Nombre'));
+  const nomInp = document.createElement('input');
+  nomInp.id = 'new-cat-nom'; nomInp.type = 'text';
+  nomInp.className = 'block w-full rounded-lg border border-border px-3 py-2.5 text-sm font-body bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-500 min-h-[44px]';
+  nomInp.placeholder = 'Ej. Inversión';
+  nomWrap.appendChild(nomInp);
+
+  // porcentaje
+  const pctWrap = domEl('div', '');
+  pctWrap.appendChild(domEl('label', 'block text-sm font-medium text-text-secondary mb-1 font-body', 'Porcentaje (%)'));
+  const pctInp = document.createElement('input');
+  pctInp.id = 'new-cat-pct'; pctInp.type = 'number'; pctInp.step = '0.1'; pctInp.min = '0'; pctInp.max = '100'; pctInp.value = '0';
+  pctInp.className = 'block w-full rounded-lg border border-border px-3 py-2.5 text-sm font-body bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-500 min-h-[44px]';
+  pctWrap.appendChild(pctInp);
+
+  // color
+  const colWrap = domEl('div', '');
+  colWrap.appendChild(domEl('label', 'block text-sm font-medium text-text-secondary mb-1 font-body', 'Color'));
+  const colRow = domEl('div', 'flex items-center gap-3');
+  const colInp = document.createElement('input');
+  colInp.id = 'new-cat-col'; colInp.type = 'color'; colInp.value = '#6b7280';
+  colInp.className = 'w-10 h-10 rounded-md border border-border cursor-pointer p-0.5';
+  colRow.appendChild(colInp);
+  colRow.appendChild(domEl('span', 'text-xs text-text-muted font-body', 'Elige un color para la categoria'));
+  colWrap.appendChild(colRow);
+
+  // hint: available %
+  const curTotal = distGetTotal();
+  const avail = Math.max(0, 100 - curTotal).toFixed(1);
+  const hint = domEl('p', 'text-xs text-text-muted font-body', `Porcentaje disponible: ${avail}%`);
+
+  const footer = domEl('div', 'flex justify-end gap-3 pt-2');
+  const cancelBtn = domEl('button', 'inline-flex items-center gap-2 px-4 py-2.5 rounded-lg border border-border bg-surface hover:bg-surface-hover text-sm font-medium font-body text-text-primary transition-colors cursor-pointer min-h-[44px]', 'Cancelar');
+  cancelBtn.type = 'button';
+  cancelBtn.addEventListener('click', () => Modal.close('modal-crud'));
+  const saveBtn = domEl('button', 'inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-accent-600 hover:bg-accent-700 text-white text-sm font-medium font-body transition-colors cursor-pointer min-h-[44px]');
+  saveBtn.type = 'button';
+  saveBtn.appendChild(domIcon('save', 'h-4 w-4'));
+  saveBtn.appendChild(domEl('span', '', 'Agregar'));
+  saveBtn.addEventListener('click', saveNewCat);
+  footer.appendChild(cancelBtn);
+  footer.appendChild(saveBtn);
+
+  body.appendChild(nomWrap);
+  body.appendChild(pctWrap);
+  body.appendChild(colWrap);
+  body.appendChild(hint);
+  body.appendChild(footer);
+
+  Modal.open('modal-crud');
+  lucide.createIcons();
+  nomInp.focus();
+}
+
+async function saveNewCat() {
+  const nombre     = document.getElementById('new-cat-nom')?.value?.trim();
+  const porcentaje = Number(document.getElementById('new-cat-pct')?.value) || 0;
+  const color      = document.getElementById('new-cat-col')?.value || '#6b7280';
+
+  if (!nombre) { Toast.error('El nombre es requerido'); return; }
+
+  try {
+    const newCat = await API.post('/ajustes/distribucion/categorias', { nombre, porcentaje, color });
+    distCats.push(newCat);
+    Modal.close('modal-crud');
+    buildDistList();
+    Toast.success('Categoria agregada');
+  } catch (e) { Toast.error(e?.error || 'Error al agregar categoria'); }
+}
+
+// ── delete custom category ────────────────────────────────
+function openDistDeleteModal(cat) {
+  distPendingDelete = cat;
+  document.getElementById('modal-delete-title').textContent = 'Eliminar Categoria';
+  document.getElementById('modal-delete-msg').textContent =
+    `¿Estas seguro de eliminar la categoria "${cat.nombre}"? Los reportes existentes no se veran afectados pero esta categoria dejara de estar disponible.`;
+  Modal.open('modal-delete');
+}
+
 document.getElementById('modal-delete-confirm').addEventListener('click', async () => {
+  // Check if it's a dist delete or a crud delete
+  if (distPendingDelete) {
+    const cat = distPendingDelete;
+    distPendingDelete = null;
+    try {
+      await API.delete('/ajustes/distribucion/categorias/' + cat.id);
+      distCats = distCats.filter(c => c.id !== cat.id);
+      Modal.close('modal-delete');
+      buildDistList();
+      Toast.success('Categoria eliminada');
+    } catch (e) { Toast.error(e?.error || 'Error al eliminar'); }
+    return;
+  }
+  // original crud delete
   const { _deleteItem: item, _deleteTab: tab } = crudState;
   if (!item || !tab) return;
   try {
@@ -416,82 +688,6 @@ document.getElementById('modal-delete-confirm').addEventListener('click', async 
     Modal.close('modal-delete');
     loadCrud(tab);
   } catch (e) { Toast.error(e?.error || 'Error al eliminar'); }
-});
-
-document.getElementById('modal-crud-close').addEventListener('click', () => Modal.close('modal-crud'));
-document.getElementById('modal-crud-backdrop').addEventListener('click', () => Modal.close('modal-crud'));
-document.getElementById('modal-delete-close').addEventListener('click', () => Modal.close('modal-delete'));
-document.getElementById('modal-delete-cancel').addEventListener('click', () => Modal.close('modal-delete'));
-document.getElementById('modal-delete-backdrop').addEventListener('click', () => Modal.close('modal-delete'));
-
-// ── DISTRIBUCION ──────────────────────────────────────────
-const DIST_FIELDS = [
-  { key: 'pct_sueldo',           label: 'Sueldo',          color: '#0891b2' },
-  { key: 'pct_bonos',            label: 'Bonos',           color: '#059669' },
-  { key: 'pct_mcmp',             label: 'MCMP',            color: '#f59e0b' },
-  { key: 'pct_fondo_emergencia', label: 'Fondo Emergencia',color: '#8b5cf6' },
-  { key: 'pct_marketing',        label: 'Marketing',       color: '#ec4899' },
-];
-
-let distData = null;
-
-(function buildDistInputs() {
-  const inp = document.getElementById('dist-inputs');
-  DIST_FIELDS.forEach(f => {
-    const wrap = domEl('div', '');
-    const lbl = domEl('label', 'block text-xs font-medium text-text-secondary mb-1 font-body', f.label);
-    const rel = domEl('div', 'relative');
-    const input = document.createElement('input');
-    input.id = 'dist-' + f.key; input.type = 'number'; input.step = '0.1'; input.min = '0'; input.max = '100';
-    input.className = 'w-full border border-border rounded-lg px-3 py-2 pr-8 text-sm text-right tabular-nums focus:ring-2 focus:ring-primary-300 focus:border-primary-500 outline-none';
-    input.addEventListener('input', updateDistBar);
-    const pct = domEl('span', 'absolute right-3 top-1/2 -translate-y-1/2 text-xs text-text-muted', '%');
-    rel.appendChild(input); rel.appendChild(pct);
-    wrap.appendChild(lbl); wrap.appendChild(rel);
-    inp.appendChild(wrap);
-  });
-})();
-
-function updateDistBar() {
-  const total = DIST_FIELDS.reduce((s, f) => s + (Number(document.getElementById('dist-' + f.key)?.value) || 0), 0);
-  const bar = document.getElementById('dist-bar');
-  bar.replaceChildren();
-  DIST_FIELDS.forEach(f => {
-    const w = Number(document.getElementById('dist-' + f.key)?.value) || 0;
-    if (w <= 0) return;
-    const seg = domEl('div', 'flex items-center justify-center text-[10px] font-bold text-white transition-all duration-300');
-    seg.style.width = w + '%'; seg.style.backgroundColor = f.color;
-    seg.title = f.label + ': ' + w + '%';
-    seg.textContent = w >= 8 ? (w + '%') : '';
-    bar.appendChild(seg);
-  });
-  const ok = Math.abs(total - 100) < 0.01;
-  const row = document.getElementById('dist-total-row');
-  row.className = 'flex items-center justify-between px-4 py-3 rounded-lg ' + (ok ? 'bg-accent-50 text-accent-700' : 'bg-danger-50 text-danger-700');
-  document.getElementById('dist-total-val').textContent = total.toFixed(1) + '%';
-  document.getElementById('btn-save-dist').disabled = !ok;
-}
-
-async function loadDist() {
-  try {
-    distData = await API.get('/ajustes/distribucion');
-    DIST_FIELDS.forEach(f => {
-      const el = document.getElementById('dist-' + f.key);
-      if (el) el.value = distData[f.key] ?? 0;
-    });
-    updateDistBar();
-  } catch { Toast.error('Error al cargar distribucion'); }
-}
-
-document.getElementById('btn-save-dist').addEventListener('click', async () => {
-  const payload = {};
-  DIST_FIELDS.forEach(f => { payload[f.key] = Number(document.getElementById('dist-' + f.key)?.value) || 0; });
-  const total = Object.values(payload).reduce((s, v) => s + v, 0);
-  if (Math.abs(total - 100) > 0.01) { Toast.error('Los porcentajes deben sumar 100%'); return; }
-  try {
-    distData = await API.put('/ajustes/distribucion', payload);
-    Toast.success('Distribucion guardada');
-  } catch (e) { Toast.error(e?.error || 'Error al guardar'); }
 });
 </script>
 {% endblock %}

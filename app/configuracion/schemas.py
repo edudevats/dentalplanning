@@ -1,7 +1,10 @@
-from marshmallow import Schema, fields, validate
+from marshmallow import Schema, fields, validate, EXCLUDE
 
 
 class ConfigSchema(Schema):
+    class Meta:
+        unknown = EXCLUDE
+
     id = fields.Int(dump_only=True)
     gastos_fijos = fields.Float(validate=validate.Range(min=0))
     horas_lunes = fields.Float(validate=validate.Range(min=0, max=24))
