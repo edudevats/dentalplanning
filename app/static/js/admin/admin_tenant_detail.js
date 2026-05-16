@@ -155,13 +155,21 @@
 
     const nameInput = inputEl('text', 'name', tenant.name);
     const emailInput = inputEl('email', 'contact_email', tenant.contact_email || '');
-    const planInput = inputEl('text', 'plan', tenant.plan || '');
 
     const grid = document.createElement('div');
     grid.className = 'grid grid-cols-1 md:grid-cols-2 gap-4';
     grid.appendChild(buildField('Nombre', nameInput));
     grid.appendChild(buildField('Email de contacto', emailInput));
-    grid.appendChild(buildField('Plan (etiqueta)', planInput));
+
+    const planDisplay = document.createElement('div');
+    planDisplay.className = 'px-3 py-2 rounded-lg bg-cs-surface-container text-sm text-cs-on-surface';
+    if (tenant.subscription && tenant.subscription.plan_nombre) {
+      planDisplay.textContent = tenant.subscription.plan_nombre;
+    } else {
+      planDisplay.textContent = tenant.plan || 'Sin plan asignado';
+      planDisplay.classList.add('text-cs-on-surface-var');
+    }
+    grid.appendChild(buildField('Plan actual', planDisplay));
     card.appendChild(grid);
 
     const saveBtn = document.createElement('button');
@@ -172,7 +180,6 @@
         const body = {
           name: nameInput.value.trim(),
           contact_email: emailInput.value.trim() || null,
-          plan: planInput.value.trim() || undefined,
         };
         await adminApi.put(`/tenants/${tenantId}`, body);
         Toast.show('Cambios guardados', 'success');
@@ -267,26 +274,68 @@
     subCard.appendChild(sH);
 
     if (tenant.subscription) {
+      const sub = tenant.subscription;
+      const estadoColors = {
+        activa: 'text-green-400',
+        gracia: 'text-yellow-400',
+        vencida: 'text-red-400',
+        cancelada: 'text-cs-on-surface-var',
+      };
+
       const grid = document.createElement('div');
       grid.className = 'grid grid-cols-2 md:grid-cols-4 gap-3 text-sm';
-      [
-        ['Plan', tenant.subscription.plan_nombre || '—'],
-        ['Estado', tenant.subscription.estado || '—'],
-        ['Inicio', formatDate(tenant.subscription.inicio)],
-        ['Próximo cobro', formatDate(tenant.subscription.proximo_cobro)],
-      ].forEach(([k, v]) => {
+
+      const fields = [
+        ['Plan', sub.plan_nombre || '—'],
+        ['Estado', sub.estado || '—'],
+        ['Inicio', formatDate(sub.inicio)],
+        ['Próximo cobro', formatDate(sub.proximo_cobro)],
+      ];
+      if (sub.estado === 'gracia' && sub.grace_expires_at) {
+        fields.push(['Gracia expira', formatDate(sub.grace_expires_at)]);
+      }
+
+      fields.forEach(([k, v]) => {
         const cell = document.createElement('div');
         cell.className = 'rounded-md bg-cs-surface-container px-3 py-2';
         const lbl = document.createElement('p');
         lbl.className = 'text-[10px] font-semibold uppercase tracking-wide text-cs-on-surface-var';
         lbl.textContent = k;
         const val = document.createElement('p');
-        val.className = 'text-sm text-cs-on-surface';
+        val.className = `text-sm ${k === 'Estado' ? (estadoColors[v] || 'text-cs-on-surface') : 'text-cs-on-surface'} font-semibold`;
         val.textContent = v;
         cell.appendChild(lbl); cell.appendChild(val);
         grid.appendChild(cell);
       });
       subCard.appendChild(grid);
+
+      // Module badges
+      const mods = sub.plan_modulos || [];
+      if (mods.length > 0) {
+        const modRow = document.createElement('div');
+        modRow.className = 'flex items-center gap-2 pt-1';
+        const modLabel = document.createElement('span');
+        modLabel.className = 'text-[10px] font-semibold uppercase tracking-wide text-cs-on-surface-var';
+        modLabel.textContent = 'Módulos:';
+        modRow.appendChild(modLabel);
+        const MOD_LABELS = { contable: 'Contable', inventario: 'Inventario', finanzas_personales: 'Finanzas' };
+        mods.forEach(m => {
+          const badge = document.createElement('span');
+          badge.className = 'inline-flex px-2 py-0.5 rounded-md text-[10px] font-semibold bg-cs-primary-container text-cs-on-primary-container';
+          badge.textContent = MOD_LABELS[m] || m;
+          modRow.appendChild(badge);
+        });
+        subCard.appendChild(modRow);
+      }
+
+      // Change plan button
+      const changePlanBtn = document.createElement('button');
+      changePlanBtn.className = 'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-cs-surface-container text-cs-on-surface text-xs font-semibold hover:bg-cs-surface-container-high transition-colors cursor-pointer mt-1';
+      const cpIc = document.createElement('i'); cpIc.setAttribute('data-lucide', 'repeat'); cpIc.className = 'h-3 w-3';
+      changePlanBtn.appendChild(cpIc);
+      changePlanBtn.appendChild(document.createTextNode('Cambiar plan'));
+      changePlanBtn.addEventListener('click', () => openChangePlan(sub));
+      subCard.appendChild(changePlanBtn);
     } else {
       const empty = document.createElement('p');
       empty.className = 'text-sm text-cs-on-surface-var';
@@ -310,6 +359,17 @@
     newBtn.appendChild(document.createTextNode('Registrar pago'));
     newBtn.addEventListener('click', openNewPayment);
     pH.appendChild(newBtn);
+
+    if (tenant.subscription) {
+      const clipBtn = document.createElement('button');
+      clipBtn.className = 'inline-flex items-center gap-2 px-3 py-1.5 rounded-md bg-cs-surface-container-high text-cs-on-surface text-xs font-semibold hover:opacity-90 transition-opacity cursor-pointer';
+      const clipIc = document.createElement('i'); clipIc.setAttribute('data-lucide', 'credit-card'); clipIc.className = 'h-3 w-3';
+      clipBtn.appendChild(clipIc);
+      clipBtn.appendChild(document.createTextNode('Cobrar con Clip'));
+      clipBtn.addEventListener('click', onChargeClip);
+      pH.appendChild(clipBtn);
+    }
+
     payCard.appendChild(pH);
 
     const pays = await adminApi.get(`/payments?tenant_id=${tenantId}`);
@@ -325,7 +385,7 @@
       t.className = 'w-full text-sm';
       t.appendChild(buildHead([
         { label: 'Fecha' }, { label: 'Monto' }, { label: 'Método' },
-        { label: 'Periodo' }, { label: 'Comentarios' }, { label: '' },
+        { label: 'Estado' }, { label: 'Periodo' }, { label: 'Comentarios' }, { label: '' },
       ]));
       const tb = document.createElement('tbody');
       pays.payments.forEach(p => {
@@ -334,16 +394,27 @@
         const periodo = (p.periodo_inicio && p.periodo_fin)
           ? `${formatDate(p.periodo_inicio)} – ${formatDate(p.periodo_fin)}` : '—';
         const cells = [
-          formatDate(p.fecha),
-          currency(p.monto),
-          p.metodo,
-          periodo,
-          p.comentarios || '—',
+          { v: formatDate(p.fecha) },
+          { v: currency(p.monto) },
+          { v: p.metodo },
+          { v: p.clip_status || '—', isClip: p.metodo === 'clip' && p.clip_status },
+          { v: periodo },
+          { v: p.comentarios || '—' },
         ];
-        cells.forEach(v => {
+        cells.forEach(({ v, isClip }) => {
           const td = document.createElement('td');
           td.className = 'px-3 py-2 text-cs-on-surface';
-          td.textContent = v;
+          if (isClip) {
+            const badge = document.createElement('span');
+            const color = v === 'PAID' ? 'bg-green-100 text-green-800'
+              : v === 'PENDING' ? 'bg-yellow-100 text-yellow-800'
+              : 'bg-red-100 text-red-800';
+            badge.className = `inline-flex px-2 py-0.5 rounded-md text-[10px] font-semibold ${color}`;
+            badge.textContent = v;
+            td.appendChild(badge);
+          } else {
+            td.textContent = v;
+          }
           tr.appendChild(td);
         });
         const tdDel = document.createElement('td');
@@ -386,6 +457,7 @@
       { value: 'transferencia', label: 'Transferencia' },
       { value: 'efectivo', label: 'Efectivo' },
       { value: 'tarjeta', label: 'Tarjeta' },
+      { value: 'clip', label: 'Clip' },
       { value: 'otro', label: 'Otro' },
     ]);
     const pIni = inputEl('date', 'periodo_inicio', '');
@@ -420,6 +492,64 @@
         Toast.show('Pago registrado', 'success');
         await loadTenant();
         await renderBilling();
+      } },
+    });
+  }
+
+  async function onChargeClip() {
+    if (!tenant.subscription) {
+      Toast.show('La clínica necesita una suscripción activa para cobrar.', 'warning');
+      return;
+    }
+    const planName = tenant.subscription.plan_nombre || tenant.plan || '';
+    const ok = await confirmAction({
+      title: `Cobrar con Clip — ${tenant.name}`,
+      message: `Se generará un link de pago por el monto del plan ${planName}. El cliente recibirá un link para pagar con tarjeta.`,
+      confirmLabel: 'Generar link de pago',
+    });
+    if (!ok) return;
+
+    try {
+      const result = await adminApi.post(`/tenants/${tenantId}/charge`, {});
+      const url = result.clip_url;
+      if (url) {
+        window.open(url, '_blank');
+        Toast.show('Link de pago generado. Se abrió en nueva pestaña.', 'success');
+      } else {
+        Toast.show('Link generado pero sin URL de redirección.', 'warning');
+      }
+      await loadTenant();
+      await renderBilling();
+    } catch (err) {
+      Toast.show(err.message || 'Error al generar cobro Clip', 'error');
+    }
+  }
+
+  async function openChangePlan(sub) {
+    const plans = (await loadPlans()).filter(p => p.activo);
+    if (plans.length === 0) { Toast.show('No hay planes activos', 'warning'); return; }
+    const wrap = document.createElement('div');
+    wrap.className = 'space-y-4';
+    const info = document.createElement('p');
+    info.className = 'text-sm text-cs-on-surface-var';
+    info.textContent = `Plan actual: ${sub.plan_nombre || '—'}. Selecciona el nuevo plan:`;
+    wrap.appendChild(info);
+    const planSel = selectEl('plan_id', plans.map(p => ({ value: p.id, label: `${p.nombre} — ${currency(p.precio_mensual)}/mes` })));
+    planSel.value = String(sub.plan_id);
+    wrap.appendChild(buildField('Nuevo plan', planSel));
+    openModal({
+      title: `Cambiar plan — ${tenant.name}`,
+      content: wrap,
+      primary: { label: 'Cambiar plan', onClick: async () => {
+        const newPlanId = parseInt(planSel.value, 10);
+        if (newPlanId === sub.plan_id) throw new Error('Selecciona un plan diferente.');
+        await adminApi.put(`/subscriptions/${sub.id}`, { plan_id: newPlanId });
+        const newPlan = plans.find(p => p.id === newPlanId);
+        if (newPlan) {
+          await adminApi.put(`/tenants/${tenantId}`, { plan: newPlan.nombre });
+        }
+        Toast.show('Plan actualizado', 'success');
+        await refreshAll();
       } },
     });
   }

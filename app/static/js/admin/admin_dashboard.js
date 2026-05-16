@@ -31,6 +31,26 @@
       icon: 'sparkles',
       hint: `${data.total_users} usuarios totales`,
     }));
+
+    if (data.en_gracia > 0) {
+      grid.appendChild(kpiCard({
+        label: 'En gracia',
+        value: data.en_gracia,
+        icon: 'clock',
+        hint: 'Cobro pendiente, en periodo de gracia',
+      }));
+    }
+
+    if (data.subs_by_plan && data.subs_by_plan.length > 0) {
+      const planHint = data.subs_by_plan.map(s => `${s.plan}: ${s.count}`).join(', ');
+      grid.appendChild(kpiCard({
+        label: 'Suscripciones',
+        value: data.subs_by_plan.reduce((sum, s) => sum + s.count, 0),
+        icon: 'credit-card',
+        hint: planHint,
+      }));
+    }
+
     if (typeof lucide !== 'undefined') lucide.createIcons();
   }
 
@@ -98,6 +118,13 @@
         value: data.en_mora,
         href: '/admin/tenants',
         critical: data.en_mora > 0,
+      },
+      {
+        icon: 'clock',
+        label: 'En periodo de gracia',
+        value: data.en_gracia,
+        href: '/admin/tenants',
+        critical: data.en_gracia > 0,
       },
     ];
 

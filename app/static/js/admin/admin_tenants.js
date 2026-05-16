@@ -57,11 +57,43 @@
       const tdStatus = document.createElement('td');
       tdStatus.className = 'px-4 py-3.5';
       tdStatus.appendChild(statusBadge(t.status));
+      if (t.subscription && t.subscription.estado && t.subscription.estado !== 'activa') {
+        const subBadge = document.createElement('span');
+        const subColors = {
+          gracia: 'bg-yellow-500/15 text-yellow-400',
+          vencida: 'bg-red-500/15 text-red-400',
+          cancelada: 'bg-cs-surface-container text-cs-on-surface-var',
+        };
+        subBadge.className = `inline-flex ml-1 px-1.5 py-0.5 rounded text-[9px] font-bold uppercase ${subColors[t.subscription.estado] || ''}`;
+        subBadge.textContent = t.subscription.estado;
+        tdStatus.appendChild(subBadge);
+      }
 
-      // Plan
+      // Plan + modules
       const tdPlan = document.createElement('td');
-      tdPlan.className = 'px-4 py-3.5 text-cs-on-surface';
-      tdPlan.textContent = t.plan || '—';
+      tdPlan.className = 'px-4 py-3.5';
+      if (t.subscription && t.subscription.plan_nombre) {
+        const planName = document.createElement('p');
+        planName.className = 'font-semibold text-cs-on-surface text-xs';
+        planName.textContent = t.subscription.plan_nombre;
+        tdPlan.appendChild(planName);
+        const mods = t.subscription.plan_modulos || [];
+        if (mods.length > 0) {
+          const modWrap = document.createElement('div');
+          modWrap.className = 'flex flex-wrap gap-0.5 mt-0.5';
+          const MOD_LABELS = { contable: 'Cont', inventario: 'Inv', finanzas_personales: 'Fin' };
+          mods.forEach(m => {
+            const badge = document.createElement('span');
+            badge.className = 'inline-flex px-1.5 py-0 rounded text-[9px] font-semibold bg-cs-primary-container text-cs-on-primary-container';
+            badge.textContent = MOD_LABELS[m] || m;
+            modWrap.appendChild(badge);
+          });
+          tdPlan.appendChild(modWrap);
+        }
+      } else {
+        tdPlan.textContent = t.plan || '—';
+        tdPlan.classList.add('text-cs-on-surface-var');
+      }
 
       // Users
       const tdUsers = document.createElement('td');

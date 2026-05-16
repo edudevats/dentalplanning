@@ -16,6 +16,7 @@ from app.middleware.tenant import require_auth, require_role
 from app.middleware.rate_limit import rate_limit
 from app.configuracion.models import ConfigConsultorio
 from app.ajustes.models import DistribucionConfig
+from app.superadmin.models import Plan, Subscription, Payment, SUBSCRIPTION_ACTIVA
 
 auth_bp = Blueprint("auth", __name__, url_prefix="/api/v1/auth")
 
@@ -27,9 +28,31 @@ _LOGIN_STATUS_MESSAGES = {
 }
 
 
+@auth_bp.route("/plans", methods=["GET"])
+def public_plans():
+    plans = Plan.query.filter_by(activo=True, publico=True).order_by(Plan.precio_mensual.asc()).all()
+    return jsonify({
+        "plans": [
+            {
+                "id": p.id,
+                "nombre": p.nombre,
+                "precio_mensual": p.precio_mensual,
+                "descripcion": p.descripcion,
+                "modulos": p.modulos or [],
+                "es_temporal": p.es_temporal,
+                "dias_expiracion": p.dias_expiracion,
+            }
+            for p in plans
+        ]
+    })
+
+
 @auth_bp.route("/register", methods=["POST"])
 @rate_limit(max_calls=3, period_seconds=60)
 def register():
+    from datetime import date, timedelta
+    from app.clip.service import create_checkout_link, ClipAPIError
+
     schema = RegisterSchema()
     data = schema.load(request.get_json())
 
@@ -42,12 +65,25 @@ def register():
     if User.query.filter_by(email=data["email"]).first():
         return jsonify({"error": "No se pudo completar el registro"}), 409
 
+    plan = Plan.query.get(data["plan_id"])
+    if not plan or not plan.activo:
+        return jsonify({"error": "Plan inválido"}), 400
+
+    is_paid = plan.precio_mensual > 0
+    if is_paid:
+        initial_status = TENANT_STATUS_ACTIVE
+        initial_active = True
+    else:
+        initial_status = TENANT_STATUS_PENDING
+        initial_active = False
+
     tenant = Tenant(
         name=data["tenant_name"],
         slug=data["tenant_slug"],
-        status=TENANT_STATUS_PENDING,
+        status=initial_status,
         contact_email=data.get("contact_email") or data["email"],
-        is_active=False,
+        is_active=initial_active,
+        plan=plan.nombre,
     )
     db.session.add(tenant)
     db.session.flush()
@@ -67,17 +103,73 @@ def register():
     distribucion = DistribucionConfig(tenant_id=tenant.id)
     db.session.add(distribucion)
 
+    today = date.today()
+    if plan.es_temporal and plan.dias_expiracion:
+        proximo_cobro = today + timedelta(days=plan.dias_expiracion)
+    else:
+        proximo_cobro = today + timedelta(days=30)
+
+    sub = Subscription(
+        tenant_id=tenant.id,
+        plan_id=plan.id,
+        inicio=today,
+        proximo_cobro=proximo_cobro,
+        estado=SUBSCRIPTION_ACTIVA,
+    )
+    db.session.add(sub)
+    db.session.flush()
+
+    clip_url = None
+    if is_paid:
+        try:
+            base_url = request.host_url.rstrip("/")
+            result = create_checkout_link(
+                amount=plan.precio_mensual,
+                description=f"Suscripción {plan.nombre} — {tenant.name}",
+                webhook_url=f"{base_url}/api/v1/clip/webhook",
+                redirect_url=f"{base_url}/registro-exitoso?tenant_id={tenant.id}",
+                metadata={"tenant_id": tenant.id, "subscription_id": sub.id, "is_registration": True},
+            )
+            clip_id = result.get("payment_request_id", "")
+            clip_url = result.get("payment_request_url", "")
+
+            payment = Payment(
+                tenant_id=tenant.id,
+                subscription_id=sub.id,
+                fecha=today,
+                monto=plan.precio_mensual,
+                metodo="clip",
+                periodo_inicio=today,
+                periodo_fin=today + timedelta(days=30),
+                comentarios=f"Pago inicial — {plan.nombre}",
+                registrado_por_id=user.id,
+                clip_payment_id=clip_id,
+                clip_status="PENDING",
+            )
+            db.session.add(payment)
+            sub.clip_checkout_id = clip_id
+        except ClipAPIError:
+            pass
+
     db.session.commit()
 
+    access_token = create_access_token(identity=str(user.id))
+
+    msg = "Cuenta creada. Completa el pago para activar tu acceso." if is_paid else \
+          "Cuenta creada. Tu acceso será activado por el administrador."
+
     return jsonify({
-        "message": "Solicitud recibida. Revisaremos tu cuenta y te contactaremos pronto.",
+        "message": msg,
+        "clip_url": clip_url,
+        "access_token": access_token,
         "tenant": {
             "id": tenant.id,
             "name": tenant.name,
             "slug": tenant.slug,
             "status": tenant.status,
+            "plan": plan.nombre,
         },
-    }), 202
+    }), 201
 
 
 @auth_bp.route("/login", methods=["POST"])
@@ -173,7 +265,22 @@ def change_password():
 @auth_bp.route("/me", methods=["GET"])
 @require_auth
 def me():
+    from datetime import date as date_cls
+
     user = g.current_user
+    sub = user.tenant.subscription
+    trial_info = None
+    if sub and sub.plan and sub.plan.es_temporal:
+        expira = sub.proximo_cobro
+        dias_restantes = (expira - date_cls.today()).days if expira else 0
+        trial_info = {
+            "es_temporal": True,
+            "dias_expiracion": sub.plan.dias_expiracion,
+            "expira": expira.isoformat() if expira else None,
+            "dias_restantes": max(dias_restantes, 0),
+            "expirado": dias_restantes <= 0,
+        }
+
     return jsonify({
         "id": user.id,
         "email": user.email,
@@ -186,5 +293,7 @@ def me():
             "slug": user.tenant.slug,
             "plan": user.tenant.plan,
             "status": user.tenant.status,
+            "allowed_modules": user.tenant.allowed_modules,
         },
+        "trial": trial_info,
     })

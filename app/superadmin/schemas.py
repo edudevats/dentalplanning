@@ -11,6 +11,10 @@ class PlanSchema(Schema):
     precio_mensual = fields.Float(required=True, validate=validate.Range(min=0))
     descripcion = fields.Str(load_default=None, validate=validate.Length(max=500))
     activo = fields.Bool(load_default=True)
+    modulos = fields.List(fields.Str(), load_default=[])
+    publico = fields.Bool(load_default=True)
+    es_temporal = fields.Bool(load_default=False)
+    dias_expiracion = fields.Int(load_default=None, allow_none=True, validate=validate.Range(min=1))
 
 
 class ApproveTenantSchema(Schema):
@@ -42,6 +46,8 @@ class PaymentSchema(Schema):
     periodo_inicio = fields.Date(load_default=None)
     periodo_fin = fields.Date(load_default=None)
     comentarios = fields.Str(load_default=None, validate=validate.Length(max=500))
+    clip_payment_id = fields.Str(dump_only=True)
+    clip_status = fields.Str(dump_only=True)
 
 
 class TenantNoteSchema(Schema):

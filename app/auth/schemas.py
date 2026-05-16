@@ -21,6 +21,7 @@ class RegisterSchema(Schema):
     password = fields.Str(required=True, validate=validate.Length(min=8))
     name = fields.Str(required=True, validate=validate.Length(min=2, max=200))
     contact_email = fields.Email(required=False, load_default=None)
+    plan_id = fields.Int(required=True)
 
     @validates("password")
     def validate_password(self, value, **kwargs):

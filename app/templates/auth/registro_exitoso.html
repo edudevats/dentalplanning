@@ -1,0 +1,149 @@
+{% extends "base.html" %}
+{% block title %}Registro exitoso — Dental Planning{% endblock %}
+
+{% block body %}
+<script>document.documentElement.style.visibility = 'visible';</script>
+<div class="min-h-screen flex">
+  <div class="flex-1 flex items-center justify-center px-6 py-12 bg-surface">
+    <div class="w-full max-w-lg text-center">
+      <div class="mb-6 flex items-center justify-center gap-2">
+        <img src="{{ url_for('static', filename='imagenes/02-fondoblanco.jpg.jpeg') }}" alt="Logo" class="h-10 w-10 object-contain rounded-md" />
+        <span class="text-2xl font-bold font-heading text-primary-800">Dental Planning</span>
+      </div>
+
+      <div id="status-card" class="rounded-2xl border border-border bg-white p-8 shadow-sm">
+        <div id="icon-pending" class="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-warning-50">
+          <svg class="h-8 w-8 text-warning-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+          </svg>
+        </div>
+        <div id="icon-active" class="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-accent-50 hidden">
+          <svg class="h-8 w-8 text-accent-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
+          </svg>
+        </div>
+
+        <h1 id="title-text" class="text-2xl font-bold font-heading text-text-primary mb-2">Verificando tu pago...</h1>
+        <p id="desc-text" class="text-text-secondary text-sm mb-6">
+          Estamos confirmando tu pago con Clip. Esto puede tomar unos segundos.
+        </p>
+
+        <div id="spinner" class="flex justify-center mb-6">
+          <div class="h-8 w-8 animate-spin rounded-full border-4 border-primary-200 border-t-primary-600"></div>
+        </div>
+
+        <div id="action-buttons" class="hidden space-y-3">
+          <a href="/login" class="block w-full rounded-lg bg-primary-600 px-4 py-3 text-sm font-semibold text-white hover:bg-primary-700 transition-colors">
+            Iniciar sesion
+          </a>
+          <p class="text-xs text-text-muted">
+            Tu cuenta esta lista. Inicia sesion para acceder a tu consultorio.
+          </p>
+        </div>
+
+        <div id="pending-info" class="hidden rounded-lg bg-warning-50 border border-warning-100 p-4">
+          <p class="text-sm text-warning-600 font-medium mb-1">Pago pendiente</p>
+          <p class="text-xs text-text-secondary">
+            No hemos recibido la confirmacion de pago aun. Si ya realizaste el pago, espera unos minutos y recarga esta pagina.
+            Tu cuenta se activara automaticamente al confirmar el pago.
+          </p>
+          <button onclick="location.reload()" class="mt-3 text-sm font-semibold text-primary-600 hover:text-primary-700 cursor-pointer">
+            Verificar de nuevo
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="hidden lg:flex lg:flex-1 bg-gradient-to-br from-primary-700 to-primary-900 items-center justify-center p-12">
+    <div class="max-w-md text-center">
+      <img src="{{ url_for('static', filename='imagenes/02-fondoblanco.jpg.jpeg') }}" alt="Logo" class="mx-auto h-24 w-24 object-contain rounded-xl shadow-lg mb-8" />
+      <h2 class="text-3xl font-bold font-heading text-white mb-4">Bienvenido a Dental Planning</h2>
+      <p class="text-primary-200 text-base">
+        Tu herramienta integral para gestionar tu consultorio dental de forma eficiente.
+      </p>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  var params = new URLSearchParams(window.location.search);
+  var tenantId = params.get('tenant_id');
+  var status = params.get('status');
+  var token = localStorage.getItem('token');
+  var attempts = 0;
+  var MAX_ATTEMPTS = 12;
+  var isPendingApproval = status === 'pending';
+
+  function showActive() {
+    document.getElementById('icon-pending').classList.add('hidden');
+    document.getElementById('icon-active').classList.remove('hidden');
+    document.getElementById('title-text').textContent = 'Cuenta activada';
+    document.getElementById('desc-text').textContent = 'Tu pago fue confirmado y tu cuenta esta lista para usar.';
+    document.getElementById('spinner').classList.add('hidden');
+    document.getElementById('action-buttons').classList.remove('hidden');
+    document.getElementById('pending-info').classList.add('hidden');
+  }
+
+  function showPendingApproval() {
+    document.getElementById('spinner').classList.add('hidden');
+    document.getElementById('icon-pending').classList.add('hidden');
+    document.getElementById('icon-active').classList.remove('hidden');
+    var iconSvg = document.querySelector('#icon-active svg');
+    if (iconSvg) {
+      iconSvg.setAttribute('stroke', 'currentColor');
+    }
+    document.getElementById('icon-active').className = 'mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-primary-50';
+    document.getElementById('title-text').textContent = 'Registro completado';
+    document.getElementById('desc-text').textContent = 'Tu cuenta fue creada exitosamente. Un administrador revisara tu solicitud y activara tu acceso.';
+    document.getElementById('pending-info').classList.remove('hidden');
+    document.querySelector('#pending-info p.text-sm').textContent = 'Pendiente de aprobacion';
+    document.querySelector('#pending-info p.text-xs').textContent = 'Recibiras acceso una vez que el administrador apruebe tu cuenta. Este proceso normalmente toma menos de 24 horas.';
+    var retryBtn = document.querySelector('#pending-info button');
+    if (retryBtn) retryBtn.remove();
+  }
+
+  function showPendingPayment() {
+    document.getElementById('spinner').classList.add('hidden');
+    document.getElementById('pending-info').classList.remove('hidden');
+    document.getElementById('title-text').textContent = 'Registro completado';
+    document.getElementById('desc-text').textContent = 'Tu cuenta fue creada, pero el pago aun no se confirma.';
+  }
+
+  function checkStatus() {
+    if (!token) {
+      isPendingApproval ? showPendingApproval() : showPendingPayment();
+      return;
+    }
+    attempts++;
+    fetch('/api/v1/auth/me', {
+      headers: { 'Authorization': 'Bearer ' + token }
+    })
+    .then(function (r) { return r.json(); })
+    .then(function (data) {
+      if (data.tenant && data.tenant.status === 'active') {
+        showActive();
+      } else if (attempts >= MAX_ATTEMPTS) {
+        isPendingApproval ? showPendingApproval() : showPendingPayment();
+      } else {
+        setTimeout(checkStatus, 5000);
+      }
+    })
+    .catch(function () {
+      if (attempts >= MAX_ATTEMPTS) {
+        isPendingApproval ? showPendingApproval() : showPendingPayment();
+      } else {
+        setTimeout(checkStatus, 5000);
+      }
+    });
+  }
+
+  if (isPendingApproval) {
+    showPendingApproval();
+  } else {
+    checkStatus();
+  }
+})();
+</script>
+{% endblock %}

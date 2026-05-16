@@ -14,6 +14,10 @@ class Config:
     )
     CORS_ORIGINS = os.getenv("CORS_ORIGINS", "*").split(",")
     RATELIMIT_ENABLED = True
+    CLIP_API_KEY = os.getenv("CLIP_API_KEY", "")
+    CLIP_WEBHOOK_SECRET = os.getenv("CLIP_WEBHOOK_SECRET", "")
+    CLIP_BASE_URL = os.getenv("CLIP_BASE_URL", "https://api-dev.payclip.com")
+    APP_BASE_URL = os.getenv("APP_BASE_URL", "http://localhost:5000")
 
 
 class DevelopmentConfig(Config):

@@ -51,6 +51,12 @@ class Tenant(db.Model):
     def is_system(self):
         return self.slug == SYSTEM_TENANT_SLUG
 
+    @property
+    def allowed_modules(self):
+        if not self.subscription or not self.subscription.plan:
+            return []
+        return self.subscription.plan.modulos or []
+
 
 class User(db.Model):
     __tablename__ = "users"

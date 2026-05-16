@@ -39,6 +39,12 @@ def require_auth(f):
             }), 403
         g.current_user = user
         g.tenant_id = user.tenant_id
+
+        from app.middleware.modules import check_module_access
+        blocked = check_module_access()
+        if blocked is not None:
+            return blocked
+
         return f(*args, **kwargs)
     return decorated
 

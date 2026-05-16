@@ -17,7 +17,7 @@
   </div>
 
   <!-- Filtros -->
-  <div class="rounded-lg bg-cs-surface-container-lowest p-4 grid grid-cols-1 md:grid-cols-4 gap-3">
+  <div class="rounded-lg bg-cs-surface-container-lowest p-4 grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-3">
     <label class="block space-y-1">
       <span class="text-xs font-semibold text-cs-on-surface-var">Clínica</span>
       <select id="filter-tenant" class="w-full px-3 py-2 rounded-lg bg-cs-surface-container text-sm text-cs-on-surface focus:outline-none focus:ring-2 focus:ring-cs-primary/30">
@@ -31,6 +31,26 @@
     <label class="block space-y-1">
       <span class="text-xs font-semibold text-cs-on-surface-var">Hasta</span>
       <input id="filter-hasta" type="date" class="w-full px-3 py-2 rounded-lg bg-cs-surface-container text-sm text-cs-on-surface focus:outline-none focus:ring-2 focus:ring-cs-primary/30" />
+    </label>
+    <label class="block space-y-1">
+      <span class="text-xs font-semibold text-cs-on-surface-var">Método</span>
+      <select id="filter-metodo" class="w-full px-3 py-2 rounded-lg bg-cs-surface-container text-sm text-cs-on-surface focus:outline-none focus:ring-2 focus:ring-cs-primary/30">
+        <option value="">Todos</option>
+        <option value="transferencia">Transferencia</option>
+        <option value="efectivo">Efectivo</option>
+        <option value="tarjeta">Tarjeta</option>
+        <option value="clip">Clip</option>
+        <option value="otro">Otro</option>
+      </select>
+    </label>
+    <label class="block space-y-1">
+      <span class="text-xs font-semibold text-cs-on-surface-var">Estado Clip</span>
+      <select id="filter-clip-status" class="w-full px-3 py-2 rounded-lg bg-cs-surface-container text-sm text-cs-on-surface focus:outline-none focus:ring-2 focus:ring-cs-primary/30">
+        <option value="">Todos</option>
+        <option value="PAID">Pagado</option>
+        <option value="PENDING">Pendiente</option>
+        <option value="FAILED">Fallido</option>
+      </select>
     </label>
     <div class="flex items-end">
       <button id="btn-clear-filters" class="px-3 py-2 rounded-lg bg-cs-surface-container text-cs-on-surface text-sm font-semibold hover:bg-cs-surface-container-high transition-colors cursor-pointer">
@@ -48,6 +68,7 @@
           <th class="px-4 py-3 font-semibold">Clínica</th>
           <th class="px-4 py-3 font-semibold text-right">Monto</th>
           <th class="px-4 py-3 font-semibold">Método</th>
+          <th class="px-4 py-3 font-semibold">Estado</th>
           <th class="px-4 py-3 font-semibold">Periodo</th>
           <th class="px-4 py-3 font-semibold">Comentarios</th>
           <th class="px-4 py-3"></th>

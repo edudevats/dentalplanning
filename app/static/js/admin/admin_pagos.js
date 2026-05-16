@@ -26,9 +26,11 @@
 
   function getFilters() {
     return {
-      tenant_id: document.getElementById('filter-tenant').value,
-      desde:     document.getElementById('filter-desde').value,
-      hasta:     document.getElementById('filter-hasta').value,
+      tenant_id:   document.getElementById('filter-tenant').value,
+      desde:       document.getElementById('filter-desde').value,
+      hasta:       document.getElementById('filter-hasta').value,
+      metodo:      document.getElementById('filter-metodo').value,
+      clip_status: document.getElementById('filter-clip-status').value,
     };
   }
 
@@ -40,7 +42,10 @@
     if (f.hasta)     params.set('hasta', f.hasta);
     const qs = params.toString() ? `?${params.toString()}` : '';
     const data = await adminApi.get(`/payments${qs}`);
-    renderRows(data.payments || []);
+    let payments = data.payments || [];
+    if (f.metodo) payments = payments.filter(p => p.metodo === f.metodo);
+    if (f.clip_status) payments = payments.filter(p => p.clip_status === f.clip_status);
+    renderRows(payments);
   }
 
   function renderRows(pagos) {
@@ -62,13 +67,26 @@
         { v: p.tenant_name || '—', cls: 'font-semibold text-cs-on-surface' },
         { v: currency(p.monto), cls: 'text-right font-cs-display font-semibold text-cs-on-surface' },
         { v: p.metodo },
+        { v: p.clip_status || '—', badge: p.metodo === 'clip' && p.clip_status },
         { v: periodo },
         { v: p.comentarios || '—' },
       ];
-      cells.forEach(({ v, cls }) => {
+      const BADGE_COLORS = {
+        PAID:    'bg-green-500/15 text-green-400',
+        PENDING: 'bg-yellow-500/15 text-yellow-400',
+        FAILED:  'bg-red-500/15 text-red-400',
+      };
+      cells.forEach(({ v, cls, badge }) => {
         const td = document.createElement('td');
         td.className = `px-4 py-3 ${cls || 'text-cs-on-surface'}`;
-        td.textContent = v;
+        if (badge) {
+          const span = document.createElement('span');
+          span.className = `inline-flex px-2 py-0.5 rounded-md text-[10px] font-bold uppercase ${BADGE_COLORS[v] || 'bg-cs-surface-container text-cs-on-surface-var'}`;
+          span.textContent = v;
+          td.appendChild(span);
+        } else {
+          td.textContent = v;
+        }
         tr.appendChild(td);
       });
 
@@ -119,6 +137,7 @@
       { value: 'transferencia', label: 'Transferencia' },
       { value: 'efectivo', label: 'Efectivo' },
       { value: 'tarjeta', label: 'Tarjeta' },
+      { value: 'clip', label: 'Clip' },
       { value: 'otro', label: 'Otro' },
     ]);
     const pIni = inputEl('date', 'periodo_inicio', '');
@@ -167,11 +186,15 @@
     document.getElementById('filter-tenant').addEventListener('change', onChange);
     document.getElementById('filter-desde').addEventListener('change', onChange);
     document.getElementById('filter-hasta').addEventListener('change', onChange);
+    document.getElementById('filter-metodo').addEventListener('change', onChange);
+    document.getElementById('filter-clip-status').addEventListener('change', onChange);
 
     document.getElementById('btn-clear-filters').addEventListener('click', () => {
       document.getElementById('filter-tenant').value = '';
       document.getElementById('filter-desde').value = '';
       document.getElementById('filter-hasta').value = '';
+      document.getElementById('filter-metodo').value = '';
+      document.getElementById('filter-clip-status').value = '';
       refresh();
     });
 

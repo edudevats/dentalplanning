@@ -13,8 +13,9 @@ from app.auth.models import (
 )
 from app.superadmin.models import (
     Plan, Subscription, Payment, TenantNote,
-    SUBSCRIPTION_ACTIVA,
+    SUBSCRIPTION_ACTIVA, SUBSCRIPTION_GRACIA,
 )
+from app.clip.service import create_checkout_link, ClipAPIError
 from app.superadmin.schemas import (
     PlanSchema, ApproveTenantSchema, RejectTenantSchema,
     TenantUpdateSchema, PaymentSchema, TenantNoteSchema,
@@ -51,6 +52,14 @@ def _serialize_tenant(t, *, with_counts=False):
         out["ultimo_pago"] = (
             {"fecha": last.fecha.isoformat(), "monto": last.monto} if last else None
         )
+        sub = Subscription.query.filter_by(tenant_id=t.id).first()
+        if sub:
+            out["subscription"] = {
+                "estado": sub.estado,
+                "plan_nombre": sub.plan.nombre if sub.plan else None,
+                "plan_modulos": sub.plan.modulos if sub.plan else [],
+                "grace_expires_at": sub.grace_expires_at.isoformat() if sub.grace_expires_at else None,
+            }
     return out
 
 
@@ -58,6 +67,9 @@ def _serialize_plan(p):
     return {
         "id": p.id, "nombre": p.nombre, "precio_mensual": p.precio_mensual,
         "descripcion": p.descripcion, "activo": p.activo,
+        "modulos": p.modulos or [],
+        "publico": p.publico, "es_temporal": p.es_temporal,
+        "dias_expiracion": p.dias_expiracion,
     }
 
 
@@ -65,9 +77,12 @@ def _serialize_subscription(s):
     return {
         "id": s.id, "tenant_id": s.tenant_id, "plan_id": s.plan_id,
         "plan_nombre": s.plan.nombre if s.plan else None,
+        "plan_modulos": s.plan.modulos if s.plan else [],
         "inicio": s.inicio.isoformat() if s.inicio else None,
         "proximo_cobro": s.proximo_cobro.isoformat() if s.proximo_cobro else None,
         "estado": s.estado,
+        "clip_checkout_id": s.clip_checkout_id,
+        "grace_expires_at": s.grace_expires_at.isoformat() if s.grace_expires_at else None,
     }
 
 
@@ -81,6 +96,8 @@ def _serialize_payment(p):
         "periodo_fin": p.periodo_fin.isoformat() if p.periodo_fin else None,
         "comentarios": p.comentarios,
         "registrado_por_id": p.registrado_por_id,
+        "clip_payment_id": p.clip_payment_id,
+        "clip_status": p.clip_status,
         "created_at": p.created_at.isoformat() if p.created_at else None,
     }
 
@@ -475,6 +492,65 @@ def delete_payment(payment_id):
     return jsonify({"message": "Pago eliminado"})
 
 
+# ── Clip charge ────────────────────────────────────────────────────────────
+
+@superadmin_bp.route("/tenants/<int:tenant_id>/charge", methods=["POST"])
+@require_superuser
+def charge_tenant(tenant_id):
+    t = Tenant.query.get_or_404(tenant_id)
+    if t.slug == SYSTEM_TENANT_SLUG:
+        return jsonify({"error": "Tenant del sistema"}), 400
+
+    sub = Subscription.query.filter_by(tenant_id=t.id).first()
+    if not sub:
+        return jsonify({"error": "Tenant no tiene suscripción"}), 400
+
+    plan = sub.plan
+    if not plan:
+        return jsonify({"error": "Plan no encontrado"}), 400
+
+    today = date.today()
+    periodo_inicio = today
+    periodo_fin = today + timedelta(days=30)
+
+    try:
+        result = create_checkout_link(
+            amount=plan.precio_mensual,
+            description=f"Suscripción {plan.nombre} — {t.name}",
+            webhook_url=request.host_url.rstrip("/") + "/api/v1/clip/webhook",
+            redirect_url=request.host_url.rstrip("/") + f"/admin/tenants/{t.id}",
+            metadata={"tenant_id": t.id, "subscription_id": sub.id},
+        )
+    except ClipAPIError as e:
+        return jsonify({"error": str(e)}), 502
+
+    clip_id = result.get("payment_request_id", "")
+    clip_url = result.get("payment_request_url", "")
+
+    payment = Payment(
+        tenant_id=t.id,
+        subscription_id=sub.id,
+        fecha=today,
+        monto=plan.precio_mensual,
+        metodo="clip",
+        periodo_inicio=periodo_inicio,
+        periodo_fin=periodo_fin,
+        comentarios=f"Cobro Clip — {plan.nombre}",
+        registrado_por_id=g.current_user.id,
+        clip_payment_id=clip_id,
+        clip_status="PENDING",
+    )
+    db.session.add(payment)
+    sub.clip_checkout_id = clip_id
+    db.session.commit()
+
+    return jsonify({
+        "clip_url": clip_url,
+        "clip_payment_id": clip_id,
+        "payment": _serialize_payment(payment),
+    }), 201
+
+
 # ── Stats ───────────────────────────────────────────────────────────────────
 
 @superadmin_bp.route("/stats/overview", methods=["GET"])
@@ -498,6 +574,22 @@ def stats_overview():
     inicio_mes = date(today.year, today.month, 1)
     nuevos_mes = base.filter(Tenant.created_at >= inicio_mes).count()
 
+    en_gracia = (
+        Subscription.query.join(Tenant)
+        .filter(Tenant.slug != SYSTEM_TENANT_SLUG)
+        .filter(Subscription.estado == SUBSCRIPTION_GRACIA)
+        .count()
+    )
+
+    subs_by_plan = (
+        db.session.query(Plan.nombre, func.count(Subscription.id))
+        .join(Subscription, Subscription.plan_id == Plan.id)
+        .join(Tenant, Tenant.id == Subscription.tenant_id)
+        .filter(Tenant.slug != SYSTEM_TENANT_SLUG)
+        .group_by(Plan.nombre)
+        .all()
+    )
+
     return jsonify({
         "total_tenants": total,
         "activos": activos,
@@ -506,6 +598,8 @@ def stats_overview():
         "rechazados": rechazados,
         "total_users": int(total_users),
         "nuevos_este_mes": nuevos_mes,
+        "en_gracia": en_gracia,
+        "subs_by_plan": [{"plan": r[0], "count": int(r[1])} for r in subs_by_plan],
     })
 
 
@@ -600,4 +694,10 @@ def stats_salud():
         .filter(Subscription.proximo_cobro < today)
         .count()
     )
-    return jsonify({"cola_pendientes": cola, "en_mora": en_mora})
+    en_gracia = (
+        Subscription.query.join(Tenant)
+        .filter(Tenant.slug != SYSTEM_TENANT_SLUG)
+        .filter(Subscription.estado == SUBSCRIPTION_GRACIA)
+        .count()
+    )
+    return jsonify({"cola_pendientes": cola, "en_mora": en_mora, "en_gracia": en_gracia})

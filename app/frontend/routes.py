@@ -22,6 +22,11 @@ def register():
     return render_template('auth/register.html', public_page=True)
 
 
+@frontend_bp.route('/registro-exitoso')
+def registro_exitoso():
+    return render_template('auth/registro_exitoso.html', public_page=True)
+
+
 @frontend_bp.route('/dashboard')
 def dashboard():
     return render_template('dashboard.html', page='dashboard')

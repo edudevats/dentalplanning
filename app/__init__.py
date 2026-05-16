@@ -35,6 +35,7 @@ def create_app(config_name=None):
     from app.inventario.routes import inventario_bp
     from app.finanzas_personales.routes import finanzas_personales_bp
     from app.superadmin.routes import superadmin_bp
+    from app.clip.routes import clip_bp
     from app.frontend.routes import frontend_bp
 
     app.register_blueprint(auth_bp)
@@ -47,6 +48,7 @@ def create_app(config_name=None):
     app.register_blueprint(inventario_bp)
     app.register_blueprint(finanzas_personales_bp)
     app.register_blueprint(superadmin_bp)
+    app.register_blueprint(clip_bp)
     app.register_blueprint(frontend_bp)
 
     # Error handlers
@@ -72,5 +74,8 @@ def create_app(config_name=None):
 
     from app.inventario.cli import inventario_cli
     app.cli.add_command(inventario_cli)
+
+    from app.clip.cli import billing_cli
+    app.cli.add_command(billing_cli)
 
     return app

@@ -5,9 +5,10 @@ from app.extensions import db
 SUBSCRIPTION_ACTIVA = "activa"
 SUBSCRIPTION_VENCIDA = "vencida"
 SUBSCRIPTION_CANCELADA = "cancelada"
-SUBSCRIPTION_ESTADOS = (SUBSCRIPTION_ACTIVA, SUBSCRIPTION_VENCIDA, SUBSCRIPTION_CANCELADA)
+SUBSCRIPTION_GRACIA = "gracia"
+SUBSCRIPTION_ESTADOS = (SUBSCRIPTION_ACTIVA, SUBSCRIPTION_VENCIDA, SUBSCRIPTION_CANCELADA, SUBSCRIPTION_GRACIA)
 
-PAYMENT_METODOS = ("transferencia", "efectivo", "tarjeta", "otro")
+PAYMENT_METODOS = ("transferencia", "efectivo", "tarjeta", "clip", "otro")
 
 
 class Plan(db.Model):
@@ -18,6 +19,10 @@ class Plan(db.Model):
     precio_mensual = db.Column(db.Float, nullable=False, default=0)
     descripcion = db.Column(db.String(500), nullable=True)
     activo = db.Column(db.Boolean, nullable=False, default=True)
+    modulos = db.Column(db.JSON, nullable=False, default=list)
+    publico = db.Column(db.Boolean, nullable=False, default=True)
+    es_temporal = db.Column(db.Boolean, nullable=False, default=False)
+    dias_expiracion = db.Column(db.Integer, nullable=True)
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
 
 
@@ -32,6 +37,9 @@ class Subscription(db.Model):
     inicio = db.Column(db.Date, nullable=False)
     proximo_cobro = db.Column(db.Date, nullable=True)
     estado = db.Column(db.String(20), nullable=False, default=SUBSCRIPTION_ACTIVA)
+    clip_checkout_id = db.Column(db.String(100), nullable=True)
+    clip_customer_id = db.Column(db.String(100), nullable=True)
+    grace_expires_at = db.Column(db.Date, nullable=True)
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
 
     tenant = db.relationship("Tenant", backref=db.backref("subscription", uselist=False))
@@ -55,6 +63,8 @@ class Payment(db.Model):
     registrado_por_id = db.Column(
         db.Integer, db.ForeignKey("users.id"), nullable=False
     )
+    clip_payment_id = db.Column(db.String(100), nullable=True)
+    clip_status = db.Column(db.String(20), nullable=True)
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
 
     tenant = db.relationship("Tenant", backref=db.backref("payments", lazy="dynamic"))

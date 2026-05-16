@@ -6,7 +6,7 @@
 <div class="min-h-screen flex">
   <!-- Left: form -->
   <div class="flex-1 flex items-center justify-center px-6 py-12 bg-surface">
-    <div class="w-full max-w-md">
+    <div class="w-full max-w-xl">
       <div class="mb-8 lg:hidden text-center">
         <div class="flex items-center justify-center gap-2 mb-2">
           <img src="{{ url_for('static', filename='imagenes/02-fondoblanco.jpg.jpeg') }}" alt="Logo" class="h-10 w-10 object-contain rounded-md" />
@@ -14,93 +14,128 @@
         </div>
       </div>
 
-      <div class="mb-8">
-        <h1 class="text-2xl font-bold font-heading text-text-primary">Crear cuenta</h1>
-        <p class="mt-2 text-sm text-text-secondary">Registra tu consultorio y comienza a gestionar</p>
+      <!-- Step indicator -->
+      <div class="flex items-center gap-3 mb-6">
+        <div id="step-ind-1" class="flex items-center gap-2">
+          <span class="w-7 h-7 rounded-full bg-primary-500 text-white text-xs font-bold flex items-center justify-center">1</span>
+          <span class="text-sm font-semibold text-primary-700">Elige tu plan</span>
+        </div>
+        <div class="flex-1 h-px bg-border"></div>
+        <div id="step-ind-2" class="flex items-center gap-2 opacity-40">
+          <span class="w-7 h-7 rounded-full bg-border text-text-muted text-xs font-bold flex items-center justify-center">2</span>
+          <span class="text-sm font-semibold text-text-muted">Crea tu cuenta</span>
+        </div>
       </div>
 
-      <div id="server-error" class="hidden mb-6 rounded-lg border border-danger-500 bg-danger-50 px-4 py-3">
-        <p class="text-sm text-danger-700" id="server-error-msg"></p>
+      <!-- STEP 1: Plan selection -->
+      <div id="step-plans" class="space-y-6">
+        <div>
+          <h1 class="text-2xl font-bold font-heading text-text-primary">Elige tu plan</h1>
+          <p class="mt-1 text-sm text-text-secondary">Selecciona el plan que mejor se adapte a tu consultorio</p>
+        </div>
+
+        <div id="plans-loading" class="text-center py-12 text-sm text-text-muted">Cargando planes...</div>
+        <div id="plans-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 hidden"></div>
+        <div id="plans-error" class="hidden text-center py-8 text-sm text-danger-600"></div>
       </div>
 
-      <form id="register-form" novalidate class="space-y-4">
-        <!-- Tenant name -->
+      <!-- STEP 2: Registration form -->
+      <div id="step-form" class="hidden space-y-6">
         <div>
-          <label for="tenant_name" class="block text-sm font-medium text-text-secondary mb-1 font-body">Nombre del consultorio</label>
-          <div class="relative">
-            <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
-              <i data-lucide="building-2" class="h-4 w-4 text-text-muted"></i>
-            </div>
-            <input id="tenant_name" name="tenant_name" type="text" placeholder="Dental Care Plus"
-              class="block w-full rounded-lg border border-border pl-10 px-3 py-2.5 text-sm font-body text-text-primary placeholder:text-text-muted min-h-[44px] bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-500" />
-          </div>
-          <p id="tenant_name-error" class="hidden mt-1 text-xs text-danger-600 font-body"></p>
+          <button id="btn-back-plans" type="button" class="inline-flex items-center gap-1 text-sm text-primary-600 hover:text-primary-700 font-semibold mb-3 cursor-pointer">
+            <i data-lucide="arrow-left" class="h-4 w-4"></i> Cambiar plan
+          </button>
+          <h1 class="text-2xl font-bold font-heading text-text-primary">Crear cuenta</h1>
+          <p class="mt-1 text-sm text-text-secondary">
+            Plan seleccionado: <strong id="selected-plan-label" class="text-primary-700"></strong>
+          </p>
         </div>
 
-        <!-- Slug -->
-        <div>
-          <label for="tenant_slug" class="block text-sm font-medium text-text-secondary mb-1 font-body">Slug</label>
-          <div class="relative">
-            <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
-              <i data-lucide="link" class="h-4 w-4 text-text-muted"></i>
-            </div>
-            <input id="tenant_slug" name="tenant_slug" type="text" placeholder="dental-care-plus"
-              class="block w-full rounded-lg border border-border pl-10 px-3 py-2.5 text-sm font-body text-text-primary placeholder:text-text-muted min-h-[44px] bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-500" />
-          </div>
-          <p class="mt-1 text-xs text-text-muted font-body">Identificador unico para tu consultorio</p>
-          <p id="tenant_slug-error" class="hidden mt-1 text-xs text-danger-600 font-body"></p>
+        <div id="server-error" class="hidden rounded-lg border border-danger-500 bg-danger-50 px-4 py-3">
+          <p class="text-sm text-danger-700" id="server-error-msg"></p>
         </div>
 
-        <!-- Email -->
-        <div>
-          <label for="email" class="block text-sm font-medium text-text-secondary mb-1 font-body">Correo electronico</label>
-          <div class="relative">
-            <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
-              <i data-lucide="mail" class="h-4 w-4 text-text-muted"></i>
+        <form id="register-form" novalidate class="space-y-4">
+          <input type="hidden" id="plan_id" name="plan_id" />
+
+          <div>
+            <label for="tenant_name" class="block text-sm font-medium text-text-secondary mb-1 font-body">Nombre del consultorio</label>
+            <div class="relative">
+              <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
+                <i data-lucide="building-2" class="h-4 w-4 text-text-muted"></i>
+              </div>
+              <input id="tenant_name" name="tenant_name" type="text" placeholder="Dental Care Plus"
+                class="block w-full rounded-lg border border-border pl-10 px-3 py-2.5 text-sm font-body text-text-primary placeholder:text-text-muted min-h-[44px] bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-500" />
             </div>
-            <input id="email" name="email" type="email" autocomplete="email" placeholder="tu@correo.com"
-              class="block w-full rounded-lg border border-border pl-10 px-3 py-2.5 text-sm font-body text-text-primary placeholder:text-text-muted min-h-[44px] bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-500" />
+            <p id="tenant_name-error" class="hidden mt-1 text-xs text-danger-600 font-body"></p>
           </div>
-          <p id="email-error" class="hidden mt-1 text-xs text-danger-600 font-body"></p>
-        </div>
 
-        <!-- Name -->
-        <div>
-          <label for="name" class="block text-sm font-medium text-text-secondary mb-1 font-body">Nombre completo</label>
-          <div class="relative">
-            <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
-              <i data-lucide="user" class="h-4 w-4 text-text-muted"></i>
+          <div>
+            <label for="tenant_slug" class="block text-sm font-medium text-text-secondary mb-1 font-body">Slug</label>
+            <div class="relative">
+              <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
+                <i data-lucide="link" class="h-4 w-4 text-text-muted"></i>
+              </div>
+              <input id="tenant_slug" name="tenant_slug" type="text" placeholder="dental-care-plus"
+                class="block w-full rounded-lg border border-border pl-10 px-3 py-2.5 text-sm font-body text-text-primary placeholder:text-text-muted min-h-[44px] bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-500" />
             </div>
-            <input id="name" name="name" type="text" autocomplete="name" placeholder="Dr. Juan Perez"
-              class="block w-full rounded-lg border border-border pl-10 px-3 py-2.5 text-sm font-body text-text-primary placeholder:text-text-muted min-h-[44px] bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-500" />
+            <p class="mt-1 text-xs text-text-muted font-body">Identificador unico para tu consultorio</p>
+            <p id="tenant_slug-error" class="hidden mt-1 text-xs text-danger-600 font-body"></p>
           </div>
-          <p id="name-error" class="hidden mt-1 text-xs text-danger-600 font-body"></p>
-        </div>
 
-        <!-- Password -->
-        <div>
-          <label for="password" class="block text-sm font-medium text-text-secondary mb-1 font-body">Contrasena</label>
-          <div class="relative">
-            <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
-              <i data-lucide="lock" class="h-4 w-4 text-text-muted"></i>
+          <div>
+            <label for="email" class="block text-sm font-medium text-text-secondary mb-1 font-body">Correo electronico</label>
+            <div class="relative">
+              <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
+                <i data-lucide="mail" class="h-4 w-4 text-text-muted"></i>
+              </div>
+              <input id="email" name="email" type="email" autocomplete="email" placeholder="tu@correo.com"
+                class="block w-full rounded-lg border border-border pl-10 px-3 py-2.5 text-sm font-body text-text-primary placeholder:text-text-muted min-h-[44px] bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-500" />
             </div>
-            <input id="password" name="password" type="password" autocomplete="new-password" placeholder="Minimo 8 caracteres"
-              class="block w-full rounded-lg border border-border pl-10 px-3 py-2.5 text-sm font-body text-text-primary placeholder:text-text-muted min-h-[44px] bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-500" />
+            <p id="email-error" class="hidden mt-1 text-xs text-danger-600 font-body"></p>
           </div>
-          <p id="password-error" class="hidden mt-1 text-xs text-danger-600 font-body"></p>
-        </div>
 
-        <button type="submit" id="submit-btn"
-          class="inline-flex items-center justify-center gap-2 w-full rounded-lg font-medium font-body cursor-pointer select-none transition-colors duration-150 bg-primary-500 hover:bg-primary-600 text-white px-4 py-2.5 text-sm min-h-[44px]">
-          <i data-lucide="arrow-right" class="h-4 w-4"></i>
-          <span id="submit-text">Crear cuenta</span>
-        </button>
-      </form>
+          <div>
+            <label for="name" class="block text-sm font-medium text-text-secondary mb-1 font-body">Nombre completo</label>
+            <div class="relative">
+              <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
+                <i data-lucide="user" class="h-4 w-4 text-text-muted"></i>
+              </div>
+              <input id="name" name="name" type="text" autocomplete="name" placeholder="Dr. Juan Perez"
+                class="block w-full rounded-lg border border-border pl-10 px-3 py-2.5 text-sm font-body text-text-primary placeholder:text-text-muted min-h-[44px] bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-500" />
+            </div>
+            <p id="name-error" class="hidden mt-1 text-xs text-danger-600 font-body"></p>
+          </div>
 
-      <p class="mt-8 text-center text-sm text-text-secondary">
-        Ya tienes una cuenta?
-        <a href="/login" class="font-semibold text-primary-600 hover:text-primary-700 transition-colors">Inicia sesion</a>
-      </p>
+          <div>
+            <label for="password" class="block text-sm font-medium text-text-secondary mb-1 font-body">Contrasena</label>
+            <div class="relative">
+              <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
+                <i data-lucide="lock" class="h-4 w-4 text-text-muted"></i>
+              </div>
+              <input id="password" name="password" type="password" autocomplete="new-password" placeholder="Minimo 8 caracteres"
+                class="block w-full rounded-lg border border-border pl-10 px-3 py-2.5 text-sm font-body text-text-primary placeholder:text-text-muted min-h-[44px] bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-500" />
+            </div>
+            <p id="password-error" class="hidden mt-1 text-xs text-danger-600 font-body"></p>
+          </div>
+
+          <button type="submit" id="submit-btn"
+            class="inline-flex items-center justify-center gap-2 w-full rounded-lg font-medium font-body cursor-pointer select-none transition-colors duration-150 bg-primary-500 hover:bg-primary-600 text-white px-4 py-2.5 text-sm min-h-[44px]">
+            <i data-lucide="credit-card" class="h-4 w-4"></i>
+            <span id="submit-text">Crear cuenta y pagar</span>
+          </button>
+
+          <p class="text-xs text-text-muted text-center">
+            Al continuar seras redirigido a la pasarela de pago segura de Clip
+          </p>
+        </form>
+
+        <p class="text-center text-sm text-text-secondary">
+          Ya tienes una cuenta?
+          <a href="/login" class="font-semibold text-primary-600 hover:text-primary-700 transition-colors">Inicia sesion</a>
+        </p>
+      </div>
+
     </div>
   </div>
 
@@ -145,31 +180,183 @@
 lucide.createIcons();
 Auth.redirectIfLoggedIn();
 
+const MOD_LABELS = {
+  contable: 'Sistema Contable',
+  inventario: 'Inventario',
+  finanzas_personales: 'Finanzas Personales',
+};
+
+let selectedPlanId = null;
+let plansData = [];
+
+function buildPlanCard(plan, isPopular) {
+  const card = document.createElement('div');
+  card.className = 'relative rounded-2xl border-2 p-6 cursor-pointer transition-all duration-200 hover:shadow-lg ' +
+    (isPopular
+      ? 'border-primary-500 bg-primary-50/50 shadow-md'
+      : 'border-border bg-surface hover:border-primary-300');
+  card.dataset.planId = plan.id;
+
+  if (isPopular) {
+    const badge = document.createElement('span');
+    badge.className = 'absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-0.5 rounded-full bg-primary-500 text-white text-[10px] font-bold uppercase tracking-wide';
+    badge.textContent = 'Popular';
+    card.appendChild(badge);
+  }
+
+  const title = document.createElement('h3');
+  title.className = 'text-lg font-bold font-heading text-text-primary mb-1';
+  title.textContent = plan.nombre;
+  card.appendChild(title);
+
+  const priceWrap = document.createElement('div');
+  priceWrap.className = 'mb-3';
+  const price = document.createElement('span');
+  price.className = 'text-3xl font-bold font-heading text-primary-700';
+  const per = document.createElement('span');
+  per.className = 'text-sm text-text-muted';
+  if (plan.es_temporal && plan.dias_expiracion) {
+    price.textContent = plan.dias_expiracion + ' dias';
+    per.textContent = ' gratis';
+  } else {
+    price.textContent = '$' + plan.precio_mensual.toLocaleString('es-MX', { minimumFractionDigits: 0 });
+    per.textContent = '/mes';
+  }
+  priceWrap.appendChild(price);
+  priceWrap.appendChild(per);
+  card.appendChild(priceWrap);
+
+  if (plan.descripcion) {
+    const desc = document.createElement('p');
+    desc.className = 'text-xs text-text-secondary mb-4';
+    desc.textContent = plan.descripcion;
+    card.appendChild(desc);
+  }
+
+  const ul = document.createElement('ul');
+  ul.className = 'space-y-2';
+  (plan.modulos || []).forEach(function(m) {
+    const li = document.createElement('li');
+    li.className = 'flex items-center gap-2 text-sm text-text-primary';
+    const ic = document.createElement('i');
+    ic.setAttribute('data-lucide', 'check');
+    ic.className = 'h-4 w-4 text-primary-500 shrink-0';
+    li.appendChild(ic);
+    li.appendChild(document.createTextNode(MOD_LABELS[m] || m));
+    ul.appendChild(li);
+  });
+  card.appendChild(ul);
+
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'mt-5 w-full py-2.5 rounded-lg text-sm font-semibold transition-colors cursor-pointer ' +
+    (isPopular
+      ? 'bg-primary-500 text-white hover:bg-primary-600'
+      : 'bg-primary-50 text-primary-700 hover:bg-primary-100 border border-primary-200');
+  btn.textContent = 'Seleccionar';
+  card.appendChild(btn);
+
+  card.addEventListener('click', function() { selectPlan(plan); });
+  return card;
+}
+
+(async function loadPlans() {
+  try {
+    var data = await API.request('/auth/plans');
+    plansData = data.plans || [];
+    document.getElementById('plans-loading').classList.add('hidden');
+
+    if (plansData.length === 0) {
+      document.getElementById('plans-error').textContent = 'No hay planes disponibles en este momento.';
+      document.getElementById('plans-error').classList.remove('hidden');
+      return;
+    }
+
+    var grid = document.getElementById('plans-grid');
+    grid.classList.remove('hidden');
+
+    plansData.forEach(function(plan, idx) {
+      var isPopular = idx === Math.floor(plansData.length / 2);
+      grid.appendChild(buildPlanCard(plan, isPopular));
+    });
+
+    lucide.createIcons();
+
+    var preselect = new URLSearchParams(window.location.search).get('plan_id');
+    if (preselect) {
+      var match = plansData.find(function(p) { return p.id === parseInt(preselect, 10); });
+      if (match) selectPlan(match);
+    }
+  } catch (err) {
+    document.getElementById('plans-loading').classList.add('hidden');
+    document.getElementById('plans-error').textContent = 'Error al cargar los planes. Recarga la pagina.';
+    document.getElementById('plans-error').classList.remove('hidden');
+  }
+})();
+
+function selectPlan(plan) {
+  selectedPlanId = plan.id;
+  document.getElementById('plan_id').value = plan.id;
+  var planLabel = plan.nombre;
+  if (plan.es_temporal && plan.dias_expiracion) {
+    planLabel += ' — ' + plan.dias_expiracion + ' dias gratis';
+  } else {
+    planLabel += ' — $' + plan.precio_mensual.toLocaleString('es-MX', { minimumFractionDigits: 0 }) + '/mes';
+  }
+  document.getElementById('selected-plan-label').textContent = planLabel;
+
+  document.getElementById('step-plans').classList.add('hidden');
+  document.getElementById('step-form').classList.remove('hidden');
+
+  document.getElementById('step-ind-1').classList.add('opacity-40');
+  document.getElementById('step-ind-1').querySelector('span').className =
+    'w-7 h-7 rounded-full bg-primary-200 text-primary-600 text-xs font-bold flex items-center justify-center';
+  document.getElementById('step-ind-2').classList.remove('opacity-40');
+  document.getElementById('step-ind-2').querySelector('span').className =
+    'w-7 h-7 rounded-full bg-primary-500 text-white text-xs font-bold flex items-center justify-center';
+
+  lucide.createIcons();
+}
+
+document.getElementById('btn-back-plans').addEventListener('click', function() {
+  document.getElementById('step-form').classList.add('hidden');
+  document.getElementById('step-plans').classList.remove('hidden');
+
+  document.getElementById('step-ind-2').classList.add('opacity-40');
+  document.getElementById('step-ind-2').querySelector('span').className =
+    'w-7 h-7 rounded-full bg-border text-text-muted text-xs font-bold flex items-center justify-center';
+  document.getElementById('step-ind-1').classList.remove('opacity-40');
+  document.getElementById('step-ind-1').querySelector('span').className =
+    'w-7 h-7 rounded-full bg-primary-500 text-white text-xs font-bold flex items-center justify-center';
+});
+
 function slugify(text) {
   return text.toLowerCase()
-    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
     .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
 }
 
-let slugEdited = false;
-document.getElementById('tenant_name').addEventListener('input', (e) => {
+var slugEdited = false;
+document.getElementById('tenant_name').addEventListener('input', function(e) {
   if (!slugEdited) document.getElementById('tenant_slug').value = slugify(e.target.value);
 });
-document.getElementById('tenant_slug').addEventListener('input', () => { slugEdited = true; });
+document.getElementById('tenant_slug').addEventListener('input', function() { slugEdited = true; });
 
-document.getElementById('register-form').addEventListener('submit', async (e) => {
+document.getElementById('register-form').addEventListener('submit', async function(e) {
   e.preventDefault();
-  const fields = ['tenant_name','tenant_slug','email','name','password'];
-  let valid = true;
+  var fields = ['tenant_name','tenant_slug','email','name','password'];
+  var valid = true;
 
-  fields.forEach(f => {
-    const errEl = document.getElementById(f + '-error');
+  fields.forEach(function(f) {
+    var errEl = document.getElementById(f + '-error');
     if (errEl) errEl.classList.add('hidden');
   });
   document.getElementById('server-error').classList.add('hidden');
 
-  const vals = Object.fromEntries(fields.map(f => [f, document.getElementById(f).value.trim()]));
+  var vals = {};
+  fields.forEach(function(f) { vals[f] = document.getElementById(f).value.trim(); });
   vals.password = document.getElementById('password').value;
+  vals.plan_id = selectedPlanId;
 
   if (!vals.tenant_name) { showFieldErr('tenant_name', 'El nombre del consultorio es obligatorio'); valid = false; }
   if (!vals.tenant_slug) { showFieldErr('tenant_slug', 'El slug es obligatorio'); valid = false; }
@@ -181,24 +368,34 @@ document.getElementById('register-form').addEventListener('submit', async (e) =>
   else if (vals.password.length < 8) { showFieldErr('password', 'Minimo 8 caracteres'); valid = false; }
   if (!valid) return;
 
-  const btn = document.getElementById('submit-btn');
-  const txt = document.getElementById('submit-text');
-  btn.disabled = true; txt.textContent = 'Creando...';
+  var btn = document.getElementById('submit-btn');
+  var txt = document.getElementById('submit-text');
+  btn.disabled = true; txt.textContent = 'Creando cuenta...';
 
   try {
-    const data = await API.request('/auth/register', { method: 'POST', body: JSON.stringify(vals) });
-    Auth.setToken(data.access_token);
-    window.location.href = '/dashboard';
+    var data = await API.request('/auth/register', { method: 'POST', body: JSON.stringify(vals) });
+
+    if (data.access_token) {
+      Auth.setToken(data.access_token);
+    }
+
+    if (data.clip_url) {
+      window.location.href = data.clip_url;
+    } else {
+      var tid = data.tenant && data.tenant.id;
+      var status = data.tenant && data.tenant.status;
+      window.location.href = '/registro-exitoso?tenant_id=' + tid + '&status=' + (status || 'pending');
+    }
   } catch (err) {
-    const msg = err.response?.data?.message || 'Error al crear la cuenta. Intenta de nuevo.';
+    var msg = (err.response && err.response.data && (err.response.data.error || err.response.data.message)) || 'Error al crear la cuenta. Intenta de nuevo.';
     document.getElementById('server-error-msg').textContent = msg;
     document.getElementById('server-error').classList.remove('hidden');
-    btn.disabled = false; txt.textContent = 'Crear cuenta';
+    btn.disabled = false; txt.textContent = 'Crear cuenta y pagar';
   }
 });
 
 function showFieldErr(field, msg) {
-  const el = document.getElementById(field + '-error');
+  var el = document.getElementById(field + '-error');
   if (el) { el.textContent = msg; el.classList.remove('hidden'); }
 }
 </script>

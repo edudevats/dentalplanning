@@ -105,7 +105,6 @@
 <script>
   lucide.createIcons();
 
-  // Personalized welcome
   (async () => {
     try {
       const data = await API.get('/auth/me');
@@ -115,7 +114,117 @@
         document.getElementById('selector-welcome').textContent =
           'Bienvenido, ' + name + '. Selecciona un sistema para comenzar.';
       }
+
+      const mods = (user.tenant && user.tenant.allowed_modules) || [];
+      const isSuperuser = user.is_superuser;
+      const gated = { 'btn-inventario': 'inventario', 'btn-finanzas-personales': 'finanzas_personales' };
+      Object.entries(gated).forEach(([id, slug]) => {
+        if (isSuperuser || mods.includes(slug)) return;
+        const card = document.getElementById(id);
+        if (!card) return;
+        card.removeAttribute('href');
+        card.style.opacity = '0.4';
+        card.style.pointerEvents = 'none';
+        const badge = document.createElement('span');
+        badge.className = 'absolute top-3 right-3 px-2 py-0.5 rounded-md text-[10px] font-bold uppercase bg-white/20 text-white/70';
+        badge.textContent = 'No incluido';
+        card.appendChild(badge);
+      });
+
+      // Trial expiry popup
+      var trial = data.trial;
+      if (trial && !isSuperuser) {
+        showTrialPopup(trial);
+      }
     } catch { /* ignore */ }
   })();
+
+  async function showTrialPopup(trial) {
+    var overlay = document.createElement('div');
+    overlay.className = 'fixed inset-0 z-50 flex items-center justify-center p-4';
+    overlay.style.background = 'rgba(0,0,0,0.6)';
+    overlay.style.backdropFilter = 'blur(4px)';
+
+    var card = document.createElement('div');
+    card.className = 'bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 space-y-4';
+
+    var iconWrap = document.createElement('div');
+    iconWrap.className = 'mx-auto flex h-14 w-14 items-center justify-center rounded-full';
+    var icon = document.createElement('i');
+
+    if (trial.expirado) {
+      iconWrap.className += ' bg-red-50';
+      icon.setAttribute('data-lucide', 'alert-triangle');
+      icon.className = 'h-7 w-7 text-red-500';
+    } else if (trial.dias_restantes <= 2) {
+      iconWrap.className += ' bg-yellow-50';
+      icon.setAttribute('data-lucide', 'clock');
+      icon.className = 'h-7 w-7 text-yellow-500';
+    } else {
+      return;
+    }
+    iconWrap.appendChild(icon);
+    card.appendChild(iconWrap);
+
+    var title = document.createElement('h2');
+    title.className = 'text-xl font-bold text-center text-gray-900';
+    title.textContent = trial.expirado ? 'Tu prueba ha terminado' : 'Tu prueba esta por vencer';
+    card.appendChild(title);
+
+    var desc = document.createElement('p');
+    desc.className = 'text-sm text-gray-600 text-center';
+    if (trial.expirado) {
+      desc.textContent = 'Tu periodo de prueba gratuita ha finalizado. Elige un plan pagado para continuar usando Dental Planning.';
+    } else {
+      desc.textContent = 'Te quedan ' + trial.dias_restantes + ' dia' + (trial.dias_restantes === 1 ? '' : 's') + ' de prueba. Actualiza a un plan pagado para no perder acceso.';
+    }
+    card.appendChild(desc);
+
+    // Load paid plans
+    var plansWrap = document.createElement('div');
+    plansWrap.className = 'space-y-2 max-h-60 overflow-y-auto';
+    try {
+      var plansData = await API.get('/auth/plans');
+      var paidPlans = (plansData.plans || []).filter(function (p) { return p.precio_mensual > 0; });
+      paidPlans.forEach(function (p) {
+        var row = document.createElement('a');
+        row.href = '/register?plan_id=' + p.id;
+        row.className = 'flex items-center justify-between p-3 rounded-lg border border-gray-200 hover:border-primary-400 hover:bg-primary-50 transition-colors cursor-pointer';
+        var left = document.createElement('div');
+        var pName = document.createElement('span');
+        pName.className = 'text-sm font-semibold text-gray-900 block';
+        pName.textContent = p.nombre;
+        var pDesc = document.createElement('span');
+        pDesc.className = 'text-xs text-gray-500 block';
+        pDesc.textContent = p.descripcion || '';
+        left.appendChild(pName);
+        left.appendChild(pDesc);
+        var price = document.createElement('span');
+        price.className = 'text-sm font-bold text-primary-700 whitespace-nowrap ml-3';
+        price.textContent = '$' + Number(p.precio_mensual).toLocaleString('es-MX') + '/mes';
+        row.appendChild(left);
+        row.appendChild(price);
+        plansWrap.appendChild(row);
+      });
+    } catch (e) {
+      var errMsg = document.createElement('p');
+      errMsg.className = 'text-xs text-red-500 text-center';
+      errMsg.textContent = 'No se pudieron cargar los planes.';
+      plansWrap.appendChild(errMsg);
+    }
+    card.appendChild(plansWrap);
+
+    if (!trial.expirado) {
+      var dismiss = document.createElement('button');
+      dismiss.className = 'w-full text-center text-xs text-gray-400 hover:text-gray-600 cursor-pointer pt-1';
+      dismiss.textContent = 'Continuar con mi prueba';
+      dismiss.addEventListener('click', function () { overlay.remove(); });
+      card.appendChild(dismiss);
+    }
+
+    overlay.appendChild(card);
+    document.body.appendChild(overlay);
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+  }
 </script>
 {% endblock %}
