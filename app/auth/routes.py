@@ -127,7 +127,11 @@ def register():
                 amount=plan.precio_mensual,
                 description=f"Suscripción {plan.nombre} — {tenant.name}",
                 webhook_url=f"{base_url}/api/v1/clip/webhook",
-                redirect_url=f"{base_url}/registro-exitoso?tenant_id={tenant.id}",
+                redirection_url={
+                    "success": f"{base_url}/registro-exitoso?tenant_id={tenant.id}&status=active",
+                    "error": f"{base_url}/registro-exitoso?tenant_id={tenant.id}&status=error",
+                    "default": f"{base_url}/registro-exitoso?tenant_id={tenant.id}",
+                },
                 metadata={"tenant_id": tenant.id, "subscription_id": sub.id, "is_registration": True},
             )
             clip_id = result.get("payment_request_id", "")
@@ -149,7 +153,8 @@ def register():
             db.session.add(payment)
             sub.clip_checkout_id = clip_id
         except ClipAPIError:
-            pass
+            db.session.rollback()
+            return jsonify({"error": "No se pudo conectar con la pasarela de pago. Intenta de nuevo en unos momentos."}), 503
 
     db.session.commit()
 

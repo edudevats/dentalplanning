@@ -75,6 +75,19 @@
   var attempts = 0;
   var MAX_ATTEMPTS = 12;
   var isPendingApproval = status === 'pending';
+  var isError = status === 'error';
+
+  function showError() {
+    document.getElementById('spinner').classList.add('hidden');
+    document.getElementById('pending-info').classList.remove('hidden');
+    document.getElementById('title-text').textContent = 'Pago no completado';
+    document.getElementById('desc-text').textContent = 'Tu cuenta fue creada pero el pago no se completó. Inicia sesión para intentar pagar de nuevo o contacta soporte.';
+    document.querySelector('#pending-info p.text-sm').textContent = 'Pago fallido';
+    document.querySelector('#pending-info p.text-xs').textContent = 'Si el monto fue cargado a tu tarjeta, contacta a soporte. De lo contrario, puedes intentar de nuevo desde tu panel.';
+    document.getElementById('action-buttons').classList.remove('hidden');
+    var retryBtn = document.querySelector('#pending-info button');
+    if (retryBtn) retryBtn.remove();
+  }
 
   function showActive() {
     document.getElementById('icon-pending').classList.add('hidden');
@@ -141,6 +154,8 @@
 
   if (isPendingApproval) {
     showPendingApproval();
+  } else if (isError) {
+    showError();
   } else {
     checkStatus();
   }
