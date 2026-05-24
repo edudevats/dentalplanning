@@ -28,9 +28,35 @@ _LOGIN_STATUS_MESSAGES = {
 }
 
 
+def _plan_is_available(plan, codigo=None, today=None):
+    """Check if a plan should be shown in /register or accepted at signup.
+
+    Soft cupo: once cupo_usados >= cupo_maximo, plan disappears from listing.
+    Date range: only visible during [fecha_inicio_promo, fecha_fin_promo] if set.
+    Invitation code: only visible when caller provides matching codigo.
+    """
+    from datetime import date as _date
+    today = today or _date.today()
+
+    if not plan.activo or not plan.publico:
+        return False
+    if plan.cupo_maximo is not None and (plan.cupo_usados or 0) >= plan.cupo_maximo:
+        return False
+    if plan.fecha_inicio_promo and plan.fecha_inicio_promo > today:
+        return False
+    if plan.fecha_fin_promo and plan.fecha_fin_promo < today:
+        return False
+    if plan.codigo_invitacion:
+        if not codigo or codigo.strip().lower() != plan.codigo_invitacion.lower():
+            return False
+    return True
+
+
 @auth_bp.route("/plans", methods=["GET"])
 def public_plans():
+    codigo = request.args.get("codigo")
     plans = Plan.query.filter_by(activo=True, publico=True).order_by(Plan.precio_mensual.asc()).all()
+    visible = [p for p in plans if _plan_is_available(p, codigo=codigo)]
     return jsonify({
         "plans": [
             {
@@ -41,8 +67,11 @@ def public_plans():
                 "modulos": p.modulos or [],
                 "es_temporal": p.es_temporal,
                 "dias_expiracion": p.dias_expiracion,
+                "es_promocional": bool(
+                    p.cupo_maximo or p.fecha_fin_promo or p.codigo_invitacion
+                ),
             }
-            for p in plans
+            for p in visible
         ]
     })
 
@@ -51,7 +80,6 @@ def public_plans():
 @rate_limit(max_calls=3, period_seconds=60)
 def register():
     from datetime import date, timedelta
-    from app.clip.service import create_checkout_link, ClipAPIError
 
     schema = RegisterSchema()
     data = schema.load(request.get_json() or {})
@@ -69,13 +97,25 @@ def register():
     if not plan or not plan.activo:
         return jsonify({"error": "Plan inválido"}), 400
 
+    codigo = (request.get_json() or {}).get("codigo_invitacion") or request.args.get("codigo")
+    if not _plan_is_available(plan, codigo=codigo):
+        return jsonify({"error": "Este plan ya no está disponible."}), 410
+
     is_paid = plan.precio_mensual > 0
-    if is_paid:
-        initial_status = TENANT_STATUS_ACTIVE
-        initial_active = True
-    else:
-        initial_status = TENANT_STATUS_PENDING
-        initial_active = False
+
+    # For paid plans we require a pre-synced Clip recurring price.
+    if is_paid and not plan.clip_subscription_link:
+        current_app.logger.error(
+            "Plan %s (id=%s) has no clip_subscription_link. Run `flask billing sync-prices`.",
+            plan.nombre, plan.id,
+        )
+        return jsonify({
+            "error": "Este plan no está disponible para suscripción en este momento. "
+                     "Intenta de nuevo en unos minutos o contacta al soporte."
+        }), 503
+
+    initial_status = TENANT_STATUS_ACTIVE if is_paid else TENANT_STATUS_PENDING
+    initial_active = is_paid
 
     tenant = Tenant(
         name=data["tenant_name"],
@@ -119,54 +159,16 @@ def register():
     db.session.add(sub)
     db.session.flush()
 
-    clip_url = None
-    if is_paid:
-        try:
-            base_url = request.host_url.rstrip("/")
-            result = create_checkout_link(
-                amount=plan.precio_mensual,
-                description=f"Suscripcion {plan.nombre} - {tenant.name}",
-                webhook_url=f"{base_url}/api/v1/clip/webhook",
-                redirection_url={
-                    "success": f"{base_url}/registro-exitoso",
-                    "error": f"{base_url}/registro-error",
-                    "default": f"{base_url}/registro-exitoso",
-                },
-                metadata={
-                    "tenant_id": str(tenant.id),
-                    "subscription_id": str(sub.id),
-                    "is_registration": "true",
-                },
-            )
-            clip_id = result.get("payment_request_id", "")
-            clip_url = result.get("payment_request_url", "")
-
-            payment = Payment(
-                tenant_id=tenant.id,
-                subscription_id=sub.id,
-                fecha=today,
-                monto=plan.precio_mensual,
-                metodo="clip",
-                periodo_inicio=today,
-                periodo_fin=today + timedelta(days=30),
-                comentarios=f"Pago inicial — {plan.nombre}",
-                registrado_por_id=user.id,
-                clip_payment_id=clip_id,
-                clip_status="PENDING",
-            )
-            db.session.add(payment)
-            sub.clip_checkout_id = clip_id
-        except ClipAPIError as clip_err:
-            current_app.logger.error("Clip API error during registration: %s", clip_err)
-            db.session.rollback()
-            return jsonify({"error": "No se pudo conectar con la pasarela de pago. Intenta de nuevo en unos momentos."}), 503
-
     db.session.commit()
 
     access_token = create_access_token(identity=str(user.id))
 
-    msg = "Cuenta creada. Completa el pago para activar tu acceso." if is_paid else \
-          "Cuenta creada. Tu acceso será activado por el administrador."
+    if is_paid:
+        msg = "Cuenta creada. Suscríbete para activar tu acceso."
+        clip_url = plan.clip_subscription_link
+    else:
+        msg = "Cuenta creada. Tu acceso será activado por el administrador."
+        clip_url = None
 
     return jsonify({
         "message": msg,
@@ -291,6 +293,26 @@ def me():
             "expirado": dias_restantes <= 0,
         }
 
+    billing_nag = None
+    if sub and sub.plan and not sub.plan.es_temporal and sub.proximo_cobro:
+        from app.superadmin.models import SUBSCRIPTION_GRACIA
+        today = date_cls.today()
+        dias_hasta_cobro = (sub.proximo_cobro - today).days
+        is_overdue = sub.estado == SUBSCRIPTION_GRACIA
+        not_subscribed = not sub.clip_subscription_id
+        if dias_hasta_cobro <= 1 or is_overdue or not_subscribed:
+            billing_nag = {
+                "estado": sub.estado,
+                "plan_nombre": sub.plan.nombre,
+                "proximo_cobro": sub.proximo_cobro.isoformat(),
+                "dias_hasta_cobro": dias_hasta_cobro,
+                "monto": sub.plan.precio_mensual,
+                "en_gracia": is_overdue,
+                "gracia_expira": sub.grace_expires_at.isoformat() if sub.grace_expires_at else None,
+                "no_suscrito": not_subscribed,
+                "subscription_link": sub.plan.clip_subscription_link,
+            }
+
     return jsonify({
         "id": user.id,
         "email": user.email,
@@ -306,4 +328,5 @@ def me():
             "allowed_modules": user.tenant.allowed_modules,
         },
         "trial": trial_info,
+        "billing_nag": billing_nag,
     })

@@ -91,10 +91,20 @@
       tdSubs.className = 'px-4 py-3.5 text-center text-cs-on-surface';
       tdSubs.textContent = subsCountByPlan[p.id] || 0;
 
+      // Promo (cupo/fecha/codigo)
+      const tdPromo = document.createElement('td');
+      tdPromo.className = 'px-4 py-3.5 text-center';
+      tdPromo.appendChild(buildPromoBadge(p));
+
       // Estado (toggle)
       const tdStatus = document.createElement('td');
       tdStatus.className = 'px-4 py-3.5 text-center';
       tdStatus.appendChild(buildStatusToggle(p));
+
+      // Clip sync status
+      const tdClip = document.createElement('td');
+      tdClip.className = 'px-4 py-3.5 text-center';
+      tdClip.appendChild(buildClipBadge(p));
 
       // Acciones
       const tdAct = document.createElement('td');
@@ -114,7 +124,9 @@
       tr.appendChild(tdTipo);
       tr.appendChild(tdVis);
       tr.appendChild(tdSubs);
+      tr.appendChild(tdPromo);
       tr.appendChild(tdStatus);
+      tr.appendChild(tdClip);
       tr.appendChild(tdAct);
       tbody.appendChild(tr);
     });
@@ -140,12 +152,144 @@
           publico: plan.publico,
           es_temporal: plan.es_temporal,
           dias_expiracion: plan.dias_expiracion,
+          cupo_maximo: plan.cupo_maximo,
+          fecha_inicio_promo: plan.fecha_inicio_promo,
+          fecha_fin_promo: plan.fecha_fin_promo,
+          codigo_invitacion: plan.codigo_invitacion,
         });
         Toast.show(plan.activo ? 'Plan desactivado' : 'Plan activado', 'success');
         await loadAll();
       } catch (err) { Toast.show(err.message, 'error'); }
     });
     return wrap;
+  }
+
+  function buildPromoBadge(plan) {
+    const wrap = document.createElement('div');
+    wrap.className = 'inline-flex flex-col items-center gap-0.5';
+
+    if (!plan.es_promocional) {
+      const dash = document.createElement('span');
+      dash.className = 'text-cs-on-surface-var text-xs';
+      dash.textContent = '—';
+      wrap.appendChild(dash);
+      return wrap;
+    }
+
+    if (plan.cupo_maximo != null) {
+      const isFull = plan.cupo_disponible <= 0;
+      const cupoSpan = document.createElement('span');
+      cupoSpan.className = 'inline-flex px-2 py-0.5 rounded-md text-[10px] font-bold ' +
+        (isFull ? 'bg-red-500/15 text-red-700' : 'bg-purple-500/15 text-purple-700');
+      cupoSpan.textContent = `${plan.cupo_usados}/${plan.cupo_maximo}` + (isFull ? ' agotado' : '');
+      wrap.appendChild(cupoSpan);
+    }
+
+    if (plan.fecha_fin_promo) {
+      const fechaSpan = document.createElement('span');
+      fechaSpan.className = 'text-[10px] text-cs-on-surface-var';
+      fechaSpan.textContent = 'Hasta ' + plan.fecha_fin_promo;
+      wrap.appendChild(fechaSpan);
+    }
+
+    if (plan.codigo_invitacion) {
+      const codeSpan = document.createElement('span');
+      codeSpan.className = 'inline-flex px-2 py-0.5 rounded-md text-[10px] font-semibold bg-cyan-500/15 text-cyan-700';
+      codeSpan.textContent = 'cód: ' + plan.codigo_invitacion;
+      wrap.appendChild(codeSpan);
+    }
+
+    return wrap;
+  }
+
+  function buildClipBadge(plan) {
+    const wrap = document.createElement('div');
+    wrap.className = 'inline-flex flex-col items-center gap-1';
+
+    if (plan.es_temporal || plan.precio_mensual <= 0) {
+      const span = document.createElement('span');
+      span.className = 'inline-flex px-2 py-0.5 rounded-md text-[10px] font-semibold bg-cs-surface-container text-cs-on-surface-var';
+      span.textContent = 'No aplica';
+      wrap.appendChild(span);
+      return wrap;
+    }
+
+    if (plan.clip_synced) {
+      const row = document.createElement('div');
+      row.className = 'flex items-center gap-1';
+      const dot = document.createElement('span');
+      dot.className = 'w-1.5 h-1.5 rounded-full bg-green-500';
+      const txt = document.createElement('span');
+      txt.className = 'text-[10px] font-semibold text-green-700';
+      txt.textContent = 'Sincronizado';
+      row.appendChild(dot);
+      row.appendChild(txt);
+      wrap.appendChild(row);
+
+      if (plan.clip_subscription_link) {
+        const a = document.createElement('a');
+        a.href = plan.clip_subscription_link;
+        a.target = '_blank';
+        a.rel = 'noopener noreferrer';
+        a.className = 'text-[10px] text-cs-primary hover:underline cursor-pointer';
+        a.textContent = 'Ver link';
+        wrap.appendChild(a);
+      }
+    } else {
+      const btn = document.createElement('button');
+      btn.className = 'inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-semibold bg-amber-500/15 text-amber-700 hover:bg-amber-500/25 cursor-pointer';
+      const ic = document.createElement('i');
+      ic.setAttribute('data-lucide', 'alert-circle');
+      ic.className = 'h-3 w-3';
+      btn.appendChild(ic);
+      btn.appendChild(document.createTextNode('Sin sincronizar'));
+      btn.addEventListener('click', () => syncSinglePlan(plan));
+      wrap.appendChild(btn);
+    }
+    return wrap;
+  }
+
+  async function syncSinglePlan(plan) {
+    try {
+      await adminApi.post(`/plans/${plan.id}/sync-clip`, {});
+      Toast.show(`"${plan.nombre}" sincronizado con Clip`, 'success');
+      await loadAll();
+    } catch (err) {
+      Toast.show(err.message || 'Error al sincronizar', 'error');
+    }
+  }
+
+  function setSyncBtnContent(btn, iconName, label, spin) {
+    while (btn.firstChild) btn.removeChild(btn.firstChild);
+    const ic = document.createElement('i');
+    ic.setAttribute('data-lucide', iconName);
+    ic.className = 'h-4 w-4' + (spin ? ' animate-spin' : '');
+    btn.appendChild(ic);
+    btn.appendChild(document.createTextNode(' ' + label));
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+  }
+
+  async function syncAllPlans() {
+    const btn = document.getElementById('btn-sync-clip');
+    btn.disabled = true;
+    setSyncBtnContent(btn, 'loader-2', 'Sincronizando...', true);
+    try {
+      const r = await adminApi.post('/plans/sync-clip', {});
+      const s = (r.synced || []).length;
+      const sk = (r.skipped || []).length;
+      const e = (r.errors || []).length;
+      let msg = `Sincronizados: ${s}`;
+      if (sk) msg += ` · Ya estaban: ${sk}`;
+      if (e) msg += ` · Errores: ${e}`;
+      Toast.show(msg, s > 0 ? 'success' : 'info');
+      if (e) console.warn('Sync errors:', r.errors);
+      await loadAll();
+    } catch (err) {
+      Toast.show(err.message || 'Error al sincronizar', 'error');
+    } finally {
+      btn.disabled = false;
+      setSyncBtnContent(btn, 'refresh-cw', 'Sincronizar con Clip', false);
+    }
   }
 
   function buildVisToggle(plan) {
@@ -166,6 +310,10 @@
           publico: !plan.publico,
           es_temporal: plan.es_temporal,
           dias_expiracion: plan.dias_expiracion,
+          cupo_maximo: plan.cupo_maximo,
+          fecha_inicio_promo: plan.fecha_inicio_promo,
+          fecha_fin_promo: plan.fecha_fin_promo,
+          codigo_invitacion: plan.codigo_invitacion,
         });
         Toast.show(plan.publico ? 'Plan oculto' : 'Plan público', 'success');
         await loadAll();
@@ -273,6 +421,52 @@
     });
     wrap.appendChild(buildField('Módulos incluidos', modsWrap));
 
+    // Promotional limits
+    const promoWrap = document.createElement('div');
+    promoWrap.className = 'space-y-3';
+    const promoLabel = document.createElement('label');
+    promoLabel.className = 'flex items-center gap-2.5 p-2.5 rounded-lg bg-cs-surface-container cursor-pointer hover:bg-cs-surface-container-high transition-colors';
+    const promoChk = document.createElement('input');
+    promoChk.type = 'checkbox';
+    promoChk.checked = !!(plan && (plan.cupo_maximo || plan.fecha_fin_promo || plan.codigo_invitacion));
+    const promoTxt = document.createElement('div');
+    const promoN = document.createElement('span');
+    promoN.className = 'text-sm font-semibold text-cs-on-surface block';
+    promoN.textContent = 'Plan promocional con límites';
+    const promoD = document.createElement('span');
+    promoD.className = 'text-xs text-cs-on-surface-var block';
+    promoD.textContent = 'Define cupo máximo, vigencia o código de invitación. Desaparece de /register al llenarse o vencerse.';
+    promoTxt.appendChild(promoN);
+    promoTxt.appendChild(promoD);
+    promoLabel.appendChild(promoChk);
+    promoLabel.appendChild(promoTxt);
+    promoWrap.appendChild(promoLabel);
+
+    const promoFields = document.createElement('div');
+    promoFields.className = (promoChk.checked ? '' : 'hidden ') + 'grid grid-cols-1 md:grid-cols-2 gap-3 pt-2';
+
+    const cupoInput = inputEl('number', 'cupo_maximo', plan && plan.cupo_maximo ? plan.cupo_maximo : '');
+    cupoInput.min = '1';
+    cupoInput.placeholder = '100';
+    promoFields.appendChild(buildField('Cupo máximo (opcional)', cupoInput));
+
+    const fechaInicio = inputEl('date', 'fecha_inicio_promo', plan && plan.fecha_inicio_promo || '');
+    promoFields.appendChild(buildField('Vigente desde (opcional)', fechaInicio));
+
+    const fechaFin = inputEl('date', 'fecha_fin_promo', plan && plan.fecha_fin_promo || '');
+    promoFields.appendChild(buildField('Vigente hasta (opcional)', fechaFin));
+
+    const codigoInput = inputEl('text', 'codigo_invitacion', plan && plan.codigo_invitacion || '');
+    codigoInput.placeholder = 'BLACKFRIDAY';
+    codigoInput.maxLength = 50;
+    promoFields.appendChild(buildField('Código de invitación (opcional)', codigoInput));
+
+    promoWrap.appendChild(promoFields);
+    promoChk.addEventListener('change', () => {
+      promoFields.classList.toggle('hidden', !promoChk.checked);
+    });
+    wrap.appendChild(buildField('Configuración promocional', promoWrap));
+
     if (isEdit) {
       const activoLabel = document.createElement('label');
       activoLabel.className = 'inline-flex items-center gap-2 text-sm text-cs-on-surface';
@@ -294,6 +488,7 @@
         if (!nombre || nombre.length < 2) throw new Error('El nombre es obligatorio (mínimo 2 caracteres).');
         if (isNaN(precio) || precio < 0) throw new Error('Precio inválido.');
         const modulos = checkboxes.filter(c => c.checked).map(c => c.dataset.slug);
+        const promoOn = promoChk.checked;
         const body = {
           nombre,
           precio_mensual: precio,
@@ -303,6 +498,10 @@
           publico: publicoChk.checked,
           es_temporal: temporalChk.checked,
           dias_expiracion: temporalChk.checked ? parseInt(diasInput.value, 10) || null : null,
+          cupo_maximo: promoOn && cupoInput.value ? parseInt(cupoInput.value, 10) : null,
+          fecha_inicio_promo: promoOn && fechaInicio.value ? fechaInicio.value : null,
+          fecha_fin_promo: promoOn && fechaFin.value ? fechaFin.value : null,
+          codigo_invitacion: promoOn && codigoInput.value.trim() ? codigoInput.value.trim() : null,
         };
         if (isEdit) {
           await adminApi.put(`/plans/${plan.id}`, body);
@@ -318,6 +517,7 @@
 
   async function init() {
     document.getElementById('btn-nuevo-plan').addEventListener('click', () => openPlanModal());
+    document.getElementById('btn-sync-clip').addEventListener('click', syncAllPlans);
     try {
       await loadAll();
     } catch (err) {

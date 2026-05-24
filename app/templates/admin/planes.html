@@ -10,10 +10,16 @@
       <h1 class="font-cs-display text-4xl font-bold text-cs-on-surface tracking-tight">Planes</h1>
       <p class="mt-1.5 text-sm text-cs-on-surface-var max-w-xl">Define los planes comerciales y sus precios. Solo los planes activos pueden asignarse a nuevas clínicas.</p>
     </div>
-    <button id="btn-nuevo-plan" class="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-gradient-to-br from-cs-primary to-cs-primary-dim text-cs-on-primary text-sm font-semibold shadow-sm hover:opacity-95 transition-opacity cursor-pointer">
-      <i data-lucide="plus" class="h-4 w-4"></i>
-      Nuevo plan
-    </button>
+    <div class="flex items-center gap-2">
+      <button id="btn-sync-clip" class="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-cs-surface-container text-cs-on-surface text-sm font-semibold shadow-sm hover:bg-cs-surface-container-high transition-colors cursor-pointer" title="Crea los precios faltantes en Clip para los planes activos">
+        <i data-lucide="refresh-cw" class="h-4 w-4"></i>
+        Sincronizar con Clip
+      </button>
+      <button id="btn-nuevo-plan" class="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-gradient-to-br from-cs-primary to-cs-primary-dim text-cs-on-primary text-sm font-semibold shadow-sm hover:opacity-95 transition-opacity cursor-pointer">
+        <i data-lucide="plus" class="h-4 w-4"></i>
+        Nuevo plan
+      </button>
+    </div>
   </div>
 
   <div class="rounded-lg bg-cs-surface-container-lowest p-2 overflow-x-auto">
@@ -27,7 +33,9 @@
           <th class="px-4 py-3 font-semibold text-center">Tipo</th>
           <th class="px-4 py-3 font-semibold text-center">Visibilidad</th>
           <th class="px-4 py-3 font-semibold text-center">Suscripciones</th>
+          <th class="px-4 py-3 font-semibold text-center">Promo</th>
           <th class="px-4 py-3 font-semibold text-center">Estado</th>
+          <th class="px-4 py-3 font-semibold text-center">Clip</th>
           <th class="px-4 py-3"></th>
         </tr>
       </thead>

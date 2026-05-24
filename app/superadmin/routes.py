@@ -70,6 +70,16 @@ def _serialize_plan(p):
         "modulos": p.modulos or [],
         "publico": p.publico, "es_temporal": p.es_temporal,
         "dias_expiracion": p.dias_expiracion,
+        "clip_price_id": p.clip_price_id,
+        "clip_subscription_link": p.clip_subscription_link,
+        "clip_synced": bool(p.clip_price_id and p.clip_subscription_link),
+        "cupo_maximo": p.cupo_maximo,
+        "cupo_usados": p.cupo_usados or 0,
+        "cupo_disponible": (p.cupo_maximo - (p.cupo_usados or 0)) if p.cupo_maximo is not None else None,
+        "fecha_inicio_promo": p.fecha_inicio_promo.isoformat() if p.fecha_inicio_promo else None,
+        "fecha_fin_promo": p.fecha_fin_promo.isoformat() if p.fecha_fin_promo else None,
+        "codigo_invitacion": p.codigo_invitacion,
+        "es_promocional": bool(p.cupo_maximo or p.fecha_fin_promo or p.codigo_invitacion),
     }
 
 
@@ -362,6 +372,38 @@ def list_plans():
     return jsonify({"plans": [_serialize_plan(p) for p in plans]})
 
 
+def _sync_plan_to_clip(plan, app_base_url):
+    """Create a recurring price in Clip for this plan and store the id + link.
+
+    Idempotent: if plan already has clip_price_id, no-op.
+    Skips trial plans and free plans (precio_mensual <= 0).
+
+    Raises ClipAPIError on failure. Caller decides whether to fail or just log.
+    """
+    from app.clip.service import create_price
+
+    if plan.es_temporal or plan.precio_mensual <= 0:
+        return False
+    if plan.clip_price_id and plan.clip_subscription_link:
+        return False
+
+    base = (app_base_url or current_app.config.get("APP_BASE_URL", "")).rstrip("/")
+    result = create_price(
+        name=plan.nombre,
+        description=plan.descripcion or plan.nombre,
+        amount=plan.precio_mensual,
+        webhook_url=f"{base}/api/v1/clip/webhook",
+        success_url=f"{base}/registro-exitoso",
+        error_url=f"{base}/registro-error",
+        default_url=f"{base}/registro-exitoso",
+        anchor_on_first_payment=True,
+        grace_period_days=current_app.config.get("BILLING_GRACE_DAYS", 3),
+    )
+    plan.clip_price_id = result.get("id", "")
+    plan.clip_subscription_link = (result.get("recurring") or {}).get("subscription_link", "")
+    return True
+
+
 @superadmin_bp.route("/plans", methods=["POST"])
 @require_superuser
 def create_plan():
@@ -370,8 +412,21 @@ def create_plan():
         return jsonify({"error": "Ya existe un plan con ese nombre"}), 409
     p = Plan(**data)
     db.session.add(p)
+    db.session.flush()
+
+    base_url = request.host_url.rstrip("/")
+    sync_warning = None
+    try:
+        _sync_plan_to_clip(p, base_url)
+    except ClipAPIError as e:
+        current_app.logger.warning("Clip price sync failed for new plan %s: %s", p.nombre, e)
+        sync_warning = "Plan creado, pero no se pudo sincronizar con Clip. Usa el botón 'Sincronizar con Clip' después."
+
     db.session.commit()
-    return jsonify(_serialize_plan(p)), 201
+    body = _serialize_plan(p)
+    if sync_warning:
+        body["sync_warning"] = sync_warning
+    return jsonify(body), 201
 
 
 @superadmin_bp.route("/plans/<int:plan_id>", methods=["PUT"])
@@ -382,10 +437,92 @@ def update_plan(plan_id):
     other = Plan.query.filter(Plan.nombre == data["nombre"], Plan.id != plan_id).first()
     if other:
         return jsonify({"error": "Ya existe un plan con ese nombre"}), 409
+
+    price_changed = (
+        "precio_mensual" in data and data["precio_mensual"] != p.precio_mensual
+    )
+    es_temporal_changed = (
+        "es_temporal" in data and bool(data["es_temporal"]) != bool(p.es_temporal)
+    )
+
     for k, v in data.items():
         setattr(p, k, v)
+
+    sync_warning = None
+    # If price or es_temporal changed, the Clip price is stale. We can't update
+    # /prices/{id} via API (no PUT documented), so we clear it and re-create.
+    if (price_changed or es_temporal_changed) and p.clip_price_id:
+        current_app.logger.info(
+            "Plan %s changed price/temporality; clearing stale Clip price %s",
+            p.nombre, p.clip_price_id,
+        )
+        p.clip_price_id = None
+        p.clip_subscription_link = None
+
+    base_url = request.host_url.rstrip("/")
+    try:
+        _sync_plan_to_clip(p, base_url)
+    except ClipAPIError as e:
+        current_app.logger.warning("Clip price sync failed for plan %s: %s", p.nombre, e)
+        sync_warning = "Plan actualizado, pero no se pudo sincronizar con Clip."
+
+    db.session.commit()
+    body = _serialize_plan(p)
+    if sync_warning:
+        body["sync_warning"] = sync_warning
+    return jsonify(body)
+
+
+@superadmin_bp.route("/plans/<int:plan_id>/sync-clip", methods=["POST"])
+@require_superuser
+def sync_plan_clip(plan_id):
+    """Force re-sync of a single plan to Clip (creates a new /prices entry)."""
+    p = Plan.query.get_or_404(plan_id)
+    if p.es_temporal or p.precio_mensual <= 0:
+        return jsonify({"error": "Solo planes de paga no temporales pueden sincronizarse"}), 400
+
+    p.clip_price_id = None
+    p.clip_subscription_link = None
+    base_url = request.host_url.rstrip("/")
+    try:
+        _sync_plan_to_clip(p, base_url)
+    except ClipAPIError as e:
+        db.session.rollback()
+        return jsonify({"error": f"Clip API: {e}"}), 502
+
     db.session.commit()
     return jsonify(_serialize_plan(p))
+
+
+@superadmin_bp.route("/plans/sync-clip", methods=["POST"])
+@require_superuser
+def sync_all_plans_clip():
+    """Bulk sync: create Clip prices for all paid non-trial plans missing one."""
+    base_url = request.host_url.rstrip("/")
+    candidates = Plan.query.filter(
+        Plan.activo.is_(True),
+        Plan.es_temporal.is_(False),
+        Plan.precio_mensual > 0,
+        db.or_(Plan.clip_price_id.is_(None), Plan.clip_price_id == ""),
+    ).all()
+
+    synced = []
+    skipped = []
+    errors = []
+
+    for p in candidates:
+        try:
+            did = _sync_plan_to_clip(p, base_url)
+            if did:
+                synced.append({"id": p.id, "nombre": p.nombre, "clip_price_id": p.clip_price_id})
+            else:
+                skipped.append({"id": p.id, "nombre": p.nombre, "reason": "already synced"})
+        except ClipAPIError as e:
+            errors.append({"id": p.id, "nombre": p.nombre, "error": str(e)})
+
+    db.session.commit()
+    return jsonify({"synced": synced, "skipped": skipped, "errors": errors,
+                    "total_candidates": len(candidates)})
 
 
 # ── Subscriptions ───────────────────────────────────────────────────────────
@@ -490,6 +627,75 @@ def delete_payment(payment_id):
     db.session.delete(p)
     db.session.commit()
     return jsonify({"message": "Pago eliminado"})
+
+
+@superadmin_bp.route("/payments/sync-clip", methods=["POST"])
+@require_superuser
+def sync_clip_payments():
+    """Cross-check PENDING Clip payments by querying their subscription/invoice in Clip.
+
+    For each local Payment with metodo='clip' and clip_status != 'PAID',
+    look up its subscription in Clip and reconcile invoice statuses.
+    Used as a fallback when webhooks were missed.
+    """
+    from app.clip.service import get_subscription, get_invoice
+
+    pending = Payment.query.filter(
+        Payment.metodo == "clip",
+        Payment.clip_payment_id.isnot(None),
+        Payment.clip_payment_id != "",
+        db.or_(Payment.clip_status != "PAID", Payment.clip_status.is_(None)),
+    ).all()
+
+    updated = []
+    errors = []
+    unchanged = 0
+    checked_subs = set()
+
+    for p in pending:
+        try:
+            invoice = get_invoice(p.clip_payment_id)
+        except ClipAPIError as e:
+            errors.append({"payment_id": p.id, "error": str(e)})
+            continue
+        if not invoice:
+            errors.append({"payment_id": p.id, "error": "invoice not found in Clip"})
+            continue
+
+        clip_status = (invoice.get("status") or "").upper()
+        old_status = p.clip_status
+
+        if clip_status == "PAID":
+            p.clip_status = "PAID"
+            if p.subscription_id:
+                sub = db.session.get(Subscription, p.subscription_id)
+                if sub:
+                    sub.estado = SUBSCRIPTION_ACTIVA
+                    sub.grace_expires_at = None
+                    if p.periodo_fin:
+                        sub.proximo_cobro = p.periodo_fin + timedelta(days=1)
+            tenant = db.session.get(Tenant, p.tenant_id)
+            if tenant and tenant.status != TENANT_STATUS_ACTIVE:
+                tenant.status = TENANT_STATUS_ACTIVE
+                tenant.is_active = True
+            updated.append({"payment_id": p.id, "from": old_status, "to": "PAID"})
+        elif clip_status in ("FAILED", "OVERDUE"):
+            new_local = clip_status
+            if old_status != new_local:
+                p.clip_status = new_local
+                updated.append({"payment_id": p.id, "from": old_status, "to": new_local})
+            else:
+                unchanged += 1
+        else:
+            unchanged += 1
+
+    db.session.commit()
+    return jsonify({
+        "checked": len(pending),
+        "updated": updated,
+        "unchanged": unchanged,
+        "errors": errors,
+    })
 
 
 # ── Clip charge ────────────────────────────────────────────────────────────

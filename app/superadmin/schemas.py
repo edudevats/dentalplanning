@@ -15,6 +15,10 @@ class PlanSchema(Schema):
     publico = fields.Bool(load_default=True)
     es_temporal = fields.Bool(load_default=False)
     dias_expiracion = fields.Int(load_default=None, allow_none=True, validate=validate.Range(min=1))
+    cupo_maximo = fields.Int(load_default=None, allow_none=True, validate=validate.Range(min=1))
+    fecha_inicio_promo = fields.Date(load_default=None, allow_none=True)
+    fecha_fin_promo = fields.Date(load_default=None, allow_none=True)
+    codigo_invitacion = fields.Str(load_default=None, allow_none=True, validate=validate.Length(max=50))
 
 
 class ApproveTenantSchema(Schema):

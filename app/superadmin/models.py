@@ -23,6 +23,14 @@ class Plan(db.Model):
     publico = db.Column(db.Boolean, nullable=False, default=True)
     es_temporal = db.Column(db.Boolean, nullable=False, default=False)
     dias_expiracion = db.Column(db.Integer, nullable=True)
+    clip_price_id = db.Column(db.String(100), nullable=True)
+    clip_subscription_link = db.Column(db.String(500), nullable=True)
+    # Promotional plan limits — all optional, combinable
+    cupo_maximo = db.Column(db.Integer, nullable=True)
+    cupo_usados = db.Column(db.Integer, nullable=False, default=0)
+    fecha_inicio_promo = db.Column(db.Date, nullable=True)
+    fecha_fin_promo = db.Column(db.Date, nullable=True)
+    codigo_invitacion = db.Column(db.String(50), nullable=True, unique=True)
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
 
 
@@ -37,9 +45,11 @@ class Subscription(db.Model):
     inicio = db.Column(db.Date, nullable=False)
     proximo_cobro = db.Column(db.Date, nullable=True)
     estado = db.Column(db.String(20), nullable=False, default=SUBSCRIPTION_ACTIVA)
-    clip_checkout_id = db.Column(db.String(100), nullable=True)
+    clip_checkout_id = db.Column(db.String(100), nullable=True)  # legacy: one-time /v2/checkout link id
     clip_customer_id = db.Column(db.String(100), nullable=True)
+    clip_subscription_id = db.Column(db.String(100), nullable=True)  # active: Clip /subscriptions id
     grace_expires_at = db.Column(db.Date, nullable=True)
+    counted_in_cupo = db.Column(db.Boolean, nullable=False, default=False)
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
 
     tenant = db.relationship("Tenant", backref=db.backref("subscription", uselist=False))
@@ -63,8 +73,8 @@ class Payment(db.Model):
     registrado_por_id = db.Column(
         db.Integer, db.ForeignKey("users.id"), nullable=False
     )
-    clip_payment_id = db.Column(db.String(100), nullable=True)
-    clip_status = db.Column(db.String(20), nullable=True)
+    clip_payment_id = db.Column(db.String(100), nullable=True)  # invoice_id (recurring) or payment_request_id (legacy)
+    clip_status = db.Column(db.String(20), nullable=True)  # PAID | PENDING | OVERDUE | FAILED | EXPIRED | CANCELLED
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
 
     tenant = db.relationship("Tenant", backref=db.backref("payments", lazy="dynamic"))

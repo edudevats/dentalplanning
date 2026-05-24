@@ -344,11 +344,292 @@ async function loadUserInfo() {
     document.querySelectorAll('[data-user-name]').forEach(el => { el.textContent = name; });
     document.querySelectorAll('[data-user-role]').forEach(el => { el.textContent = role; });
     document.querySelectorAll('[data-user-initials]').forEach(el => { el.textContent = initials; });
+
+    SubscriptionPopup.check(data);
     return user;
   } catch {
     Auth.logout();
   }
 }
+
+// ── Subscription / Trial popups ───────────────────────────────────────────────
+const SubscriptionPopup = {
+  _CONTAINER_ID: 'subscription-popup-container',
+
+  check(data) {
+    if (!data) return;
+    this._remove();
+
+    const trial = data.trial;
+    if (trial && trial.expirado) {
+      this._showTrialExpired(trial);
+      return;
+    }
+
+    const nag = data.billing_nag;
+    if (!nag) return;
+
+    if (nag.no_suscrito) {
+      this._showNotSubscribed(nag);
+    } else if (nag.en_gracia || nag.dias_hasta_cobro < 0) {
+      this._showSubscriptionExpired(nag);
+    } else if (nag.dias_hasta_cobro <= 1) {
+      if (this._isDismissed(nag.proximo_cobro)) return;
+      this._showRenewalReminder(nag);
+    }
+  },
+
+  _container() {
+    let c = document.getElementById(this._CONTAINER_ID);
+    if (!c) {
+      c = document.createElement('div');
+      c.id = this._CONTAINER_ID;
+      document.body.appendChild(c);
+    }
+    return c;
+  },
+
+  _remove() {
+    const c = document.getElementById(this._CONTAINER_ID);
+    if (c) c.remove();
+  },
+
+  _isDismissed(proximoCobro) {
+    if (!proximoCobro) return false;
+    const key = `dp_dismiss_billing_${proximoCobro}`;
+    const today = new Date().toISOString().slice(0, 10);
+    return localStorage.getItem(key) === today;
+  },
+
+  _dismiss(proximoCobro) {
+    const key = `dp_dismiss_billing_${proximoCobro}`;
+    const today = new Date().toISOString().slice(0, 10);
+    localStorage.setItem(key, today);
+    this._remove();
+  },
+
+  _buildOverlay(blocking) {
+    const overlay = document.createElement('div');
+    overlay.className = 'fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm';
+    if (!blocking) overlay.classList.add('pointer-events-auto');
+    return overlay;
+  },
+
+  _buildCard(accent) {
+    const accentMap = {
+      red:    { ring: 'ring-red-500/30',    bar: 'bg-red-500',    icon: 'text-red-600' },
+      amber:  { ring: 'ring-amber-500/30',  bar: 'bg-amber-500',  icon: 'text-amber-600' },
+      blue:   { ring: 'ring-blue-500/30',   bar: 'bg-blue-500',   icon: 'text-blue-600' },
+    };
+    const a = accentMap[accent] || accentMap.blue;
+    const card = document.createElement('div');
+    card.className = `relative w-full max-w-md rounded-2xl bg-white shadow-2xl ring-1 ${a.ring} overflow-hidden`;
+    const bar = document.createElement('div');
+    bar.className = `h-1.5 w-full ${a.bar}`;
+    card.appendChild(bar);
+    card._iconClass = a.icon;
+    return card;
+  },
+
+  _addBody(card, title, lines) {
+    const body = document.createElement('div');
+    body.className = 'p-6 space-y-4 font-body';
+
+    const h = document.createElement('h2');
+    h.className = 'font-cs-display text-2xl font-bold text-gray-900';
+    h.textContent = title;
+    body.appendChild(h);
+
+    lines.forEach(line => {
+      const p = document.createElement('p');
+      p.className = line.bold ? 'text-sm text-gray-900 font-semibold' : 'text-sm text-gray-600 leading-relaxed';
+      p.textContent = line.text || line;
+      body.appendChild(p);
+    });
+
+    card.appendChild(body);
+    return body;
+  },
+
+  _addInfoBox(body, items) {
+    const box = document.createElement('div');
+    box.className = 'rounded-lg bg-gray-50 ring-1 ring-gray-200 p-4 space-y-1.5';
+    items.forEach(([label, value]) => {
+      const row = document.createElement('div');
+      row.className = 'flex justify-between text-sm';
+      const l = document.createElement('span');
+      l.className = 'text-gray-500';
+      l.textContent = label;
+      const v = document.createElement('span');
+      v.className = 'font-semibold text-gray-900';
+      v.textContent = value;
+      row.appendChild(l);
+      row.appendChild(v);
+      box.appendChild(row);
+    });
+    body.appendChild(box);
+  },
+
+  _addActions(card, buttons) {
+    const actions = document.createElement('div');
+    actions.className = 'px-6 pb-6 pt-2 flex flex-col-reverse sm:flex-row sm:justify-end gap-2';
+    buttons.forEach(btn => {
+      const el = document.createElement(btn.href ? 'a' : 'button');
+      if (btn.href) {
+        el.href = btn.href;
+        el.target = '_blank';
+        el.rel = 'noopener noreferrer';
+      }
+      el.className = btn.primary
+        ? 'inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-lg bg-gradient-to-br from-blue-600 to-blue-700 text-white text-sm font-semibold shadow hover:opacity-95 transition-opacity cursor-pointer'
+        : 'inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-lg bg-gray-100 text-gray-700 text-sm font-semibold hover:bg-gray-200 transition-colors cursor-pointer';
+      el.textContent = btn.label;
+      if (btn.onClick) el.addEventListener('click', btn.onClick);
+      actions.appendChild(el);
+    });
+    card.appendChild(actions);
+  },
+
+  _fmtMoney(v) {
+    return '$' + Number(v || 0).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' MXN';
+  },
+
+  _fmtDate(iso) {
+    if (!iso) return '';
+    const d = new Date(iso.length === 10 ? iso + 'T12:00:00' : iso);
+    return d.toLocaleDateString('es-MX', { day: '2-digit', month: 'long', year: 'numeric' });
+  },
+
+  // ── Popup 1: Trial expired (BLOCKING) ───────────────────────────────────────
+  _showTrialExpired(trial) {
+    const overlay = this._buildOverlay(true);
+    const card = this._buildCard('amber');
+
+    this._addBody(card, 'Tu periodo de prueba terminó', [
+      'Esperamos que hayas disfrutado probando Dental Planning. Para seguir usando el sistema y conservar tus datos, suscríbete a un plan de pago.',
+    ]);
+
+    this._addInfoBox(card.lastChild, [
+      ['Plan de prueba', `${trial.dias_expiracion || 0} días`],
+      ['Expiró', this._fmtDate(trial.expira)],
+    ]);
+
+    this._addActions(card, [
+      {
+        label: 'Cerrar sesión',
+        primary: false,
+        onClick: () => Auth.logout(),
+      },
+      {
+        label: 'Ver planes y suscribirme',
+        primary: true,
+        onClick: () => { window.location.href = '/registro?upgrade=1'; },
+      },
+    ]);
+
+    overlay.appendChild(card);
+    this._container().appendChild(overlay);
+  },
+
+  // ── Popup 2a: Not subscribed yet (BLOCKING) — registered but never paid ─────
+  _showNotSubscribed(nag) {
+    const overlay = this._buildOverlay(true);
+    const card = this._buildCard('amber');
+
+    this._addBody(card, 'Activa tu suscripción', [
+      'Tu cuenta está creada pero aún no has completado la suscripción. Da click abajo para registrar tu tarjeta y activar tu acceso. El cobro se hará automáticamente cada mes.',
+    ]);
+
+    this._addInfoBox(card.lastChild, [
+      ['Plan', nag.plan_nombre || '—'],
+      ['Monto mensual', this._fmtMoney(nag.monto)],
+    ]);
+
+    const buttons = [
+      { label: 'Cerrar sesión', primary: false, onClick: () => Auth.logout() },
+    ];
+    if (nag.subscription_link) {
+      buttons.push({ label: 'Suscribirme ahora', primary: true, href: nag.subscription_link });
+    }
+    this._addActions(card, buttons);
+
+    overlay.appendChild(card);
+    this._container().appendChild(overlay);
+  },
+
+  // ── Popup 2: Subscription expired / in grace (BLOCKING) ─────────────────────
+  _showSubscriptionExpired(nag) {
+    const overlay = this._buildOverlay(true);
+    const card = this._buildCard('red');
+
+    const title = nag.en_gracia ? 'Tu suscripción está en periodo de gracia' : 'Tu suscripción venció';
+    const intro = nag.en_gracia
+      ? `Tu pago no se ha completado. Tienes hasta el ${this._fmtDate(nag.gracia_expira)} para regularizar tu cuenta. Después de esa fecha el acceso quedará bloqueado.`
+      : 'Tu suscripción venció. Paga ahora para recuperar el acceso completo al sistema.';
+
+    this._addBody(card, title, [intro]);
+
+    this._addInfoBox(card.lastChild, [
+      ['Plan', nag.plan_nombre || '—'],
+      ['Monto', this._fmtMoney(nag.monto)],
+      ['Vencimiento', this._fmtDate(nag.proximo_cobro)],
+    ]);
+
+    const buttons = [
+      { label: 'Cerrar sesión', primary: false, onClick: () => Auth.logout() },
+    ];
+    if (nag.subscription_link) {
+      buttons.push({
+        label: 'Re-suscribirme',
+        primary: true,
+        href: nag.subscription_link,
+      });
+    } else {
+      buttons.push({
+        label: 'Contactar soporte',
+        primary: true,
+        href: 'mailto:soporte@dentalplanning.mx?subject=Renovacion de suscripcion',
+      });
+    }
+
+    this._addActions(card, buttons);
+
+    overlay.appendChild(card);
+    this._container().appendChild(overlay);
+  },
+
+  // ── Popup 3: Renewal reminder T-1 (DISMISSIBLE) ─────────────────────────────
+  _showRenewalReminder(nag) {
+    const overlay = this._buildOverlay(false);
+    const card = this._buildCard('blue');
+
+    const daysText = nag.dias_hasta_cobro === 0
+      ? 'Tu suscripción se renueva HOY.'
+      : 'Tu suscripción se renueva mañana.';
+
+    this._addBody(card, 'Recordatorio de cobro', [
+      daysText + ' Se cobrará automáticamente a la tarjeta que registraste con Clip.',
+    ]);
+
+    this._addInfoBox(card.lastChild, [
+      ['Plan', nag.plan_nombre || '—'],
+      ['Monto', this._fmtMoney(nag.monto)],
+      ['Fecha de cobro', this._fmtDate(nag.proximo_cobro)],
+    ]);
+
+    const buttons = [
+      {
+        label: 'Entendido',
+        primary: true,
+        onClick: () => this._dismiss(nag.proximo_cobro),
+      },
+    ];
+    this._addActions(card, buttons);
+
+    overlay.appendChild(card);
+    this._container().appendChild(overlay);
+  },
+};
 
 // ── Active nav ────────────────────────────────────────────────────────────────
 function setActiveNav() {

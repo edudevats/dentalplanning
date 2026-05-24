@@ -199,6 +199,48 @@
     });
 
     document.getElementById('btn-nuevo-pago').addEventListener('click', openNewPayment);
+    document.getElementById('btn-sync-clip').addEventListener('click', onSyncClip);
+  }
+
+  function setBtnContent(btn, iconName, label, spin) {
+    while (btn.firstChild) btn.removeChild(btn.firstChild);
+    const icon = document.createElement('i');
+    icon.setAttribute('data-lucide', iconName);
+    icon.className = 'h-4 w-4' + (spin ? ' animate-spin' : '');
+    btn.appendChild(icon);
+    btn.appendChild(document.createTextNode(' ' + label));
+    if (window.lucide) window.lucide.createIcons();
+  }
+
+  async function onSyncClip() {
+    const btn = document.getElementById('btn-sync-clip');
+    btn.disabled = true;
+    setBtnContent(btn, 'loader-2', 'Verificando...', true);
+
+    try {
+      const res = await adminApi.post('/payments/sync-clip', {});
+      const u = res.updated || [];
+      const e = res.errors || [];
+      let msg;
+      if (u.length === 0 && e.length === 0) {
+        msg = `Sin cambios (${res.checked} pagos revisados).`;
+      } else {
+        const paidCount = u.filter(x => x.to === 'PAID').length;
+        const otherCount = u.length - paidCount;
+        msg = `Revisados: ${res.checked} · Marcados PAID: ${paidCount}`;
+        if (otherCount) msg += ` · Otros cambios: ${otherCount}`;
+        if (e.length) msg += ` · Errores: ${e.length}`;
+      }
+      Toast.show(msg, u.length > 0 ? 'success' : 'info');
+      if (e.length) console.warn('Clip sync errors:', e);
+      await refresh();
+    } catch (err) {
+      console.error(err);
+      Toast.show(err.message || 'Error al verificar con Clip', 'error');
+    } finally {
+      btn.disabled = false;
+      setBtnContent(btn, 'refresh-cw', 'Verificar con Clip', false);
+    }
   }
 
   async function init() {

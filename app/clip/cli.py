@@ -1,29 +1,29 @@
 import click
-from datetime import date, timedelta
+from datetime import date
 from flask.cli import AppGroup
+from flask import current_app
 from app.extensions import db
 from app.superadmin.models import (
-    Plan, Subscription, Payment,
+    Plan, Subscription,
     SUBSCRIPTION_ACTIVA, SUBSCRIPTION_GRACIA, SUBSCRIPTION_VENCIDA,
 )
-from app.clip.service import create_checkout_link, ClipAPIError
+from app.clip.service import create_price, get_price, ClipAPIError
 
-billing_cli = AppGroup("billing", help="Comandos de facturación y cobros Clip")
+billing_cli = AppGroup("billing", help="Comandos de facturacion Clip")
 
-GRACE_DAYS = 3
 
 DEFAULT_PLANS = [
     {
         "nombre": "Prueba Gratis",
         "precio_mensual": 0,
-        "descripcion": "Prueba gratuita de 8 días con acceso al sistema contable",
+        "descripcion": "Prueba gratuita de 8 dias con acceso al sistema contable",
         "modulos": ["contable"],
         "es_temporal": True,
         "dias_expiracion": 8,
         "publico": True,
     },
     {
-        "nombre": "Básico",
+        "nombre": "Basico",
         "precio_mensual": 499.0,
         "descripcion": "Sistema contable: tratamientos, precios, dashboard y reportes",
         "modulos": ["contable"],
@@ -31,13 +31,13 @@ DEFAULT_PLANS = [
     {
         "nombre": "Pro",
         "precio_mensual": 899.0,
-        "descripcion": "Contable + Inventario: stock, almacén y operatorios",
+        "descripcion": "Contable + Inventario: stock, almacen y operatorios",
         "modulos": ["contable", "inventario"],
     },
     {
         "nombre": "Premium",
         "precio_mensual": 1299.0,
-        "descripcion": "Todos los módulos: contable, inventario y finanzas personales",
+        "descripcion": "Todos los modulos: contable, inventario y finanzas personales",
         "modulos": ["contable", "inventario", "finanzas_personales"],
     },
     {
@@ -53,115 +53,137 @@ DEFAULT_PLANS = [
 
 
 @billing_cli.command("cycle")
-@click.option("--dry-run", is_flag=True, help="Solo muestra qué haría, sin ejecutar")
+@click.option("--dry-run", is_flag=True, help="Solo muestra que haria, sin ejecutar")
 def billing_cycle(dry_run):
-    """Procesa cobros recurrentes para suscripciones vencidas."""
-    from flask import current_app
+    """Procesa expiraciones diarias.
 
+    Con suscripciones recurrentes de Clip, los cobros mensuales los hace
+    Clip automaticamente. Este job solo se encarga de:
+      - Expirar trials que ya pasaron su fecha
+      - Suspender tenants cuya gracia ya termino (la marca el webhook)
+    """
     today = date.today()
-    base_url = current_app.config.get("APP_BASE_URL", "http://localhost:5000")
-    webhook_url = f"{base_url}/api/v1/clip/webhook"
-    redirect_url = f"{base_url}/selector"
 
-    due = Subscription.query.filter(
+    trial_expired = Subscription.query.filter(
         Subscription.estado.in_([SUBSCRIPTION_ACTIVA, SUBSCRIPTION_GRACIA]),
         Subscription.proximo_cobro <= today,
+    ).join(Plan).filter(Plan.es_temporal.is_(True)).all()
+
+    grace_expired = Subscription.query.filter(
+        Subscription.estado == SUBSCRIPTION_GRACIA,
+        Subscription.grace_expires_at < today,
     ).all()
 
-    if not due:
-        click.echo("No hay suscripciones pendientes de cobro.")
-        return
+    click.echo(f"Trial vencido:   {len(trial_expired)}")
+    click.echo(f"Gracia expirada: {len(grace_expired)}")
 
-    click.echo(f"Suscripciones a procesar: {len(due)}")
-
-    charged = 0
-    graced = 0
     suspended = 0
-    errors = 0
 
-    for sub in due:
+    for sub in trial_expired:
         tenant_name = sub.tenant.name if sub.tenant else f"tenant#{sub.tenant_id}"
-        plan = sub.plan
-
-        if plan and plan.es_temporal:
-            click.echo(f"  EXPIRE {tenant_name}: plan temporal '{plan.nombre}' venció")
-            if not dry_run:
-                sub.estado = SUBSCRIPTION_VENCIDA
-                db.session.commit()
-            suspended += 1
-            continue
-
-        if not plan or plan.precio_mensual <= 0:
-            click.echo(f"  SKIP {tenant_name}: plan sin precio")
-            continue
-
-        if sub.estado == SUBSCRIPTION_GRACIA and sub.grace_expires_at and today > sub.grace_expires_at:
-            click.echo(f"  SUSPEND {tenant_name}: gracia expirada {sub.grace_expires_at}")
-            if not dry_run:
-                sub.estado = SUBSCRIPTION_VENCIDA
-                sub.grace_expires_at = None
-                db.session.commit()
-            suspended += 1
-            continue
-
-        click.echo(f"  CHARGE {tenant_name}: {plan.nombre} ${plan.precio_mensual:.2f}")
-        if dry_run:
-            charged += 1
-            continue
-
-        try:
-            periodo_inicio = sub.proximo_cobro
-            periodo_fin = periodo_inicio + timedelta(days=30)
-            desc = f"{plan.nombre} — {tenant_name} ({periodo_inicio} a {periodo_fin})"
-
-            result = create_checkout_link(
-                amount=plan.precio_mensual,
-                description=desc,
-                webhook_url=webhook_url,
-                redirect_url=redirect_url,
-                metadata={"tenant_id": sub.tenant_id, "subscription_id": sub.id},
-            )
-
-            clip_id = result.get("payment_request_id", "")
-            payment = Payment(
-                tenant_id=sub.tenant_id,
-                subscription_id=sub.id,
-                fecha=today,
-                monto=plan.precio_mensual,
-                metodo="clip",
-                periodo_inicio=periodo_inicio,
-                periodo_fin=periodo_fin,
-                comentarios=f"Cobro automático — {desc}",
-                registrado_por_id=1,
-                clip_payment_id=clip_id,
-                clip_status="PENDING",
-            )
-            db.session.add(payment)
-
-            sub.clip_checkout_id = clip_id
-            if sub.estado == SUBSCRIPTION_ACTIVA:
-                sub.estado = SUBSCRIPTION_GRACIA
-                sub.grace_expires_at = today + timedelta(days=GRACE_DAYS)
-
+        click.echo(f"  EXPIRE trial {tenant_name}: '{sub.plan.nombre}' vencido")
+        if not dry_run:
+            sub.estado = SUBSCRIPTION_VENCIDA
+            if sub.tenant:
+                sub.tenant.is_active = False
             db.session.commit()
-            charged += 1
-            click.echo(f"    → Clip link creado: {clip_id}")
+        suspended += 1
 
+    for sub in grace_expired:
+        tenant_name = sub.tenant.name if sub.tenant else f"tenant#{sub.tenant_id}"
+        click.echo(f"  SUSPEND {tenant_name}: gracia expirada {sub.grace_expires_at}")
+        if not dry_run:
+            sub.estado = SUBSCRIPTION_VENCIDA
+            sub.grace_expires_at = None
+            if sub.tenant:
+                sub.tenant.is_active = False
+            db.session.commit()
+        suspended += 1
+
+    click.echo(f"\nResultado: {suspended} suspendidos")
+
+
+@billing_cli.command("sync-prices")
+@click.option("--dry-run", is_flag=True, help="Solo muestra que haria, sin ejecutar")
+def sync_prices(dry_run):
+    """Crea o sincroniza un Clip /prices para cada Plan local activo y de paga.
+
+    Para cada Plan sin clip_price_id, crea un precio recurrente mensual en Clip
+    anclado al dia del primer pago. Guarda el clip_price_id y subscription_link.
+    """
+    base_url = current_app.config.get("APP_BASE_URL", "http://localhost:5000").rstrip("/")
+    webhook_url = f"{base_url}/api/v1/clip/webhook"
+    success_url = f"{base_url}/registro-exitoso"
+    error_url = f"{base_url}/registro-error"
+    default_url = f"{base_url}/registro-exitoso"
+
+    plans = Plan.query.filter(
+        Plan.activo.is_(True),
+        Plan.es_temporal.is_(False),
+        Plan.precio_mensual > 0,
+    ).all()
+
+    created = synced = skipped = errors = 0
+
+    for plan in plans:
+        if plan.clip_price_id:
+            try:
+                existing = get_price(plan.clip_price_id)
+            except ClipAPIError as e:
+                click.echo(f"  ERROR verifying {plan.nombre}: {e}")
+                errors += 1
+                continue
+            if existing:
+                link = (existing.get("recurring") or {}).get("subscription_link")
+                if link and plan.clip_subscription_link != link:
+                    if not dry_run:
+                        plan.clip_subscription_link = link
+                        db.session.commit()
+                    synced += 1
+                    click.echo(f"  SYNCED {plan.nombre}: link refreshed")
+                else:
+                    skipped += 1
+                    click.echo(f"  SKIP {plan.nombre}: ya tiene clip_price_id={plan.clip_price_id}")
+                continue
+            click.echo(f"  REBUILD {plan.nombre}: clip_price_id estaba pero no existe en Clip")
+
+        click.echo(f"  CREATE {plan.nombre}: ${plan.precio_mensual:.2f}/mes")
+        if dry_run:
+            created += 1
+            continue
+        try:
+            result = create_price(
+                name=plan.nombre,
+                description=plan.descripcion or plan.nombre,
+                amount=plan.precio_mensual,
+                webhook_url=webhook_url,
+                success_url=success_url,
+                error_url=error_url,
+                default_url=default_url,
+                anchor_on_first_payment=True,
+                interval="month",
+                frequency=1,
+                repeat=0,
+                grace_period_days=current_app.config.get("BILLING_GRACE_DAYS", 3),
+            )
         except ClipAPIError as e:
-            db.session.rollback()
-            click.echo(f"    ✗ Error Clip: {e}")
+            click.echo(f"    Clip error: {e}")
             errors += 1
-        except Exception as e:
-            db.session.rollback()
-            click.echo(f"    ✗ Error inesperado: {e}")
-            errors += 1
+            continue
 
-    click.echo(f"\nResultado: {charged} cobrados, {graced} en gracia, {suspended} suspendidos, {errors} errores")
+        plan.clip_price_id = result.get("id", "")
+        plan.clip_subscription_link = (result.get("recurring") or {}).get("subscription_link", "")
+        db.session.commit()
+        created += 1
+        click.echo(f"    -> price_id={plan.clip_price_id} link={plan.clip_subscription_link}")
+
+    click.echo(f"\nResultado: {created} creados, {synced} sincronizados, "
+               f"{skipped} sin cambios, {errors} errores")
 
 
 @billing_cli.command("seed-plans")
 def seed_plans():
-    """Crea los planes por defecto (Básico, Pro, Premium) si no existen."""
+    """Crea los planes por defecto si no existen."""
     created = 0
     for p in DEFAULT_PLANS:
         existing = Plan.query.filter_by(nombre=p["nombre"]).first()
@@ -181,6 +203,5 @@ def seed_plans():
         db.session.add(plan)
         created += 1
         click.echo(f"  CREATED {p['nombre']}")
-
     db.session.commit()
     click.echo(f"\n{created} planes creados.")

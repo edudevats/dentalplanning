@@ -10,10 +10,16 @@
       <h1 class="font-cs-display text-4xl font-bold text-cs-on-surface tracking-tight">Pagos</h1>
       <p class="mt-1.5 text-sm text-cs-on-surface-var max-w-xl">Cobros recibidos de las clínicas. Filtra por fecha y registra pagos manuales.</p>
     </div>
-    <button id="btn-nuevo-pago" class="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-gradient-to-br from-cs-primary to-cs-primary-dim text-cs-on-primary text-sm font-semibold shadow-sm hover:opacity-95 transition-opacity cursor-pointer">
-      <i data-lucide="plus" class="h-4 w-4"></i>
-      Registrar pago
-    </button>
+    <div class="flex items-center gap-2">
+      <button id="btn-sync-clip" class="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-cs-surface-container text-cs-on-surface text-sm font-semibold shadow-sm hover:bg-cs-surface-container-high transition-colors cursor-pointer" title="Verifica con Clip el estado real de los pagos pendientes">
+        <i data-lucide="refresh-cw" class="h-4 w-4"></i>
+        Verificar con Clip
+      </button>
+      <button id="btn-nuevo-pago" class="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-gradient-to-br from-cs-primary to-cs-primary-dim text-cs-on-primary text-sm font-semibold shadow-sm hover:opacity-95 transition-opacity cursor-pointer">
+        <i data-lucide="plus" class="h-4 w-4"></i>
+        Registrar pago
+      </button>
+    </div>
   </div>
 
   <!-- Filtros -->
