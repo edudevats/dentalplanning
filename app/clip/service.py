@@ -53,8 +53,6 @@ def create_checkout_link(amount, description, webhook_url=None, redirection_url=
         "currency": "MXN",
         "purchase_description": description[:250],
     }
-    if webhook_url:
-        body["webhook_url"] = webhook_url
     if redirection_url:
         body["redirection_url"] = redirection_url
     if metadata:
@@ -69,6 +67,11 @@ def create_checkout_link(amount, description, webhook_url=None, redirection_url=
         }
         headers.update(_auth_headers())
 
+        auth_header = headers.get("Authorization", "")
+        auth_type = auth_header.split(" ")[0] if auth_header else "NONE"
+        auth_len = len(auth_header)
+        current_app.logger.info("Clip auth type=%s header_len=%s has_x_api_key=%s",
+                                auth_type, auth_len, "x-api-key" in headers)
         current_app.logger.info("Clip request POST %s body=%s", url, body)
 
         resp = requests.post(
