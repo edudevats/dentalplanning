@@ -132,7 +132,6 @@ def register():
                     "error": f"{base_url}/registro-error",
                     "default": f"{base_url}/registro-exitoso",
                 },
-                metadata={"tenant_id": tenant.id, "subscription_id": sub.id, "is_registration": True},
             )
             clip_id = result.get("payment_request_id", "")
             clip_url = result.get("payment_request_url", "")
