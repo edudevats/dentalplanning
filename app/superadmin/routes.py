@@ -518,7 +518,11 @@ def charge_tenant(tenant_id):
             amount=plan.precio_mensual,
             description=f"Suscripción {plan.nombre} — {t.name}",
             webhook_url=request.host_url.rstrip("/") + "/api/v1/clip/webhook",
-            redirect_url=request.host_url.rstrip("/") + f"/admin/tenants/{t.id}",
+            redirection_url={
+                "success": request.host_url.rstrip("/") + f"/admin/tenants/{t.id}",
+                "error": request.host_url.rstrip("/") + f"/admin/tenants/{t.id}",
+                "default": request.host_url.rstrip("/") + "/admin/tenants",
+            },
             metadata={"tenant_id": t.id, "subscription_id": sub.id},
         )
     except ClipAPIError as e:

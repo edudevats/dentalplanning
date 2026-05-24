@@ -16,8 +16,15 @@ def _parse_mes(mes_str):
     if not mes_str:
         today = date.today()
         return today.year, today.month
-    parts = mes_str.split("-")
-    return int(parts[0]), int(parts[1])
+    try:
+        parts = mes_str.split("-")
+        year, month = int(parts[0]), int(parts[1])
+        if not (1 <= month <= 12):
+            raise ValueError
+        return year, month
+    except (IndexError, ValueError):
+        today = date.today()
+        return today.year, today.month
 
 
 # ── DASHBOARD GANANCIAS (réplica hoja Ganancias del Excel PRECIOS) ──
@@ -26,6 +33,8 @@ def _parse_mes(mes_str):
 @require_auth
 def ganancias():
     config = ConfigConsultorio.query.filter_by(tenant_id=g.tenant_id).first()
+    if not config:
+        return jsonify({"error": "Configuración del consultorio no encontrada"}), 404
     tratamientos = Tratamiento.query.filter_by(tenant_id=g.tenant_id).all()
 
     comisiones_str = request.args.get("comision", "0,20,30")

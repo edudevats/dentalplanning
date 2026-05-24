@@ -15,8 +15,15 @@ def _parse_mes(mes_str):
     if not mes_str:
         today = date.today()
         return today.year, today.month
-    parts = mes_str.split("-")
-    return int(parts[0]), int(parts[1])
+    try:
+        parts = mes_str.split("-")
+        year, month = int(parts[0]), int(parts[1])
+        if not (1 <= month <= 12):
+            raise ValueError
+        return year, month
+    except (IndexError, ValueError):
+        today = date.today()
+        return today.year, today.month
 
 
 def _enrich_ingreso(ingreso):
@@ -47,7 +54,7 @@ def listar_ingresos():
 @require_role("admin", "editor")
 def crear_ingreso():
     schema = IngresoSchema()
-    data = schema.load(request.get_json())
+    data = schema.load(request.get_json() or {})
 
     # Auto-calculate commissions if metodo_pago or especialista provided
     if data.get("metodo_pago_id") and data.get("comision_bancaria", 0) == 0:
@@ -79,7 +86,7 @@ def actualizar_ingreso(ingreso_id):
     ).first_or_404()
 
     schema = IngresoSchema(partial=True)
-    data = schema.load(request.get_json())
+    data = schema.load(request.get_json() or {})
     for key, value in data.items():
         setattr(ingreso, key, value)
     db.session.commit()
@@ -118,7 +125,7 @@ def listar_gastos():
 @require_role("admin", "editor")
 def crear_gasto():
     schema = GastoOperativoSchema()
-    data = schema.load(request.get_json())
+    data = schema.load(request.get_json() or {})
     gasto = GastoOperativo(tenant_id=g.tenant_id, **data)
     db.session.add(gasto)
     db.session.commit()
@@ -133,7 +140,7 @@ def actualizar_gasto(gasto_id):
         id=gasto_id, tenant_id=g.tenant_id
     ).first_or_404()
     schema = GastoOperativoSchema(partial=True)
-    data = schema.load(request.get_json())
+    data = schema.load(request.get_json() or {})
     for key, value in data.items():
         setattr(gasto, key, value)
     db.session.commit()
@@ -177,7 +184,7 @@ def listar_pagos():
 @require_role("admin", "editor")
 def crear_pago():
     schema = PagoDoctorSchema()
-    data = schema.load(request.get_json())
+    data = schema.load(request.get_json() or {})
     pago = PagoDoctor(tenant_id=g.tenant_id, **data)
     db.session.add(pago)
     db.session.commit()
@@ -192,7 +199,7 @@ def actualizar_pago(pago_id):
         id=pago_id, tenant_id=g.tenant_id
     ).first_or_404()
     schema = PagoDoctorSchema(partial=True)
-    data = schema.load(request.get_json())
+    data = schema.load(request.get_json() or {})
     for key, value in data.items():
         setattr(pago, key, value)
     db.session.commit()

@@ -34,7 +34,7 @@ def _crud_routes(model, schema_cls, name):
 
     def crear():
         schema = schema_cls()
-        data = schema.load(request.get_json())
+        data = schema.load(request.get_json() or {})
         item = model(tenant_id=g.tenant_id, **data)
         db.session.add(item)
         db.session.commit()
@@ -45,7 +45,7 @@ def _crud_routes(model, schema_cls, name):
             id=item_id, tenant_id=g.tenant_id
         ).first_or_404()
         schema = schema_cls(partial=True)
-        data = schema.load(request.get_json())
+        data = schema.load(request.get_json() or {})
         for key, value in data.items():
             setattr(item, key, value)
         db.session.commit()
@@ -177,7 +177,7 @@ def obtener_distribucion():
 @require_role("admin")
 def actualizar_distribucion():
     schema = DistribucionConfigSchema()
-    data = schema.load(request.get_json())
+    data = schema.load(request.get_json() or {})
 
     dist = DistribucionConfig.query.filter_by(tenant_id=g.tenant_id).first()
     if not dist:
@@ -248,7 +248,7 @@ def listar_categorias():
 @require_role("admin")
 def crear_categoria():
     schema = DistribucionCategoriaSchema()
-    data = schema.load(request.get_json())
+    data = schema.load(request.get_json() or {})
     cat = DistribucionCategoria(
         tenant_id=g.tenant_id,
         es_sistema=False,

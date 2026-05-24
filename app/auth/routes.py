@@ -1,4 +1,4 @@
-from flask import Blueprint, request, jsonify, g
+from flask import Blueprint, request, jsonify, g, current_app
 from flask_jwt_extended import (
     create_access_token,
     create_refresh_token,
@@ -54,7 +54,7 @@ def register():
     from app.clip.service import create_checkout_link, ClipAPIError
 
     schema = RegisterSchema()
-    data = schema.load(request.get_json())
+    data = schema.load(request.get_json() or {})
 
     if data["tenant_slug"] == SYSTEM_TENANT_SLUG:
         return jsonify({"error": "No se pudo completar el registro"}), 409
@@ -125,7 +125,7 @@ def register():
             base_url = request.host_url.rstrip("/")
             result = create_checkout_link(
                 amount=plan.precio_mensual,
-                description=f"Suscripción {plan.nombre} — {tenant.name}",
+                description=f"Suscripcion {plan.nombre} - {tenant.name}",
                 webhook_url=f"{base_url}/api/v1/clip/webhook",
                 redirection_url={
                     "success": f"{base_url}/registro-exitoso?tenant_id={tenant.id}&status=active",
@@ -152,7 +152,8 @@ def register():
             )
             db.session.add(payment)
             sub.clip_checkout_id = clip_id
-        except ClipAPIError:
+        except ClipAPIError as clip_err:
+            current_app.logger.error("Clip API error during registration: %s", clip_err)
             db.session.rollback()
             return jsonify({"error": "No se pudo conectar con la pasarela de pago. Intenta de nuevo en unos momentos."}), 503
 
@@ -181,7 +182,7 @@ def register():
 @rate_limit(max_calls=5, period_seconds=60)
 def login():
     schema = LoginSchema()
-    data = schema.load(request.get_json())
+    data = schema.load(request.get_json() or {})
 
     user = User.query.filter_by(email=data["email"]).first()
     if not user or not user.check_password(data["password"]):
@@ -230,7 +231,7 @@ def refresh():
 @require_role("admin")
 def invite():
     schema = InviteSchema()
-    data = schema.load(request.get_json())
+    data = schema.load(request.get_json() or {})
 
     if User.query.filter_by(email=data["email"]).first():
         return jsonify({"error": "Este email ya está registrado"}), 409
@@ -256,7 +257,7 @@ def invite():
 @rate_limit(max_calls=5, period_seconds=60)
 def change_password():
     schema = ChangePasswordSchema()
-    data = schema.load(request.get_json())
+    data = schema.load(request.get_json() or {})
 
     if not g.current_user.check_password(data["current_password"]):
         return jsonify({"error": "Contraseña actual incorrecta"}), 400

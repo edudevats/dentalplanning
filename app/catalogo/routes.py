@@ -32,7 +32,7 @@ def listar_master():
 def importar_master():
     """Importar materiales seleccionados del catálogo master al tenant."""
     schema = ImportMasterSchema()
-    data = schema.load(request.get_json())
+    data = schema.load(request.get_json() or {})
 
     masters = MaterialMaster.query.filter(
         MaterialMaster.id.in_(data["material_ids"])
@@ -102,7 +102,7 @@ def obtener(material_id):
 def crear():
     """Crear material propio del tenant."""
     schema = MaterialSchema()
-    data = schema.load(request.get_json())
+    data = schema.load(request.get_json() or {})
 
     existe = Material.query.filter_by(
         tenant_id=g.tenant_id, nombre=data["nombre"]
@@ -125,7 +125,7 @@ def actualizar(material_id):
     ).first_or_404()
 
     schema = MaterialSchema(partial=True)
-    data = schema.load(request.get_json())
+    data = schema.load(request.get_json() or {})
 
     for key, value in data.items():
         setattr(material, key, value)

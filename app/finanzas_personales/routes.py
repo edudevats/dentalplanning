@@ -484,13 +484,14 @@ def upsert_saldo_inicial():
     except (TypeError, ValueError):
         return jsonify({"errors": {"año": ["Año o monto inválido"]}}), 400
     si = SaldoInicial.query.filter_by(tenant_id=tenant_id, user_id=user_id, año=año).first()
+    is_new = si is None
     if si:
         si.monto = monto
     else:
         si = SaldoInicial(tenant_id=tenant_id, user_id=user_id, año=año, monto=monto)
         db.session.add(si)
     db.session.commit()
-    return jsonify(SaldoInicialSchema().dump(si)), 201
+    return jsonify(SaldoInicialSchema().dump(si)), 201 if is_new else 200
 
 
 # ── Cierre de año ──────────────────────────────────────────────────────────

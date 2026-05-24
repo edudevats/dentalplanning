@@ -55,7 +55,7 @@ def obtener(tx_id):
 @require_role("admin", "editor")
 def crear():
     schema = TratamientoSchema()
-    data = schema.load(request.get_json())
+    data = schema.load(request.get_json() or {})
     materiales_input = data.pop("materiales", [])
 
     existe = Tratamiento.query.filter_by(
@@ -98,7 +98,7 @@ def actualizar(tx_id):
     ).first_or_404()
 
     schema = TratamientoSchema(partial=True)
-    data = schema.load(request.get_json())
+    data = schema.load(request.get_json() or {})
     materiales_input = data.pop("materiales", None)
 
     for key, value in data.items():
@@ -188,7 +188,7 @@ def simular(tx_id):
     ).first_or_404()
 
     schema = SimularSchema()
-    data = schema.load(request.get_json())
+    data = schema.load(request.get_json() or {})
 
     # Temporarily override values for simulation (don't save)
     original_precio = tx.precio_paciente

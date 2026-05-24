@@ -27,7 +27,7 @@ def obtener():
 def actualizar():
     config = ConfigConsultorio.query.filter_by(tenant_id=g.tenant_id).first_or_404()
     schema = ConfigSchema(partial=True)
-    data = schema.load(request.get_json())
+    data = schema.load(request.get_json() or {})
 
     for key, value in data.items():
         setattr(config, key, value)
