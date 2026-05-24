@@ -128,9 +128,9 @@ def register():
                 description=f"Suscripcion {plan.nombre} - {tenant.name}",
                 webhook_url=f"{base_url}/api/v1/clip/webhook",
                 redirection_url={
-                    "success": f"{base_url}/registro-exitoso?tenant_id={tenant.id}&status=active",
-                    "error": f"{base_url}/registro-exitoso?tenant_id={tenant.id}&status=error",
-                    "default": f"{base_url}/registro-exitoso?tenant_id={tenant.id}",
+                    "success": f"{base_url}/registro-exitoso",
+                    "error": f"{base_url}/registro-error",
+                    "default": f"{base_url}/registro-exitoso",
                 },
                 metadata={"tenant_id": tenant.id, "subscription_id": sub.id, "is_registration": True},
             )
