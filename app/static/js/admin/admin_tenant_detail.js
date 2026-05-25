@@ -549,7 +549,7 @@
   }
 
   async function openAssignPlan(sub) {
-    const plans = (await loadPlans()).filter(p => p.activo && p.precio_mensual > 0);
+    const plans = (await loadPlans()).filter(p => p.activo);
     if (plans.length === 0) { Toast.show('No hay planes activos', 'warning'); return; }
     const isNew = !sub;
     const wrap = document.createElement('div');
