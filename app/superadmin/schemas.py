@@ -7,7 +7,7 @@ class PlanSchema(Schema):
         unknown = EXCLUDE
 
     id = fields.Int(dump_only=True)
-    nombre = fields.Str(required=True, validate=validate.Length(min=2, max=50))
+    nombre = fields.Str(required=True, validate=validate.Length(min=4, max=50))
     precio_mensual = fields.Float(required=True, validate=validate.Range(min=0))
     descripcion = fields.Str(load_default=None, validate=validate.Length(max=500))
     activo = fields.Bool(load_default=True)

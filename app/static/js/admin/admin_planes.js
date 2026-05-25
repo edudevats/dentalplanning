@@ -328,7 +328,7 @@
     wrap.className = 'space-y-4';
 
     const nameInput = inputEl('text', 'nombre', plan ? plan.nombre : '');
-    nameInput.placeholder = 'Ej. Pro';
+    nameInput.placeholder = 'Ej. Plan Pro (mín. 4 caracteres)';
     const priceInput = inputEl('number', 'precio_mensual', plan ? plan.precio_mensual : '');
     priceInput.step = '0.01'; priceInput.min = '0';
     priceInput.placeholder = '999.00';
@@ -485,7 +485,7 @@
       primary: { label: isEdit ? 'Guardar' : 'Crear plan', onClick: async () => {
         const nombre = nameInput.value.trim();
         const precio = parseFloat(priceInput.value);
-        if (!nombre || nombre.length < 2) throw new Error('El nombre es obligatorio (mínimo 2 caracteres).');
+        if (!nombre || nombre.length < 4) throw new Error('El nombre debe tener al menos 4 caracteres (requerido por Clip).');
         if (isNaN(precio) || precio < 0) throw new Error('Precio inválido.');
         const modulos = checkboxes.filter(c => c.checked).map(c => c.dataset.slug);
         const promoOn = promoChk.checked;
