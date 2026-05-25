@@ -91,7 +91,7 @@ def register():
         return jsonify({"error": "No se pudo completar el registro"}), 409
 
     if User.query.filter_by(email=data["email"]).first():
-        return jsonify({"error": "No se pudo completar el registro"}), 409
+        return jsonify({"error": "Este correo ya está registrado.", "code": "email_already_registered"}), 409
 
     plan = Plan.query.get(data["plan_id"])
     if not plan or not plan.activo:
@@ -294,7 +294,7 @@ def me():
         }
 
     billing_nag = None
-    if sub and sub.plan and not sub.plan.es_temporal and sub.proximo_cobro:
+    if sub and sub.plan and not sub.plan.es_temporal and sub.proximo_cobro and sub.plan.precio_mensual > 0:
         from app.superadmin.models import SUBSCRIPTION_GRACIA
         today = date_cls.today()
         dias_hasta_cobro = (sub.proximo_cobro - today).days

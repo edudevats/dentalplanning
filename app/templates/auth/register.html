@@ -387,9 +387,22 @@ document.getElementById('register-form').addEventListener('submit', async functi
       window.location.href = '/registro-exitoso?tenant_id=' + tid + '&status=' + (status || 'pending');
     }
   } catch (err) {
-    var msg = (err.response && err.response.data && (err.response.data.error || err.response.data.message)) || 'Error al crear la cuenta. Intenta de nuevo.';
-    document.getElementById('server-error-msg').textContent = msg;
-    document.getElementById('server-error').classList.remove('hidden');
+    var errData = err.response && err.response.data;
+    var errBox = document.getElementById('server-error');
+    var errMsg = document.getElementById('server-error-msg');
+    errMsg.textContent = '';
+    if (errData && errData.code === 'email_already_registered') {
+      errMsg.appendChild(document.createTextNode('Este correo ya tiene una cuenta registrada. '));
+      var loginLink = document.createElement('a');
+      loginLink.href = '/login';
+      loginLink.className = 'font-semibold underline text-primary-700 hover:text-primary-800';
+      loginLink.textContent = 'Inicia sesión';
+      errMsg.appendChild(loginLink);
+      errMsg.appendChild(document.createTextNode(' para continuar.'));
+    } else {
+      errMsg.textContent = (errData && (errData.error || errData.message)) || 'Error al crear la cuenta. Intenta de nuevo.';
+    }
+    errBox.classList.remove('hidden');
     btn.disabled = false; txt.textContent = 'Crear cuenta y pagar';
   }
 });
