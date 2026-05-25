@@ -1,7 +1,7 @@
 import secrets
 import string
 from datetime import date, datetime, timedelta, timezone
-from flask import Blueprint, request, jsonify, g
+from flask import Blueprint, request, jsonify, g, current_app
 from sqlalchemy import func
 from app.extensions import db
 from app.middleware.tenant import require_superuser
@@ -600,6 +600,19 @@ def assign_plan(tenant_id):
         db.session.add(sub)
 
     t.plan = plan.nombre
+
+    # Free plans and trial plans activate immediately — no payment required.
+    # Paid plans stay 'vencida' until a payment is registered.
+    is_free_or_trial = plan.precio_mensual <= 0 or plan.es_temporal
+    if is_free_or_trial:
+        sub.estado = SUBSCRIPTION_ACTIVA
+        if not t.is_active:
+            t.status = TENANT_STATUS_ACTIVE
+            t.is_active = True
+            if not t.approved_at:
+                t.approved_at = datetime.now(timezone.utc)
+                t.approved_by_id = g.current_user.id
+
     db.session.commit()
 
     out = _serialize_tenant(t, with_counts=True)
