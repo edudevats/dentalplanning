@@ -13,13 +13,13 @@ from app.auth.models import (
 )
 from app.superadmin.models import (
     Plan, Subscription, Payment, TenantNote,
-    SUBSCRIPTION_ACTIVA, SUBSCRIPTION_GRACIA,
+    SUBSCRIPTION_ACTIVA, SUBSCRIPTION_GRACIA, SUBSCRIPTION_VENCIDA,
 )
 from app.clip.service import create_checkout_link, ClipAPIError
 from app.superadmin.schemas import (
     PlanSchema, ApproveTenantSchema, RejectTenantSchema,
     TenantUpdateSchema, PaymentSchema, TenantNoteSchema,
-    SubscriptionUpdateSchema,
+    SubscriptionUpdateSchema, AssignPlanSchema,
 )
 from app.catalogo.models import Material
 from app.tratamientos.models import Tratamiento
@@ -551,12 +551,60 @@ def update_subscription(sub_id):
     s = Subscription.query.get_or_404(sub_id)
     data = SubscriptionUpdateSchema().load(request.get_json() or {})
     if "plan_id" in data:
-        if not Plan.query.get(data["plan_id"]):
+        plan = Plan.query.get(data["plan_id"])
+        if not plan:
             return jsonify({"error": "Plan inválido"}), 400
+        s.tenant.plan = plan.nombre
     for k, v in data.items():
         setattr(s, k, v)
     db.session.commit()
     return jsonify(_serialize_subscription(s))
+
+
+@superadmin_bp.route("/tenants/<int:tenant_id>/assign-plan", methods=["POST"])
+@require_superuser
+def assign_plan(tenant_id):
+    """Assign or change a plan for any tenant (cash/manual payment flow).
+
+    Creates the subscription as 'vencida' if none exists — the account is only
+    activated when a payment is explicitly registered via POST /payments.
+    If a subscription already exists, only the plan (and optional dates) are updated.
+    """
+    t = Tenant.query.get_or_404(tenant_id)
+    if t.slug == SYSTEM_TENANT_SLUG:
+        return jsonify({"error": "Tenant del sistema"}), 400
+
+    data = AssignPlanSchema().load(request.get_json() or {})
+    plan = Plan.query.get(data["plan_id"])
+    if not plan or not plan.activo:
+        return jsonify({"error": "Plan inválido o inactivo"}), 400
+
+    inicio = data.get("inicio") or date.today()
+
+    sub = Subscription.query.filter_by(tenant_id=t.id).first()
+    if sub:
+        sub.plan_id = plan.id
+        if data.get("inicio"):
+            sub.inicio = inicio
+        if data.get("proximo_cobro"):
+            sub.proximo_cobro = data["proximo_cobro"]
+    else:
+        proximo = data.get("proximo_cobro") or (inicio + timedelta(days=30))
+        sub = Subscription(
+            tenant_id=t.id,
+            plan_id=plan.id,
+            inicio=inicio,
+            proximo_cobro=proximo,
+            estado=SUBSCRIPTION_VENCIDA,
+        )
+        db.session.add(sub)
+
+    t.plan = plan.nombre
+    db.session.commit()
+
+    out = _serialize_tenant(t, with_counts=True)
+    out["subscription"] = _serialize_subscription(sub)
+    return jsonify(out)
 
 
 # ── Payments ────────────────────────────────────────────────────────────────
@@ -615,6 +663,13 @@ def create_payment():
     if sub and data.get("periodo_fin"):
         sub.proximo_cobro = data["periodo_fin"] + timedelta(days=1)
         sub.estado = SUBSCRIPTION_ACTIVA
+        # Activate the tenant so billing reminders and module access work
+        if tenant.status != TENANT_STATUS_ACTIVE:
+            tenant.status = TENANT_STATUS_ACTIVE
+            tenant.is_active = True
+            if not tenant.approved_at:
+                tenant.approved_at = datetime.now(timezone.utc)
+                tenant.approved_by_id = g.current_user.id
 
     db.session.commit()
     return jsonify(_serialize_payment(payment)), 201

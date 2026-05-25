@@ -14,6 +14,18 @@
 <div class="min-h-screen flex flex-col items-center justify-center px-4 py-12 relative overflow-hidden"
      style="background: linear-gradient(135deg, #083344 0%, #0e7490 50%, #164e63 100%);">
 
+  <!-- Upgrade CTA — shown only when user lacks at least one module -->
+  <div id="upgrade-cta" class="hidden absolute top-5 right-5 z-20">
+    <button onclick="showUpgradeModal()"
+            class="group inline-flex items-center gap-2 px-4 py-2.5 rounded-xl font-semibold text-sm text-white
+                   bg-gradient-to-r from-amber-400 to-orange-500 shadow-lg shadow-orange-500/40
+                   hover:from-amber-300 hover:to-orange-400 hover:shadow-xl hover:shadow-orange-500/50 hover:scale-105
+                   active:scale-100 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-orange-400/60 focus:ring-offset-2 focus:ring-offset-transparent">
+      <i data-lucide="rocket" class="h-4 w-4 group-hover:rotate-12 transition-transform duration-200"></i>
+      Mejorar plan
+    </button>
+  </div>
+
   <!-- Decorative circles -->
   <div class="absolute top-[-120px] right-[-80px] w-80 h-80 rounded-full bg-white/5"></div>
   <div class="absolute bottom-[-100px] left-[-60px] w-96 h-96 rounded-full bg-white/5"></div>
@@ -118,8 +130,10 @@
       const mods = (user.tenant && user.tenant.allowed_modules) || [];
       const isSuperuser = user.is_superuser;
       const gated = { 'btn-inventario': 'inventario', 'btn-finanzas-personales': 'finanzas_personales' };
+      let hasLocked = false;
       Object.entries(gated).forEach(([id, slug]) => {
         if (isSuperuser || mods.includes(slug)) return;
+        hasLocked = true;
         const card = document.getElementById(id);
         if (!card) return;
         card.removeAttribute('href');
@@ -130,6 +144,10 @@
         badge.textContent = 'No incluido';
         card.appendChild(badge);
       });
+      if (hasLocked) {
+        const cta = document.getElementById('upgrade-cta');
+        if (cta) { cta.classList.remove('hidden'); lucide.createIcons(); }
+      }
 
       // Trial expiry popup
       var trial = data.trial;
@@ -138,6 +156,84 @@
       }
     } catch { /* ignore */ }
   })();
+
+  async function showUpgradeModal() {
+    var overlay = document.createElement('div');
+    overlay.className = 'fixed inset-0 z-50 flex items-center justify-center p-4';
+    overlay.style.background = 'rgba(0,0,0,0.6)';
+    overlay.style.backdropFilter = 'blur(4px)';
+    overlay.addEventListener('click', function(e) { if (e.target === overlay) overlay.remove(); });
+
+    var card = document.createElement('div');
+    card.className = 'bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 space-y-4';
+
+    var iconWrap = document.createElement('div');
+    iconWrap.className = 'mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-amber-50';
+    var icon = document.createElement('i');
+    icon.setAttribute('data-lucide', 'rocket');
+    icon.className = 'h-7 w-7 text-amber-500';
+    iconWrap.appendChild(icon);
+    card.appendChild(iconWrap);
+
+    var title = document.createElement('h2');
+    title.className = 'text-xl font-bold text-center text-gray-900';
+    title.textContent = 'Mejora tu plan';
+    card.appendChild(title);
+
+    var desc = document.createElement('p');
+    desc.className = 'text-sm text-gray-600 text-center';
+    desc.textContent = 'Desbloquea Inventario y Finanzas Personales con un plan superior.';
+    card.appendChild(desc);
+
+    var plansWrap = document.createElement('div');
+    plansWrap.className = 'space-y-2 max-h-60 overflow-y-auto';
+    try {
+      var plansData = await API.get('/auth/plans');
+      var paidPlans = (plansData.plans || []).filter(function(p) { return p.precio_mensual > 0; });
+      paidPlans.forEach(function(p) {
+        var row = document.createElement('a');
+        row.href = '/register?plan_id=' + p.id;
+        row.className = 'flex items-center justify-between p-3 rounded-lg border border-gray-200 hover:border-amber-400 hover:bg-amber-50 transition-colors cursor-pointer';
+        var left = document.createElement('div');
+        var pName = document.createElement('span');
+        pName.className = 'text-sm font-semibold text-gray-900 block';
+        pName.textContent = p.nombre;
+        var pDesc = document.createElement('span');
+        pDesc.className = 'text-xs text-gray-500 block';
+        pDesc.textContent = p.descripcion || '';
+        left.appendChild(pName);
+        left.appendChild(pDesc);
+        var price = document.createElement('span');
+        price.className = 'text-sm font-bold text-amber-600 whitespace-nowrap ml-3';
+        price.textContent = '$' + Number(p.precio_mensual).toLocaleString('es-MX') + '/mes';
+        row.appendChild(left);
+        row.appendChild(price);
+        plansWrap.appendChild(row);
+      });
+      if (!paidPlans.length) {
+        var noPlans = document.createElement('p');
+        noPlans.className = 'text-xs text-gray-500 text-center py-2';
+        noPlans.textContent = 'No hay planes disponibles en este momento.';
+        plansWrap.appendChild(noPlans);
+      }
+    } catch(e) {
+      var errMsg = document.createElement('p');
+      errMsg.className = 'text-xs text-red-500 text-center';
+      errMsg.textContent = 'No se pudieron cargar los planes.';
+      plansWrap.appendChild(errMsg);
+    }
+    card.appendChild(plansWrap);
+
+    var closeBtn = document.createElement('button');
+    closeBtn.className = 'w-full text-center text-xs text-gray-400 hover:text-gray-600 cursor-pointer pt-1';
+    closeBtn.textContent = 'Cerrar';
+    closeBtn.addEventListener('click', function() { overlay.remove(); });
+    card.appendChild(closeBtn);
+
+    overlay.appendChild(card);
+    document.body.appendChild(overlay);
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+  }
 
   async function showTrialPopup(trial) {
     var overlay = document.createElement('div');

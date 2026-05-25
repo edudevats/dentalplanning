@@ -66,3 +66,9 @@ class SubscriptionUpdateSchema(Schema):
     plan_id = fields.Int()
     proximo_cobro = fields.Date(allow_none=True)
     estado = fields.Str(validate=validate.OneOf(SUBSCRIPTION_ESTADOS))
+
+
+class AssignPlanSchema(Schema):
+    plan_id = fields.Int(required=True)
+    inicio = fields.Date(load_default=None)
+    proximo_cobro = fields.Date(load_default=None)

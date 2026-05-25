@@ -309,6 +309,15 @@
       });
       subCard.appendChild(grid);
 
+      if (sub.estado === 'vencida') {
+        const warn = document.createElement('div');
+        warn.className = 'flex items-center gap-2 p-3 rounded-md bg-red-500/10 text-red-400 text-xs font-semibold';
+        const wIc = document.createElement('i'); wIc.setAttribute('data-lucide', 'alert-circle'); wIc.className = 'h-4 w-4 shrink-0';
+        warn.appendChild(wIc);
+        warn.appendChild(document.createTextNode('Cuenta inactiva — registra un pago para habilitarla.'));
+        subCard.appendChild(warn);
+      }
+
       // Module badges
       const mods = sub.plan_modulos || [];
       if (mods.length > 0) {
@@ -334,13 +343,21 @@
       const cpIc = document.createElement('i'); cpIc.setAttribute('data-lucide', 'repeat'); cpIc.className = 'h-3 w-3';
       changePlanBtn.appendChild(cpIc);
       changePlanBtn.appendChild(document.createTextNode('Cambiar plan'));
-      changePlanBtn.addEventListener('click', () => openChangePlan(sub));
+      changePlanBtn.addEventListener('click', () => openAssignPlan(sub));
       subCard.appendChild(changePlanBtn);
     } else {
       const empty = document.createElement('p');
       empty.className = 'text-sm text-cs-on-surface-var';
-      empty.textContent = 'Esta clínica aún no tiene suscripción. Aprueba la solicitud para asignar un plan.';
+      empty.textContent = 'Sin suscripción asignada. Asigna un plan para habilitar la cuenta mediante pago.';
       subCard.appendChild(empty);
+
+      const assignBtn = document.createElement('button');
+      assignBtn.className = 'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-cs-primary text-cs-on-primary text-xs font-semibold hover:opacity-90 transition-opacity cursor-pointer mt-2';
+      const aIc = document.createElement('i'); aIc.setAttribute('data-lucide', 'tag'); aIc.className = 'h-3 w-3';
+      assignBtn.appendChild(aIc);
+      assignBtn.appendChild(document.createTextNode('Asignar plan'));
+      assignBtn.addEventListener('click', () => openAssignPlan(null));
+      subCard.appendChild(assignBtn);
     }
     panel.appendChild(subCard);
 
@@ -474,6 +491,13 @@
     fullCol.appendChild(buildField('Comentarios', comen));
     wrap.appendChild(fullCol);
 
+    const note = document.createElement('div');
+    note.className = 'md:col-span-2 flex items-start gap-2 p-3 rounded-md bg-cs-primary/10 text-cs-on-surface text-xs';
+    const noteIc = document.createElement('i'); noteIc.setAttribute('data-lucide', 'info'); noteIc.className = 'h-4 w-4 shrink-0 text-cs-primary mt-0.5';
+    note.appendChild(noteIc);
+    note.appendChild(document.createTextNode('Al registrar un pago con "Periodo hasta" la suscripción se activará y la cuenta quedará habilitada hasta esa fecha.'));
+    wrap.appendChild(note);
+
     openModal({
       title: 'Registrar pago', content: wrap,
       primary: { label: 'Registrar', onClick: async () => {
@@ -490,8 +514,7 @@
           comentarios: comen.value || undefined,
         });
         Toast.show('Pago registrado', 'success');
-        await loadTenant();
-        await renderBilling();
+        await refreshAll();
       } },
     });
   }
@@ -525,33 +548,51 @@
     }
   }
 
-  async function openChangePlan(sub) {
-    const plans = (await loadPlans()).filter(p => p.activo);
+  async function openAssignPlan(sub) {
+    const plans = (await loadPlans()).filter(p => p.activo && p.precio_mensual > 0);
     if (plans.length === 0) { Toast.show('No hay planes activos', 'warning'); return; }
+    const isNew = !sub;
     const wrap = document.createElement('div');
     wrap.className = 'space-y-4';
+
     const info = document.createElement('p');
     info.className = 'text-sm text-cs-on-surface-var';
-    info.textContent = `Plan actual: ${sub.plan_nombre || '—'}. Selecciona el nuevo plan:`;
+    info.textContent = isNew
+      ? 'Asigna un plan. La cuenta quedará inactiva hasta que registres un pago.'
+      : `Plan actual: ${sub.plan_nombre || '—'}. Selecciona el nuevo plan:`;
     wrap.appendChild(info);
+
     const planSel = selectEl('plan_id', plans.map(p => ({ value: p.id, label: `${p.nombre} — ${currency(p.precio_mensual)}/mes` })));
-    planSel.value = String(sub.plan_id);
-    wrap.appendChild(buildField('Nuevo plan', planSel));
-    openModal({
-      title: `Cambiar plan — ${tenant.name}`,
-      content: wrap,
-      primary: { label: 'Cambiar plan', onClick: async () => {
-        const newPlanId = parseInt(planSel.value, 10);
-        if (newPlanId === sub.plan_id) throw new Error('Selecciona un plan diferente.');
-        await adminApi.put(`/subscriptions/${sub.id}`, { plan_id: newPlanId });
-        const newPlan = plans.find(p => p.id === newPlanId);
-        if (newPlan) {
-          await adminApi.put(`/tenants/${tenantId}`, { plan: newPlan.nombre });
-        }
-        Toast.show('Plan actualizado', 'success');
-        await refreshAll();
-      } },
-    });
+    if (!isNew) planSel.value = String(sub.plan_id);
+    wrap.appendChild(buildField(isNew ? 'Plan' : 'Nuevo plan', planSel));
+
+    if (isNew) {
+      const today = new Date().toISOString().slice(0, 10);
+      const inicio = inputEl('date', 'inicio', today);
+      wrap.appendChild(buildField('Fecha de inicio', inicio));
+      openModal({
+        title: `Asignar plan — ${tenant.name}`, content: wrap,
+        primary: { label: 'Asignar plan', onClick: async () => {
+          await adminApi.post(`/tenants/${tenantId}/assign-plan`, {
+            plan_id: parseInt(planSel.value, 10),
+            inicio: inicio.value || undefined,
+          });
+          Toast.show('Plan asignado. Registra un pago para activar la cuenta.', 'success');
+          await refreshAll();
+        } },
+      });
+    } else {
+      openModal({
+        title: `Cambiar plan — ${tenant.name}`, content: wrap,
+        primary: { label: 'Cambiar plan', onClick: async () => {
+          const newPlanId = parseInt(planSel.value, 10);
+          if (newPlanId === sub.plan_id) throw new Error('Selecciona un plan diferente.');
+          await adminApi.post(`/tenants/${tenantId}/assign-plan`, { plan_id: newPlanId });
+          Toast.show('Plan actualizado', 'success');
+          await refreshAll();
+        } },
+      });
+    }
   }
 
   // ── Tab: Notes ─────────────────────────────────────────────────────────
