@@ -19,3 +19,5 @@ class ConfigSchema(Schema):
     horas_semana = fields.Float(dump_only=True)
     horas_mes = fields.Float(dump_only=True)
     costo_hora = fields.Float(dump_only=True)
+    costo_operario_hora = fields.Float(dump_only=True)
+

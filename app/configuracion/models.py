@@ -46,3 +46,10 @@ class ConfigConsultorio(db.Model):
         if self.horas_mes > 0 and self.numero_unidades > 0:
             return self.gastos_fijos / self.horas_mes / self.numero_unidades
         return 0
+
+    @property
+    def costo_operario_hora(self):
+        if self.horas_mes > 0:
+            return self.gastos_fijos / self.horas_mes
+        return 0
+

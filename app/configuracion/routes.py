@@ -17,6 +17,7 @@ def obtener():
         "horas_semana": round(config.horas_semana, 2),
         "horas_mes": round(config.horas_mes, 2),
         "costo_hora": round(config.costo_hora, 2),
+        "costo_operario_hora": round(config.costo_operario_hora, 2),
     }
     return jsonify(data)
 
@@ -39,5 +40,6 @@ def actualizar():
         "horas_semana": round(config.horas_semana, 2),
         "horas_mes": round(config.horas_mes, 2),
         "costo_hora": round(config.costo_hora, 2),
+        "costo_operario_hora": round(config.costo_operario_hora, 2),
     }
     return jsonify(result)
