@@ -130,7 +130,6 @@ function render(data) {
 
   const costCard = card('Desglose de Costos', wrap => {
     const body = domEl('div', 'divide-y divide-border');
-    body.appendChild(rowItem('Costo Sillón / Hora', fmtVal(c.costo_hora_consultorio)));
     body.appendChild(rowItem('Costo Consultorio', fmtVal(c.costo_consultorio_tx)));
     body.appendChild(rowItem('Costo Materiales', fmtVal(c.costo_materiales)));
     body.appendChild(rowItem('Comision Bancaria', fmtVal(c.comision_bancaria)));
