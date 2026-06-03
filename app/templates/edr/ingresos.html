@@ -74,6 +74,14 @@
             <select id="f-especialista" class="block w-full rounded-lg border border-border px-3 py-2.5 text-sm font-body min-h-[44px] bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-500"></select></div>
           <div><label class="block text-sm font-medium text-text-secondary mb-1 font-body">Metodo de Pago</label>
             <select id="f-metodo" class="block w-full rounded-lg border border-border px-3 py-2.5 text-sm font-body min-h-[44px] bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-500"></select></div>
+          <div><label class="block text-sm font-medium text-text-secondary mb-1 font-body">Descuento</label>
+            <select id="f-descuento" class="block w-full rounded-lg border border-border px-3 py-2.5 text-sm font-body min-h-[44px] bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-500">
+              <option value="0">Sin descuento</option>
+              <option value="10">10%</option>
+              <option value="20">20%</option>
+              <option value="30">30%</option>
+              <option value="50">50%</option>
+            </select></div>
           <div><label class="block text-sm font-medium text-text-secondary mb-1 font-body">Monto</label>
             <input id="f-monto" type="number" placeholder="0.00" class="block w-full rounded-lg border border-border px-3 py-2.5 text-sm font-body min-h-[44px] bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-500" /></div>
           <div><label class="block text-sm font-medium text-text-secondary mb-1 font-body">Comision Bancaria</label>
@@ -156,6 +164,7 @@ function renderTable_() {
     { key: 'tratamiento_id', label: 'Tratamiento', render: v => findName(tratamientos, v) },
     { key: 'especialista_id', label: 'Especialista', render: v => findName(especialistas, v) },
     { key: 'metodo_pago_id', label: 'Metodo Pago', render: v => findName(metodosPago, v) },
+    { key: 'descuento_pct', label: 'Descuento', align: 'right', render: v => domEl('span', 'tabular-nums text-text-muted', v ? v + '%' : '-') },
     { key: 'monto', label: 'Monto', align: 'right', render: v => domEl('span', 'tabular-nums font-medium', fmt(v)) },
     { key: 'comision_bancaria', label: 'Com. Bancaria', align: 'right', render: v => domEl('span', 'tabular-nums text-text-muted', fmt(v)) },
     { key: 'comision_doctor', label: 'Com. Doctor', align: 'right', render: v => domEl('span', 'tabular-nums text-text-muted', fmt(v)) },
@@ -190,7 +199,17 @@ function openCreate() {
   document.getElementById('save-text').textContent = 'Guardar';
   ['f-fecha','f-paciente','f-monto','f-com-ban','f-com-doc'].forEach(id => document.getElementById(id).value = '');
   document.getElementById('f-factura').checked = false;
-  ['f-tratamiento','f-especialista','f-metodo','f-estrategia'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('f-descuento').value = '0';
+
+  // pre-select default payment method (preferably Efectivo, otherwise the first one)
+  let defaultMetodoId = '';
+  if (metodosPago.length > 0) {
+    const efectivo = metodosPago.find(m => m.nombre.toLowerCase().includes('efectivo'));
+    defaultMetodoId = efectivo ? String(efectivo.id) : String(metodosPago[0].id);
+  }
+
+  ['f-tratamiento','f-especialista','f-estrategia'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('f-metodo').value = defaultMetodoId;
   Modal.open('modal-form');
 }
 
@@ -204,6 +223,7 @@ function openEdit(row) {
   document.getElementById('f-com-ban').value = row.comision_bancaria ?? '';
   document.getElementById('f-com-doc').value = row.comision_doctor ?? '';
   document.getElementById('f-factura').checked = !!row.factura;
+  document.getElementById('f-descuento').value = row.descuento_pct ? String(row.descuento_pct) : '0';
   document.getElementById('f-tratamiento').value = row.tratamiento_id ? String(row.tratamiento_id) : '';
   document.getElementById('f-especialista').value = row.especialista_id ? String(row.especialista_id) : '';
   document.getElementById('f-metodo').value = row.metodo_pago_id ? String(row.metodo_pago_id) : '';
@@ -225,6 +245,7 @@ async function handleSave() {
 
   const payload = {
     fecha, paciente, monto: Number(monto),
+    descuento_pct: Number(document.getElementById('f-descuento').value) || 0,
     comision_bancaria: Number(document.getElementById('f-com-ban').value) || 0,
     comision_doctor: Number(document.getElementById('f-com-doc').value) || 0,
     factura: document.getElementById('f-factura').checked,
@@ -251,6 +272,68 @@ async function handleDelete() {
   } catch { Toast.error('Error al eliminar'); }
   finally { btn.disabled = false; txt.textContent = 'Eliminar'; }
 }
+
+function onTreatmentOrDiscountChange() {
+  const tratId = document.getElementById('f-tratamiento').value;
+  const discountPct = Number(document.getElementById('f-descuento').value) || 0;
+  
+  if (!tratId) return;
+  const tx = tratamientos.find(t => String(t.id) === String(tratId));
+  if (!tx) return;
+  
+  // 1. Calculate Monto
+  const basePrice = Number(tx.precio_paciente) || 0;
+  const discountedPrice = basePrice * (1 - discountPct / 100);
+  document.getElementById('f-monto').value = discountedPrice.toFixed(2);
+  
+  // 2. Calculate Doctor Commission
+  let comDoc = 0;
+  if (tx.comision_especialista) {
+    if (tx.comision_especialista.tipo === 'porcentaje') {
+      comDoc = discountedPrice * (Number(tx.comision_especialista.valor) || 0) / 100;
+    } else {
+      comDoc = Number(tx.comision_especialista.valor) || 0;
+    }
+  }
+  document.getElementById('f-com-doc').value = comDoc.toFixed(2);
+  
+  // 3. Update Bank Commission
+  updateBankCommission(discountedPrice);
+}
+
+function updateBankCommission(montoVal) {
+  const metId = document.getElementById('f-metodo').value;
+  if (!metId) {
+    document.getElementById('f-com-ban').value = '0.00';
+    return;
+  }
+  const mp = metodosPago.find(m => String(m.id) === String(metId));
+  if (mp) {
+    const comPct = Number(mp.comision_pct) || 0;
+    const amount = montoVal !== undefined ? montoVal : (Number(document.getElementById('f-monto').value) || 0);
+    const comBan = amount * (comPct / 100);
+    document.getElementById('f-com-ban').value = comBan.toFixed(2);
+  }
+}
+
+// Setup event listeners
+document.getElementById('f-tratamiento').addEventListener('change', onTreatmentOrDiscountChange);
+document.getElementById('f-descuento').addEventListener('change', onTreatmentOrDiscountChange);
+document.getElementById('f-metodo').addEventListener('change', () => updateBankCommission());
+document.getElementById('f-monto').addEventListener('input', e => {
+  const amount = Number(e.target.value) || 0;
+  updateBankCommission(amount);
+  
+  // Recalculate doctor commission if treatment is selected and uses percentage
+  const tratId = document.getElementById('f-tratamiento').value;
+  if (tratId) {
+    const tx = tratamientos.find(t => String(t.id) === String(tratId));
+    if (tx && tx.comision_especialista && tx.comision_especialista.tipo === 'porcentaje') {
+      const comDoc = amount * (Number(tx.comision_especialista.valor) || 0) / 100;
+      document.getElementById('f-com-doc').value = comDoc.toFixed(2);
+    }
+  }
+});
 
 async function init() {
   try {

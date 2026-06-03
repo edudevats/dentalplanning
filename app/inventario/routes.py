@@ -56,6 +56,15 @@ def actualizar_operatorio(op_id):
         data = OperatorioSchema(partial=True).load(request.get_json())
     except ValidationError as e:
         return jsonify({"errors": e.messages}), 400
+    nuevo_nombre = data.get("nombre")
+    if nuevo_nombre and nuevo_nombre != op.nombre:
+        existe = Operatorio.query.filter(
+            Operatorio.tenant_id == g.tenant_id,
+            Operatorio.nombre == nuevo_nombre,
+            Operatorio.id != op.id,
+        ).first()
+        if existe:
+            return jsonify({"error": f'Ya existe un operatorio con el nombre "{nuevo_nombre}"'}), 409
     for k, v in data.items():
         setattr(op, k, v)
     db.session.commit()

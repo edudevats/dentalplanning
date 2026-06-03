@@ -15,6 +15,7 @@ class IngresoSchema(Schema):
     monto = fields.Float(required=True, validate=validate.Range(min=0))
     comision_bancaria = fields.Float(load_default=0)
     comision_doctor = fields.Float(load_default=0)
+    descuento_pct = fields.Float(load_default=0)
     factura = fields.Bool(load_default=False)
     estrategia_id = fields.Int(allow_none=True)
     comentarios = fields.Str(allow_none=True)

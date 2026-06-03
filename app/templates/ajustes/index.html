@@ -361,7 +361,74 @@ function renderOpsLista() {
 
 function renderOpsRow(op, ctx) {
   const row = domEl('div', 'flex items-center gap-3 px-5 py-3');
-  row.appendChild(domEl('div', 'flex-1 min-w-0 text-sm font-body text-text-primary', op.nombre));
+
+  // Nombre editable (display + input modes)
+  const nameWrap = domEl('div', 'flex-1 min-w-0 flex items-center gap-2');
+  const nameDisplay = domEl('span', 'text-sm font-body text-text-primary truncate', op.nombre);
+  const nameInput = document.createElement('input');
+  nameInput.type = 'text';
+  nameInput.value = op.nombre;
+  nameInput.maxLength = 100;
+  nameInput.className = 'hidden flex-1 min-w-0 rounded-lg border border-border px-2 py-1.5 text-sm font-body bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-500';
+  const editBtn = domEl('button', 'p-1.5 rounded-md text-text-muted hover:text-primary-600 hover:bg-primary-50 transition-colors cursor-pointer shrink-0');
+  editBtn.type = 'button';
+  editBtn.title = 'Renombrar operatorio';
+  editBtn.appendChild(domIcon('pencil', 'h-4 w-4'));
+  const saveBtn = domEl('button', 'hidden p-1.5 rounded-md text-accent-600 hover:text-accent-700 hover:bg-accent-50 transition-colors cursor-pointer shrink-0');
+  saveBtn.type = 'button';
+  saveBtn.title = 'Guardar nombre';
+  saveBtn.appendChild(domIcon('check', 'h-4 w-4'));
+  const cancelBtn = domEl('button', 'hidden p-1.5 rounded-md text-text-muted hover:text-danger-600 hover:bg-danger-50 transition-colors cursor-pointer shrink-0');
+  cancelBtn.type = 'button';
+  cancelBtn.title = 'Cancelar';
+  cancelBtn.appendChild(domIcon('x', 'h-4 w-4'));
+
+  function enterEdit() {
+    nameDisplay.classList.add('hidden');
+    editBtn.classList.add('hidden');
+    nameInput.classList.remove('hidden');
+    saveBtn.classList.remove('hidden');
+    cancelBtn.classList.remove('hidden');
+    nameInput.value = op.nombre;
+    nameInput.focus();
+    nameInput.select();
+  }
+  function exitEdit() {
+    nameInput.classList.add('hidden');
+    saveBtn.classList.add('hidden');
+    cancelBtn.classList.add('hidden');
+    nameDisplay.classList.remove('hidden');
+    editBtn.classList.remove('hidden');
+  }
+  async function commit() {
+    const nuevo = nameInput.value.trim();
+    if (!nuevo) { Toast.error('El nombre no puede estar vacio'); return; }
+    if (nuevo === op.nombre) { exitEdit(); return; }
+    try {
+      const updated = await API.put(`/inventario/operatorios/${op.id}`, { nombre: nuevo });
+      op.nombre = updated.nombre;
+      nameDisplay.textContent = updated.nombre;
+      exitEdit();
+      if (ctx === 'main') renderOpsLista();
+      else renderOpsDecreaseList();
+      Toast.success('Nombre actualizado');
+    } catch (e) { Toast.error(e?.message || e?.error || 'Error al renombrar'); }
+  }
+
+  editBtn.addEventListener('click', enterEdit);
+  saveBtn.addEventListener('click', commit);
+  cancelBtn.addEventListener('click', exitEdit);
+  nameInput.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Enter') { ev.preventDefault(); commit(); }
+    else if (ev.key === 'Escape') { ev.preventDefault(); exitEdit(); }
+  });
+
+  nameWrap.appendChild(nameDisplay);
+  nameWrap.appendChild(nameInput);
+  nameWrap.appendChild(editBtn);
+  nameWrap.appendChild(saveBtn);
+  nameWrap.appendChild(cancelBtn);
+  row.appendChild(nameWrap);
   row.appendChild(badge(op.estado));
 
   const sel = document.createElement('select');

@@ -23,6 +23,7 @@ class Ingreso(db.Model):
     monto = db.Column(db.Float, nullable=False)
     comision_bancaria = db.Column(db.Float, default=0)
     comision_doctor = db.Column(db.Float, default=0)
+    descuento_pct = db.Column(db.Float, default=0.0)
     factura = db.Column(db.Boolean, default=False)
     estrategia_id = db.Column(
         db.Integer, db.ForeignKey("estrategias_marketing.id"), nullable=True
