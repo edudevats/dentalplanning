@@ -202,9 +202,9 @@ function render(data) {
       const tbody = domEl('tbody');
       descuentos.forEach(d => {
         const tr = domEl('tr', 'border-b border-border last:border-0');
-        tr.appendChild(domEl('td', 'py-2.5 px-5 font-medium', d.descuento_pct + '%'));
+        tr.appendChild(domEl('td', 'py-2.5 px-5 font-medium', d.porcentaje + '%'));
         tr.appendChild(domEl('td', 'py-2.5 px-5 text-right tabular-nums', fmtVal(d.precio_con_descuento)));
-        tr.appendChild(domEl('td', 'py-2.5 px-5 text-right tabular-nums font-medium ' + (d.ganancia_neta >= 0 ? 'text-accent-600' : 'text-danger-600'), fmtVal(d.ganancia_neta)));
+        tr.appendChild(domEl('td', 'py-2.5 px-5 text-right tabular-nums font-medium ' + (d.ganancia >= 0 ? 'text-accent-600' : 'text-danger-600'), fmtVal(d.ganancia)));
         const td4 = domEl('td', 'py-2.5 px-5 text-right');
         td4.appendChild(badgeEl(pctVal(d.pct_ganancia), gananciaVariant(d.pct_ganancia)));
         tr.appendChild(td4);
