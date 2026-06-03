@@ -222,10 +222,28 @@ def trimestral():
             extract("year", GastoOperativo.fecha) == year,
             extract("month", GastoOperativo.fecha) == month,
         ).scalar()
+        total_comisiones = db.session.query(
+            func.coalesce(func.sum(Ingreso.comision_bancaria + Ingreso.comision_doctor), 0)
+        ).filter(
+            Ingreso.tenant_id == g.tenant_id,
+            extract("year", Ingreso.fecha) == year,
+            extract("month", Ingreso.fecha) == month,
+        ).scalar()
+        total_pagos_doc = db.session.query(
+            func.coalesce(func.sum(PagoDoctor.monto), 0)
+        ).filter(
+            PagoDoctor.tenant_id == g.tenant_id,
+            extract("year", PagoDoctor.fecha) == year,
+            extract("month", PagoDoctor.fecha) == month,
+        ).scalar()
+
+        utilidad_neta = float(total_ing) - float(total_comisiones) - float(total_gas) - float(total_pagos_doc)
+
         meses.append({
             "mes": month,
             "total": round(float(total_ing), 2),
             "gastos": round(float(total_gas), 2),
+            "utilidad_neta": round(utilidad_neta, 2),
         })
 
     # Trimestrales

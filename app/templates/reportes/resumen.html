@@ -480,7 +480,7 @@
     <!-- Bar chart anual -->
     <div id="ra-chart-card" class="hidden bg-surface rounded-xl border border-border shadow-sm">
       <div class="px-5 py-4 border-b border-border">
-        <h3 class="text-sm font-semibold font-heading text-text-primary">Ventas Mensuales</h3>
+        <h3 class="text-sm font-semibold font-heading text-text-primary">Ganancia Neta Mensual</h3>
       </div>
       <div class="p-4" style="height:320px"><canvas id="ra-bar-chart"></canvas></div>
     </div>
@@ -489,7 +489,7 @@
     <div class="bg-surface rounded-xl border border-border shadow-sm">
       <div class="px-5 py-4 border-b border-border">
         <h3 class="text-sm font-semibold font-heading text-text-primary">Promedios Trimestrales</h3>
-        <p class="text-xs text-text-muted mt-0.5 font-body">Ventas mensuales, totales y promedios por trimestre, crecimiento mes-a-mes</p>
+        <p class="text-xs text-text-muted mt-0.5 font-body">Ganancia neta mensual, totales y promedios por trimestre, crecimiento mes-a-mes</p>
       </div>
       <div class="grid grid-cols-1 lg:grid-cols-3 gap-0">
         <div class="border-r border-border">
@@ -519,7 +519,7 @@
     <div class="bg-surface rounded-xl border border-border shadow-sm">
       <div class="px-5 py-4 border-b border-border">
         <h3 class="text-sm font-semibold font-heading text-text-primary">Sistema de Ahorro</h3>
-        <p class="text-xs text-text-muted mt-0.5 font-body">Distribución mensual de las ventas según porcentajes configurados (Ajustes › Distribución)</p>
+        <p class="text-xs text-text-muted mt-0.5 font-body">Distribución mensual de la ganancia neta según porcentajes configurados (Ajustes › Distribución)</p>
       </div>
       <div class="overflow-x-auto">
         <table class="w-full text-sm">
@@ -527,7 +527,7 @@
             <tr class="bg-surface-alt border-b border-border">
               <th class="px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-text-secondary font-body w-28"></th>
               <th class="px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-text-secondary font-body">Mes</th>
-              <th class="px-3 py-2.5 text-right text-xs font-semibold uppercase tracking-wide text-text-secondary font-body">Ventas</th>
+              <th class="px-3 py-2.5 text-right text-xs font-semibold uppercase tracking-wide text-text-secondary font-body">Ganancia Neta</th>
               <!-- category headers injected dynamically by loadReporteAnual() -->
             </tr>
           </thead>
@@ -942,16 +942,51 @@ async function loadReporteAnual() {
       API.get('/reportes/distribucion?mes=' + raSelYear + '-01'),
     ]);
 
-    const meses = trim.meses || [];
-    const trimestres = trim.trimestres || [];
-    const crecimiento = trim.crecimiento || [];
+    const mesesRaw = trim.meses || [];
+    const meses = mesesRaw.map(m => ({
+      ...m,
+      total: m.utilidad_neta !== undefined ? m.utilidad_neta : m.total
+    }));
+
+    // Calculate total anual and average monthly based on mapped meses (net utility)
+    const total_anual = meses.reduce((s, m) => s + m.total, 0);
+    const count_nonzero = meses.filter(m => m.total !== 0).length;
+    const promedio_mensual = count_nonzero > 0 ? total_anual / count_nonzero : 0;
+
+    // Calculate trimestres
+    const trimestres = [];
+    for (let t = 0; t < 4; t++) {
+      const start = t * 3;
+      const mesesQ = meses.slice(start, start + 3);
+      const total_trim = mesesQ.reduce((s, m) => s + m.total, 0);
+      const count_nonzero_trim = mesesQ.filter(m => m.total !== 0).length;
+      const promedio = count_nonzero_trim > 0 ? total_trim / count_nonzero_trim : 0;
+      trimestres.push({
+        trimestre: t + 1,
+        total: total_trim,
+        promedio: promedio
+      });
+    }
+
+    // Calculate growth mes a mes (11 periods: Ene-Feb, Feb-Mar, etc.)
+    const crecimiento = [];
+    for (let i = 1; i < 12; i++) {
+      const prev = meses[i - 1].total;
+      const curr = meses[i].total;
+      const pct = (prev !== 0) ? ((curr - prev) / Math.abs(prev)) : 0;
+      crecimiento.push({
+        de_mes: i,
+        a_mes: i + 1,
+        porcentaje: pct
+      });
+    }
 
     // Stats
-    document.getElementById('ra-stat-total').textContent = fmt(trim.total_anual || 0);
-    document.getElementById('ra-stat-prom').textContent  = fmt(trim.promedio_mensual || 0);
+    document.getElementById('ra-stat-total').textContent = fmt(total_anual);
+    document.getElementById('ra-stat-prom').textContent  = fmt(promedio_mensual);
 
-    const mejorMes = meses.reduce((acc, m) => (m.total > (acc?.total || 0) ? m : acc), null);
-    if (mejorMes && mejorMes.total > 0) {
+    const mejorMes = meses.reduce((acc, m) => (acc === null || m.total > acc.total ? m : acc), null);
+    if (mejorMes && mejorMes.total !== 0) {
       document.getElementById('ra-stat-best').textContent = fmt(mejorMes.total);
       document.getElementById('ra-stat-best-label').textContent = RA_MES_FULL[mejorMes.mes];
     } else {
@@ -959,8 +994,8 @@ async function loadReporteAnual() {
       document.getElementById('ra-stat-best-label').textContent = '-';
     }
 
-    const mejorTrim = trimestres.reduce((acc, t) => (t.total > (acc?.total || 0) ? t : acc), null);
-    if (mejorTrim && mejorTrim.total > 0) {
+    const mejorTrim = trimestres.reduce((acc, t) => (acc === null || t.total > acc.total ? t : acc), null);
+    if (mejorTrim && mejorTrim.total !== 0) {
       document.getElementById('ra-stat-bestq').textContent = fmt(mejorTrim.total);
       document.getElementById('ra-stat-bestq-label').textContent = RA_TRIM_LABELS[mejorTrim.trimestre - 1];
     } else {
@@ -970,14 +1005,14 @@ async function loadReporteAnual() {
 
     // Bar chart anual
     const raChartCard = document.getElementById('ra-chart-card');
-    if (meses.some(m => m.total > 0)) {
+    if (meses.some(m => m.total !== 0)) {
       raChartCard.classList.remove('hidden');
       if (raBarChart) raBarChart.destroy();
       raBarChart = new Chart(document.getElementById('ra-bar-chart'), {
         type: 'bar',
         data: {
           labels: meses.map(m => RA_MES_FULL[m.mes]),
-          datasets: [{ label: 'Ventas', data: meses.map(m => m.total || 0), backgroundColor: '#0891b2', borderRadius: 4 }],
+          datasets: [{ label: 'Ganancia Neta', data: meses.map(m => m.total || 0), backgroundColor: '#059669', borderRadius: 4 }],
         },
         options: {
           responsive: true, maintainAspectRatio: false,
@@ -1039,7 +1074,7 @@ async function loadReporteAnual() {
     tdTAN.textContent = 'Total anual';
     const tdTAV = document.createElement('td');
     tdTAV.className = 'px-4 py-2 text-right tabular-nums font-bold text-primary-900';
-    tdTAV.textContent = fmt(trim.total_anual || 0);
+    tdTAV.textContent = fmt(total_anual);
     trTA.appendChild(tdTAN); trTA.appendChild(tdTAV);
     tblTrims.appendChild(trTA);
 
@@ -1050,7 +1085,7 @@ async function loadReporteAnual() {
     tdPAN.textContent = 'Promedio anual';
     const tdPAV = document.createElement('td');
     tdPAV.className = 'px-4 py-2 text-right tabular-nums font-bold text-primary-900';
-    tdPAV.textContent = fmt(trim.promedio_mensual || 0);
+    tdPAV.textContent = fmt(promedio_mensual);
     trPA.appendChild(tdPAN); trPA.appendChild(tdPAV);
     tblTrims.appendChild(trPA);
 
