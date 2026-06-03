@@ -6,8 +6,6 @@
   const detail     = document.getElementById("cs-op-detail");
   const detailName = document.getElementById("cs-op-detail-name");
   const itemsUl    = document.getElementById("cs-op-detail-items");
-  const modal      = document.getElementById("cs-op-modal");
-  const form       = document.getElementById("cs-op-form");
 
   let distribucion = [];
 
@@ -149,26 +147,6 @@
 
   document.getElementById("cs-op-detail-close").addEventListener("click", () => {
     detail.classList.add("hidden");
-  });
-
-  document.getElementById("cs-new-operatory").addEventListener("click", () => {
-    modal.classList.remove("hidden");
-  });
-  document.getElementById("cs-op-cancel").addEventListener("click", () => {
-    modal.classList.add("hidden");
-  });
-  form.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const fd = new FormData(form);
-    try {
-      await invApi.post("/operatorios", {
-        nombre: fd.get("nombre"),
-        orden: parseInt(fd.get("orden") || "0"),
-      });
-      modal.classList.add("hidden");
-      form.reset();
-      await loadOps();
-    } catch (err) { alert(err.message); }
   });
 
   await loadOps();

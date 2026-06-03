@@ -6,6 +6,8 @@ from app.middleware.tenant import require_auth, require_role
 from app.edr.models import Ingreso, GastoOperativo, PagoDoctor
 from app.edr.schemas import IngresoSchema, GastoOperativoSchema, PagoDoctorSchema
 from app.ajustes.models import MetodoPago, Especialista
+from app.configuracion.models import ConfigConsultorio
+from app.tratamientos.models import Tratamiento
 
 edr_bp = Blueprint("edr", __name__, url_prefix="/api/v1/edr")
 
@@ -216,3 +218,117 @@ def eliminar_pago(pago_id):
     db.session.delete(pago)
     db.session.commit()
     return jsonify({"message": "Pago eliminado"})
+
+
+@edr_bp.route("/pagos-doctores/resumen", methods=["GET"])
+@require_auth
+def resumen_pagos_doctores():
+    year, month = _parse_mes(request.args.get("mes"))
+    
+    # 1. Configuración del consultorio
+    config = ConfigConsultorio.query.filter_by(tenant_id=g.tenant_id).first()
+    costo_hora = config.costo_hora if config else 0.0
+
+    # 2. Especialistas
+    especialistas = Especialista.query.filter_by(tenant_id=g.tenant_id).all()
+
+    # 3. Ingresos (Tratamientos realizados) del mes
+    ingresos = Ingreso.query.filter(
+        Ingreso.tenant_id == g.tenant_id,
+        extract("year", Ingreso.fecha) == year,
+        extract("month", Ingreso.fecha) == month,
+    ).all()
+
+    # 4. Pagos a doctores del mes
+    pagos = PagoDoctor.query.filter(
+        PagoDoctor.tenant_id == g.tenant_id,
+        extract("year", PagoDoctor.fecha) == year,
+        extract("month", PagoDoctor.fecha) == month,
+    ).all()
+
+    resumen_doctores = []
+    
+    total_tratamientos = 0
+    total_pagado_comisiones = 0
+    total_pagado_salarios = 0
+    total_generado = 0
+    total_ganancia = 0
+
+    for esp in especialistas:
+        # Filtrar ingresos y pagos del especialista
+        ingresos_esp = [i for i in ingresos if i.especialista_id == esp.id]
+        pagos_esp = [p for p in pagos if p.especialista_id == esp.id]
+
+        tratamientos_count = len(ingresos_esp)
+        comision_pagada = sum(p.monto for p in pagos_esp if p.tipo == "comision")
+        salario_pagado = sum(p.monto for p in pagos_esp if p.tipo == "salario")
+        total_gen_esp = sum(i.monto for i in ingresos_esp)
+
+        total_ganancia_esp = 0
+        detalle_tratamientos = []
+
+        for i in ingresos_esp:
+            costo_consultorio = 0
+            costo_materiales = 0
+            if i.tratamiento:
+                horas = i.tratamiento.horas_invertidas or 1.0
+                costo_consultorio = horas * costo_hora
+                
+                # Calcular costo materiales
+                for tm in i.tratamiento.materiales:
+                    if tm.material:
+                        costo_materiales += (tm.material.costo_unitario or 0.0) * (tm.cantidad or 0.0)
+            
+            comision_bancaria = i.comision_bancaria or 0.0
+            comision_doctor = i.comision_doctor or 0.0
+
+            costo_total = costo_consultorio + costo_materiales + comision_bancaria + comision_doctor
+            ganancia_neta_tx = i.monto - costo_total
+
+            total_ganancia_esp += ganancia_neta_tx
+
+            detalle_tratamientos.append({
+                "fecha": i.fecha.isoformat(),
+                "paciente": i.paciente or "Paciente",
+                "nombre_tratamiento": i.nombre_tratamiento or (i.tratamiento.nombre if i.tratamiento else "Tratamiento"),
+                "monto": round(i.monto, 2),
+                "comision_doctor": round(comision_doctor, 2),
+                "ganancia": round(ganancia_neta_tx, 2)
+            })
+
+        # Redondear valores
+        comision_pagada = round(comision_pagada, 2)
+        salario_pagado = round(salario_pagado, 2)
+        total_gen_esp = round(total_gen_esp, 2)
+        total_ganancia_esp = round(total_ganancia_esp, 2)
+
+        # Agregar al total general si el doctor tiene actividad o pagos en el mes
+        if esp.is_active or tratamientos_count > 0 or comision_pagada > 0 or salario_pagado > 0:
+            resumen_doctores.append({
+                "especialista_id": esp.id,
+                "especialista_nombre": esp.nombre,
+                "tratamientos_count": tratamientos_count,
+                "comision_pagada": comision_pagada,
+                "salario_pagado": salario_pagado,
+                "total_generado": total_gen_esp,
+                "total_ganancia_generada": total_ganancia_esp,
+                "detalle_tratamientos": detalle_tratamientos
+            })
+
+            total_tratamientos += tratamientos_count
+            total_pagado_comisiones += comision_pagada
+            total_pagado_salarios += salario_pagado
+            total_generado += total_gen_esp
+            total_ganancia += total_ganancia_esp
+
+    return jsonify({
+        "mes": f"{year}-{month:02d}",
+        "resumen_doctores": resumen_doctores,
+        "totales_mes": {
+            "total_tratamientos": total_tratamientos,
+            "total_pagado_comisiones": round(total_pagado_comisiones, 2),
+            "total_pagado_salarios": round(total_pagado_salarios, 2),
+            "total_generado": round(total_generado, 2),
+            "total_ganancia": round(total_ganancia, 2)
+        }
+    })

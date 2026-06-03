@@ -37,6 +37,12 @@ class MaterialMasterCategoria(db.Model):
     )
 
 
+OPERATORIO_ACTIVO = "activo"
+OPERATORIO_SUSPENDIDO = "suspendido"
+OPERATORIO_REPARACION = "reparacion"
+OPERATORIO_ESTADOS = (OPERATORIO_ACTIVO, OPERATORIO_SUSPENDIDO, OPERATORIO_REPARACION)
+
+
 class Operatorio(db.Model):
     __tablename__ = "operatorios"
 
@@ -44,11 +50,17 @@ class Operatorio(db.Model):
     tenant_id = db.Column(db.Integer, db.ForeignKey("tenants.id"), nullable=False)
     nombre = db.Column(db.String(100), nullable=False)
     orden = db.Column(db.Integer, default=0, nullable=False)
-    activo = db.Column(db.Boolean, default=True, nullable=False)
+    estado = db.Column(
+        db.String(20), default=OPERATORIO_ACTIVO, nullable=False
+    )
 
     __table_args__ = (
         db.UniqueConstraint("tenant_id", "nombre", name="uq_tenant_operatorio"),
     )
+
+    @property
+    def disponible(self):
+        return self.estado == OPERATORIO_ACTIVO
 
 
 class Lote(db.Model):

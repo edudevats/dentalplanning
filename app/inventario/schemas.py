@@ -7,6 +7,9 @@ class CategoriaSchema(Schema):
     descripcion = fields.Str(allow_none=True)
 
 
+OPERATORIO_ESTADOS_VALIDOS = ("activo", "suspendido", "reparacion")
+
+
 class OperatorioSchema(Schema):
     class Meta:
         unknown = EXCLUDE
@@ -14,7 +17,20 @@ class OperatorioSchema(Schema):
     id = fields.Int(dump_only=True)
     nombre = fields.Str(required=True, validate=validate.Length(min=1, max=100))
     orden = fields.Int(load_default=0)
-    activo = fields.Bool(load_default=True)
+    estado = fields.Str(
+        load_default="activo",
+        validate=validate.OneOf(OPERATORIO_ESTADOS_VALIDOS),
+    )
+    disponible = fields.Bool(dump_only=True)
+
+
+class OperatorioEstadoSchema(Schema):
+    class Meta:
+        unknown = EXCLUDE
+
+    estado = fields.Str(
+        required=True, validate=validate.OneOf(OPERATORIO_ESTADOS_VALIDOS)
+    )
 
 
 class UmbralesUbicacionSchema(Schema):

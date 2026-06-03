@@ -10,11 +10,11 @@ from app.inventario.models import (
 from app.inventario.schemas import (
     AjusteSchema, CategoriaSchema, CompraSchema,
     ImportMasterInventarioSchema, MaterialInventarioSchema,
-    OperatorioSchema, TransferenciaSchema,
+    OperatorioEstadoSchema, OperatorioSchema, TransferenciaSchema,
 )
 from app.inventario.services import (
-    _get_or_create_stock_ubicacion, ajustar, calcular_alertas,
-    calcular_kpis_dashboard, registrar_compra, transferir,
+    _get_or_create_stock_ubicacion, _inicializar_stock_material, ajustar,
+    calcular_alertas, calcular_kpis_dashboard, registrar_compra, transferir,
 )
 
 inventario_bp = Blueprint("inventario", __name__, url_prefix="/api/v1/inventario")
@@ -39,6 +39,11 @@ def crear_operatorio():
         return jsonify({"errors": e.messages}), 400
     op = Operatorio(tenant_id=g.tenant_id, **data)
     db.session.add(op)
+    db.session.flush()
+    for m in Material.query.filter_by(
+        tenant_id=g.tenant_id, en_inventario=True
+    ).all():
+        _get_or_create_stock_ubicacion(g.tenant_id, m.id, op.id)
     db.session.commit()
     return jsonify(OperatorioSchema().dump(op)), 201
 
@@ -54,6 +59,20 @@ def actualizar_operatorio(op_id):
         return jsonify({"errors": e.messages}), 400
     for k, v in data.items():
         setattr(op, k, v)
+    db.session.commit()
+    return jsonify(OperatorioSchema().dump(op))
+
+
+@inventario_bp.route("/operatorios/<int:op_id>/estado", methods=["PUT"])
+@require_auth
+@require_role("admin", "editor")
+def cambiar_estado_operatorio(op_id):
+    op = Operatorio.query.filter_by(id=op_id, tenant_id=g.tenant_id).first_or_404()
+    try:
+        data = OperatorioEstadoSchema().load(request.get_json() or {})
+    except ValidationError as e:
+        return jsonify({"errors": e.messages}), 400
+    op.estado = data["estado"]
     db.session.commit()
     return jsonify(OperatorioSchema().dump(op))
 
@@ -326,6 +345,7 @@ def crear_material_inv():
     db.session.add(m); db.session.flush()
     for cid in data.get("categorias", []):
         db.session.add(MaterialCategoria(material_id=m.id, categoria_id=cid))
+    _inicializar_stock_material(g.tenant_id, m.id)
     for u in data.get("umbrales", []):
         su = _get_or_create_stock_ubicacion(g.tenant_id, m.id, u.get("operatorio_id"))
         su.minimo = u.get("minimo")
@@ -344,6 +364,7 @@ def actualizar_material_inv(material_id):
     except ValidationError as e:
         return jsonify({"errors": e.messages}), 400
 
+    en_inv_previo = m.en_inventario
     for field in ("expira", "unidad_inventario", "en_inventario", "nombre"):
         if field in data:
             setattr(m, field, data[field])
@@ -352,6 +373,9 @@ def actualizar_material_inv(material_id):
         MaterialCategoria.query.filter_by(material_id=m.id).delete()
         for cid in data["categorias"]:
             db.session.add(MaterialCategoria(material_id=m.id, categoria_id=cid))
+
+    if m.en_inventario and not en_inv_previo:
+        _inicializar_stock_material(g.tenant_id, m.id)
 
     for u in data.get("umbrales", []):
         su = _get_or_create_stock_ubicacion(g.tenant_id, m.id, u.get("operatorio_id"))
@@ -397,7 +421,7 @@ def dashboard_kpis():
 @require_auth
 def operatorios_distribucion():
     ops = Operatorio.query.filter_by(
-        tenant_id=g.tenant_id, activo=True
+        tenant_id=g.tenant_id, estado="activo"
     ).order_by(Operatorio.orden, Operatorio.nombre).all()
 
     if not ops:
@@ -472,6 +496,7 @@ def importar_master_inv():
         if existente:
             if not existente.en_inventario:
                 existente.en_inventario = True
+                _inicializar_stock_material(g.tenant_id, existente.id)
                 importados += 1
             continue
         m = Material(
@@ -482,6 +507,7 @@ def importar_master_inv():
         db.session.add(m); db.session.flush()
         for cat in master.categorias:
             db.session.add(MaterialCategoria(material_id=m.id, categoria_id=cat.id))
+        _inicializar_stock_material(g.tenant_id, m.id)
         importados += 1
 
     db.session.commit()

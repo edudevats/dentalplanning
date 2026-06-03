@@ -4,6 +4,7 @@ from app.extensions import db
 from app.middleware.tenant import require_auth, require_role
 from app.catalogo.models import MaterialMaster, Material
 from app.catalogo.schemas import MaterialMasterSchema, MaterialSchema, ImportMasterSchema
+from app.inventario.services import _inicializar_stock_material
 
 catalogo_bp = Blueprint("catalogo", __name__, url_prefix="/api/v1/materiales")
 
@@ -44,6 +45,10 @@ def importar_master():
             tenant_id=g.tenant_id, nombre=master.nombre
         ).first()
         if existe:
+            if not existe.en_inventario:
+                existe.en_inventario = True
+                db.session.flush()
+                _inicializar_stock_material(g.tenant_id, existe.id)
             continue
 
         costo_info = data["costos"].get(str(master.id), {})
@@ -54,8 +59,13 @@ def importar_master():
             es_medible=master.es_medible,
             costo_paquete=costo_info.get("costo_paquete", 0),
             unidades_paquete=int(costo_info.get("unidades_paquete", 1)),
+            expira=master.expira,
+            unidad_inventario=master.unidad_inventario,
+            en_inventario=True,
         )
         db.session.add(material)
+        db.session.flush()
+        _inicializar_stock_material(g.tenant_id, material.id)
         importados += 1
 
     db.session.commit()
@@ -111,7 +121,10 @@ def crear():
         return jsonify({"error": "Ya existe un material con ese nombre"}), 409
 
     material = Material(tenant_id=g.tenant_id, **data)
+    material.en_inventario = True
     db.session.add(material)
+    db.session.flush()
+    _inicializar_stock_material(g.tenant_id, material.id)
     db.session.commit()
     return jsonify(schema.dump(material)), 201
 

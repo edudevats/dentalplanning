@@ -5,7 +5,16 @@ from app.catalogo.models import Material
 from app.configuracion.models import ConfigConsultorio
 from app.inventario.models import (
     Operatorio, Lote, LoteUbicacion, StockUbicacion, Compra, MovimientoInventario,
+    OPERATORIO_ACTIVO,
 )
+
+
+class CapacidadDecreaseError(Exception):
+    """Bajar el numero de operatorios requiere suspender o poner en reparacion."""
+
+    def __init__(self, operatorios):
+        super().__init__("Reduzca capacidad suspendiendo o reparando operatorios.")
+        self.operatorios = operatorios
 
 
 def _get_or_create_stock_ubicacion(tenant_id, material_id, operatorio_id):
@@ -22,6 +31,99 @@ def _get_or_create_stock_ubicacion(tenant_id, material_id, operatorio_id):
     return su
 
 
+def _operatorio_activo_o_error(tenant_id, operatorio_id, descripcion):
+    """Si el operatorio no esta activo, levanta ValueError. None = Almacen, permitido."""
+    if operatorio_id is None:
+        return
+    op = Operatorio.query.filter_by(id=operatorio_id, tenant_id=tenant_id).first()
+    if op is None:
+        raise ValueError(f"{descripcion} no existe")
+    if op.estado != OPERATORIO_ACTIVO:
+        raise ValueError(
+            f"{descripcion} esta '{op.estado}'; no se permiten movimientos"
+        )
+
+
+def _inicializar_stock_material(tenant_id, material_id):
+    """Crea StockUbicacion(cantidad=0) para todos los operatorios del tenant.
+
+    Idempotente: si ya existen filas, no las altera. Incluye operatorios
+    en cualquier estado (suspendido/reparacion conservan la fila para que
+    al reactivar no haya gaps).
+    """
+    ops = Operatorio.query.filter_by(tenant_id=tenant_id).all()
+    for op in ops:
+        _get_or_create_stock_ubicacion(tenant_id, material_id, op.id)
+
+
+def ajustar_numero_operatorios(tenant_id, nuevo_total):
+    """Sincroniza la capacidad de operatorios y ConfigConsultorio.numero_unidades.
+
+    Si sube: crea operatorios faltantes ('Operatorio N') con stock=0 para
+    los materiales con en_inventario=True.
+    Si baja: levanta CapacidadDecreaseError con la lista actual; el caller
+    decide cuales suspender o poner en reparacion antes de reintentar.
+    Sincroniza numero_unidades = nuevo_total al final.
+    """
+    if nuevo_total < 1:
+        raise ValueError("numero_unidades debe ser >= 1")
+
+    config = ConfigConsultorio.query.filter_by(tenant_id=tenant_id).first()
+    if config is None:
+        raise ValueError("ConfigConsultorio no existe para este tenant")
+
+    actuales = (
+        Operatorio.query.filter_by(tenant_id=tenant_id)
+        .order_by(Operatorio.orden, Operatorio.nombre)
+        .all()
+    )
+    actual_total = len(actuales)
+
+    if nuevo_total < actual_total:
+        raise CapacidadDecreaseError(
+            [
+                {
+                    "id": op.id,
+                    "nombre": op.nombre,
+                    "orden": op.orden,
+                    "estado": op.estado,
+                }
+                for op in actuales
+            ]
+        )
+
+    creados = []
+    if nuevo_total > actual_total:
+        max_orden = max((op.orden for op in actuales), default=-1)
+        nombres_existentes = {op.nombre for op in actuales}
+        materiales = (
+            Material.query.filter_by(tenant_id=tenant_id, en_inventario=True).all()
+        )
+        for i in range(nuevo_total - actual_total):
+            n = actual_total + i + 1
+            base_nombre = f"Operatorio {n}"
+            nombre = base_nombre
+            sufijo = 1
+            while nombre in nombres_existentes:
+                sufijo += 1
+                nombre = f"{base_nombre} ({sufijo})"
+            nombres_existentes.add(nombre)
+            op = Operatorio(
+                tenant_id=tenant_id,
+                nombre=nombre,
+                orden=max_orden + 1 + i,
+                estado=OPERATORIO_ACTIVO,
+            )
+            db.session.add(op)
+            db.session.flush()
+            for m in materiales:
+                _get_or_create_stock_ubicacion(tenant_id, m.id, op.id)
+            creados.append(op)
+
+    config.numero_unidades = nuevo_total
+    return {"creados": creados, "total": nuevo_total}
+
+
 def registrar_compra(
     *, tenant_id, user_id, material_id, cantidad, precio_unitario,
     fecha_surtido, fecha_caducidad, operatorio_destino_id,
@@ -32,6 +134,10 @@ def registrar_compra(
         raise ValueError("Material no existe")
     if cantidad <= 0:
         raise ValueError("Cantidad debe ser > 0")
+
+    _operatorio_activo_o_error(
+        tenant_id, operatorio_destino_id, "Operatorio destino"
+    )
 
     caducidad = fecha_caducidad if material.expira else None
 
@@ -104,6 +210,9 @@ def transferir(
         raise ValueError("Cantidad debe ser > 0")
     if origen_operatorio_id == destino_operatorio_id:
         raise ValueError("Origen y destino no pueden ser iguales")
+
+    _operatorio_activo_o_error(tenant_id, origen_operatorio_id, "Operatorio origen")
+    _operatorio_activo_o_error(tenant_id, destino_operatorio_id, "Operatorio destino")
 
     su_origen = _get_or_create_stock_ubicacion(
         tenant_id, material_id, origen_operatorio_id
@@ -180,6 +289,8 @@ def ajustar(
         raise ValueError("cantidad_nueva no puede ser negativa")
     if not motivo:
         raise ValueError("motivo es requerido")
+
+    _operatorio_activo_o_error(tenant_id, operatorio_id, "Operatorio")
 
     su = _get_or_create_stock_ubicacion(tenant_id, material_id, operatorio_id)
     delta = cantidad_nueva - su.cantidad

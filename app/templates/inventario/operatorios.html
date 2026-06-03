@@ -16,10 +16,10 @@
         <span class="w-2 h-2 rounded-full bg-cs-primary animate-cs-pulse"></span>
         Sincronización en Vivo
       </span>
-      <button id="cs-new-operatory" class="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-cs-surface-container text-cs-on-surface text-sm font-semibold hover:bg-cs-surface-container-high transition-colors">
-        <i data-lucide="plus" class="h-4 w-4"></i>
-        Nuevo
-      </button>
+      <a href="/ajustes" class="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-cs-surface-container text-cs-on-surface text-sm font-semibold hover:bg-cs-surface-container-high transition-colors">
+        <i data-lucide="settings" class="h-4 w-4"></i>
+        Gestionar en Ajustes
+      </a>
     </div>
   </div>
 
@@ -59,24 +59,6 @@
     </aside>
 
   </div>
-</div>
-
-<div id="cs-op-modal" class="hidden fixed inset-0 bg-black/30 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-  <form id="cs-op-form" class="bg-cs-surface-container-lowest rounded-lg p-6 w-full max-w-md space-y-4">
-    <h2 class="font-cs-display text-xl font-bold text-cs-on-surface">Nuevo operatorio</h2>
-    <label class="block">
-      <span class="block text-xs font-semibold uppercase tracking-widest text-cs-on-surface-var mb-1.5">Nombre</span>
-      <input name="nombre" required class="w-full rounded-md bg-cs-surface-container px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-cs-primary/30" />
-    </label>
-    <label class="block">
-      <span class="block text-xs font-semibold uppercase tracking-widest text-cs-on-surface-var mb-1.5">Orden</span>
-      <input name="orden" type="number" value="0" class="w-full rounded-md bg-cs-surface-container px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-cs-primary/30" />
-    </label>
-    <div class="flex justify-end gap-2 pt-2">
-      <button type="button" id="cs-op-cancel" class="px-4 py-2 rounded-md bg-cs-surface-container text-cs-on-surface text-sm font-semibold">Cancelar</button>
-      <button type="submit" class="px-4 py-2 rounded-md bg-cs-primary text-cs-on-primary text-sm font-semibold">Crear</button>
-    </div>
-  </form>
 </div>
 
 {% endblock %}

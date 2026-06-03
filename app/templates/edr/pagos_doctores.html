@@ -52,8 +52,94 @@
     </div>
   </div>
 
-  <div class="bg-surface rounded-xl border border-border shadow-sm">
-    <div id="table-wrap"></div>
+  <!-- Navegación por Pestañas (Tabs) -->
+  <div class="border-b border-border">
+    <nav class="flex gap-6" aria-label="Tabs">
+      <button type="button" id="tab-resumen" onclick="switchTab('resumen')"
+        class="border-b-2 px-1 pb-4 text-sm font-medium font-body transition-all border-primary-500 text-primary-600 cursor-pointer">
+        Resumen por Médico
+      </button>
+      <button type="button" id="tab-historial" onclick="switchTab('historial')"
+        class="border-b-2 px-1 pb-4 text-sm font-medium font-body transition-all border-transparent text-text-secondary hover:text-text-primary hover:border-border cursor-pointer">
+        Historial de Pagos
+      </button>
+    </nav>
+  </div>
+
+  <!-- Contenido de las Pestañas -->
+  
+  <!-- Pestaña 1: Resumen por Médico -->
+  <div id="content-resumen" class="space-y-6">
+    <div class="bg-surface rounded-xl border border-border shadow-sm">
+      <div id="table-resumen-wrap"></div>
+    </div>
+    
+    <!-- Sección de Gráficos -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <!-- Gráfico 1: Ganancias netas generadas por médico -->
+      <div class="bg-surface rounded-xl border border-border shadow-sm">
+        <div class="px-5 pt-5 pb-1">
+          <h3 class="text-sm font-semibold font-heading text-text-primary">Ganancias Netas por Médico</h3>
+          <p class="text-xs text-text-muted font-body mt-0.5">Mes seleccionado</p>
+        </div>
+        <div class="px-4 pb-4" style="height: 300px; position: relative;">
+          <canvas id="chart-ganancias-medicos"></canvas>
+        </div>
+      </div>
+      
+      <!-- Gráfico 2: Tratamientos vs Ganancias -->
+      <div class="bg-surface rounded-xl border border-border shadow-sm">
+        <div class="px-5 pt-5 pb-1">
+          <h3 class="text-sm font-semibold font-heading text-text-primary">Tratamientos vs Ganancia Generada</h3>
+          <p class="text-xs text-text-muted font-body mt-0.5">Mes seleccionado</p>
+        </div>
+        <div class="px-4 pb-4" style="height: 300px; position: relative;">
+          <canvas id="chart-tx-vs-ganancias"></canvas>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Gráfico 3: Comparativo Pago vs Ganancia Neta (ROI) -->
+    <div class="bg-surface rounded-xl border border-border shadow-sm">
+      <div class="px-5 pt-5 pb-1">
+        <h3 class="text-sm font-semibold font-heading text-text-primary">Pago al Médico vs Ganancia para la Clínica (ROI)</h3>
+        <p class="text-xs text-text-muted font-body mt-0.5">Mes seleccionado</p>
+      </div>
+      <div class="px-4 pb-4" style="height: 300px; position: relative;">
+        <canvas id="chart-pago-vs-ganancia"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <!-- Pestaña 2: Historial de Transacciones de Pago -->
+  <div id="content-historial" class="hidden space-y-6">
+    <div class="bg-surface rounded-xl border border-border shadow-sm">
+      <div id="table-wrap"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Detalle de Tratamientos por Médico -->
+<div id="modal-detalle-doctor" class="hidden fixed inset-0 z-50 overflow-y-auto">
+  <div class="flex min-h-full items-end sm:items-center justify-center p-4">
+    <div class="fixed inset-0 bg-black/40" onclick="Modal.close('modal-detalle-doctor')"></div>
+    <div class="relative bg-surface rounded-2xl shadow-xl w-full max-w-4xl">
+      <div class="flex items-center justify-between px-6 py-4 border-b border-border">
+        <div>
+          <h2 id="modal-detalle-title" class="text-base font-semibold font-heading text-text-primary">Detalle de Tratamientos</h2>
+          <p id="modal-detalle-subtitle" class="text-xs text-text-muted font-body mt-0.5"></p>
+        </div>
+        <button type="button" onclick="Modal.close('modal-detalle-doctor')" class="p-2 rounded-lg text-text-muted hover:bg-surface-hover transition-colors cursor-pointer">
+          <i data-lucide="x" class="h-4 w-4"></i>
+        </button>
+      </div>
+      <div class="px-6 py-5 max-h-[60vh] overflow-y-auto">
+        <div id="modal-detalle-table-wrap"></div>
+      </div>
+      <div class="flex justify-end gap-3 px-6 py-4 border-t border-border bg-surface-alt rounded-b-2xl">
+        <button type="button" onclick="Modal.close('modal-detalle-doctor')" class="inline-flex items-center justify-center gap-2 rounded-lg font-medium font-body cursor-pointer border border-border bg-surface hover:bg-surface-hover text-text-secondary px-4 py-2 text-sm min-h-[38px]">Cerrar</button>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -133,14 +219,19 @@
 lucide.createIcons();
 const now = new Date();
 let selMonth = String(now.getMonth() + 1), selYear = String(now.getFullYear());
-let tableData = [], especialistas = [], editingId = null;
+let tableData = [], resumenDoctoresData = [], especialistas = [], editingId = null;
+let currentTab = 'resumen';
+
+// Chart instances
+let chartGanancias = null;
+let chartTxVsGanancias = null;
+let chartPagoVsGanancia = null;
 
 populateSelect(document.getElementById('sel-month'), buildMonthOptions(selMonth), selMonth);
 buildYearOptions(selYear).forEach(o => document.getElementById('sel-year').appendChild(o));
 document.getElementById('sel-month').addEventListener('change', e => { selMonth = e.target.value; fetchData(); });
 document.getElementById('sel-year').addEventListener('change', e => { selYear = e.target.value; fetchData(); });
 
-// ── Helpers de tipo ──
 function tipoBadge(tipo) {
   const isSalario = tipo === 'salario';
   const badge = domEl('span',
@@ -150,21 +241,6 @@ function tipoBadge(tipo) {
       : 'bg-secondary-50 text-secondary-700'));
   badge.textContent = isSalario ? 'Salario' : 'Comision';
   return badge;
-}
-
-function updateStats() {
-  const total     = tableData.reduce((s, r) => s + Number(r.monto || 0), 0);
-  const salarios  = tableData.filter(r => r.tipo === 'salario').reduce((s, r) => s + Number(r.monto || 0), 0);
-  const comis     = tableData.filter(r => r.tipo === 'comision').reduce((s, r) => s + Number(r.monto || 0), 0);
-
-  document.getElementById('stat-total').textContent      = fmt(total);
-  document.getElementById('stat-salarios').textContent   = fmt(salarios);
-  document.getElementById('stat-comisiones').textContent = fmt(comis);
-
-  const pctSal = total > 0 ? ((salarios / total) * 100).toFixed(0) : 0;
-  const pctCom = total > 0 ? ((comis   / total) * 100).toFixed(0) : 0;
-  document.getElementById('stat-salarios-pct').textContent   = pctSal  + '% del total';
-  document.getElementById('stat-comisiones-pct').textContent = pctCom  + '% del total';
 }
 
 function renderTable_() {
@@ -207,15 +283,333 @@ function renderTable_() {
   lucide.createIcons();
 }
 
+function renderTableResumen() {
+  const cols = [
+    { 
+      key: 'especialista_nombre', 
+      label: 'Médico', 
+      render: v => domEl('span', 'font-medium text-text-primary', v)
+    },
+    { 
+      key: 'tratamientos_count', 
+      label: 'Tratamientos Realizados', 
+      align: 'center',
+      render: v => domEl('span', 'inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-primary-50 text-primary-700', String(v))
+    },
+    { 
+      key: 'comision_pagada', 
+      label: 'Comisiones Pagadas', 
+      align: 'right',
+      render: v => domEl('span', 'tabular-nums', fmt(v))
+    },
+    { 
+      key: 'salario_pagado', 
+      label: 'Salario Pagado', 
+      align: 'right',
+      render: v => domEl('span', 'tabular-nums', fmt(v))
+    },
+    { 
+      key: 'total_generado', 
+      label: 'Total Venta Generada', 
+      align: 'right',
+      render: v => domEl('span', 'tabular-nums font-semibold text-text-primary', fmt(v))
+    },
+    { 
+      key: 'total_ganancia_generada', 
+      label: 'Ganancia Neta Clínica', 
+      align: 'right',
+      render: v => domEl('span', 'tabular-nums font-semibold ' + (v >= 0 ? 'text-accent-700' : 'text-danger-600'), fmt(v))
+    },
+    {
+      key: 'especialista_id',
+      label: 'Acciones',
+      align: 'right',
+      render: (_, row) => {
+        const div = domEl('div', 'flex items-center justify-end gap-1');
+        const viewBtn = domEl('button', 'inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-primary-700 bg-primary-50 hover:bg-primary-100 transition-colors cursor-pointer');
+        viewBtn.type = 'button';
+        viewBtn.appendChild(domIcon('list', 'h-3.5 w-3.5'));
+        const span = document.createElement('span');
+        span.textContent = 'Ver Detalles';
+        viewBtn.appendChild(span);
+        viewBtn.addEventListener('click', () => openDetalleDoctor(row));
+        div.appendChild(viewBtn);
+        return div;
+      }
+    }
+  ];
+  renderTable('table-resumen-wrap', cols, resumenDoctoresData, 'No hay médicos con actividad registrada', false);
+  lucide.createIcons();
+}
+
+function openDetalleDoctor(row) {
+  document.getElementById('modal-detalle-title').textContent = 'Detalle de Tratamientos - ' + row.especialista_nombre;
+  
+  const selMonthEl = document.getElementById('sel-month');
+  const mesLabel = selMonthEl.options[selMonthEl.selectedIndex].text;
+  const anioVal = document.getElementById('sel-year').value;
+  document.getElementById('modal-detalle-subtitle').textContent = 'Período: ' + mesLabel + ' ' + anioVal;
+  
+  const cols = [
+    { key: 'fecha', label: 'Fecha', render: v => formatDate(v) },
+    { key: 'paciente', label: 'Paciente' },
+    { key: 'nombre_tratamiento', label: 'Tratamiento', render: v => domEl('span', 'font-medium text-text-primary', v) },
+    { key: 'monto', label: 'Monto Venta', align: 'right', render: v => domEl('span', 'tabular-nums', fmt(v)) },
+    { key: 'comision_doctor', label: 'Comisión Médico', align: 'right', render: v => domEl('span', 'tabular-nums text-secondary-600', fmt(v)) },
+    { key: 'ganancia', label: 'Ganancia Neta Clínica', align: 'right', render: v => domEl('span', 'tabular-nums font-medium ' + (v >= 0 ? 'text-accent-600' : 'text-danger-600'), fmt(v)) }
+  ];
+  
+  renderTable('modal-detalle-table-wrap', cols, row.detalle_tratamientos || [], 'No hay tratamientos realizados por el médico en este período', false);
+  
+  if (row.detalle_tratamientos && row.detalle_tratamientos.length > 0) {
+    const tableEl = document.querySelector('#modal-detalle-table-wrap table');
+    if (tableEl) {
+      const tfoot = document.createElement('tfoot');
+      tfoot.className = 'bg-surface-alt border-t border-border font-semibold text-text-primary';
+      
+      const tr = document.createElement('tr');
+      
+      const tdLabel = document.createElement('td');
+      tdLabel.setAttribute('colspan', '3');
+      tdLabel.className = 'py-3 px-5 text-left';
+      tdLabel.textContent = 'Totales';
+      tr.appendChild(tdLabel);
+      
+      const sumMonto = row.detalle_tratamientos.reduce((sum, t) => sum + (t.monto || 0), 0);
+      const sumCom = row.detalle_tratamientos.reduce((sum, t) => sum + (t.comision_doctor || 0), 0);
+      const sumGan = row.detalle_tratamientos.reduce((sum, t) => sum + (t.ganancia || 0), 0);
+      
+      const tdMonto = document.createElement('td');
+      tdMonto.className = 'py-3 px-5 text-right tabular-nums';
+      tdMonto.textContent = fmt(sumMonto);
+      tr.appendChild(tdMonto);
+      
+      const tdCom = document.createElement('td');
+      tdCom.className = 'py-3 px-5 text-right tabular-nums text-secondary-600';
+      tdCom.textContent = fmt(sumCom);
+      tr.appendChild(tdCom);
+      
+      const tdGan = document.createElement('td');
+      tdGan.className = 'py-3 px-5 text-right tabular-nums ' + (sumGan >= 0 ? 'text-accent-700' : 'text-danger-600');
+      tdGan.textContent = fmt(sumGan);
+      tr.appendChild(tdGan);
+      
+      tfoot.appendChild(tr);
+      tableEl.appendChild(tfoot);
+    }
+  }
+  
+  Modal.open('modal-detalle-doctor');
+  lucide.createIcons();
+}
+
+function switchTab(tab) {
+  currentTab = tab;
+  
+  const tabResumenBtn = document.getElementById('tab-resumen');
+  const tabHistorialBtn = document.getElementById('tab-historial');
+  const contentResumen = document.getElementById('content-resumen');
+  const contentHistorial = document.getElementById('content-historial');
+  
+  if (tab === 'resumen') {
+    tabResumenBtn.className = 'border-b-2 px-1 pb-4 text-sm font-medium font-body transition-all border-primary-500 text-primary-600 cursor-pointer';
+    tabHistorialBtn.className = 'border-b-2 px-1 pb-4 text-sm font-medium font-body transition-all border-transparent text-text-secondary hover:text-text-primary hover:border-border cursor-pointer';
+    contentResumen.classList.remove('hidden');
+    contentHistorial.classList.add('hidden');
+    renderTableResumen();
+    renderCharts();
+  } else {
+    tabResumenBtn.className = 'border-b-2 px-1 pb-4 text-sm font-medium font-body transition-all border-transparent text-text-secondary hover:text-text-primary hover:border-border cursor-pointer';
+    tabHistorialBtn.className = 'border-b-2 px-1 pb-4 text-sm font-medium font-body transition-all border-primary-500 text-primary-600 cursor-pointer';
+    contentResumen.classList.add('hidden');
+    contentHistorial.classList.remove('hidden');
+    renderTable_();
+  }
+}
+
+function renderCharts() {
+  if (currentTab !== 'resumen') return;
+  
+  const sortedData = resumenDoctoresData.slice().sort((a, b) => b.total_ganancia_generada - a.total_ganancia_generada);
+  const labels = sortedData.map(d => d.especialista_nombre);
+  
+  // ── Gráfico 1: Ganancias Netas por Médico ──
+  const canvasGanancias = document.getElementById('chart-ganancias-medicos');
+  if (chartGanancias) chartGanancias.destroy();
+  chartGanancias = new Chart(canvasGanancias, {
+    type: 'bar',
+    data: {
+      labels: labels,
+      datasets: [{
+        label: 'Ganancia Neta Generada',
+        data: sortedData.map(d => d.total_ganancia_generada),
+        backgroundColor: '#059669', // Esmeralda
+        borderRadius: 4,
+        barThickness: 20
+      }]
+    },
+    options: {
+      indexAxis: 'y',
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { label: ctx => 'Ganancia Neta: ' + fmt(ctx.raw) } }
+      },
+      scales: {
+        x: { grid: { color: '#e2e8f0' }, ticks: { color: '#94a3b8', font: { size: 11 }, callback: v => '$' + v.toLocaleString() } },
+        y: { grid: { display: false }, ticks: { color: '#475569', font: { size: 11 } } }
+      }
+    }
+  });
+
+  // ── Gráfico 2: Tratamientos vs Ganancias (Mixto) ──
+  const canvasTxVsGanancias = document.getElementById('chart-tx-vs-ganancias');
+  if (chartTxVsGanancias) chartTxVsGanancias.destroy();
+  chartTxVsGanancias = new Chart(canvasTxVsGanancias, {
+    type: 'bar',
+    data: {
+      labels: labels,
+      datasets: [
+        {
+          label: 'Tratamientos Realizados',
+          type: 'bar',
+          data: sortedData.map(d => d.tratamientos_count),
+          backgroundColor: '#0891b2', // Cyan
+          yAxisID: 'y-axis-count',
+          borderRadius: 4,
+          barThickness: 15
+        },
+        {
+          label: 'Ganancia Generada',
+          type: 'line',
+          data: sortedData.map(d => d.total_ganancia_generada),
+          borderColor: '#8b5cf6', // Violeta
+          backgroundColor: 'transparent',
+          borderWidth: 2,
+          pointBackgroundColor: '#8b5cf6',
+          pointRadius: 4,
+          yAxisID: 'y-axis-value',
+          tension: 0.1
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { position: 'top', labels: { color: '#475569', font: { size: 11 } } },
+        tooltip: {
+          callbacks: {
+            label: ctx => {
+              if (ctx.datasetIndex === 0) {
+                return ctx.dataset.label + ': ' + ctx.raw;
+              }
+              return ctx.dataset.label + ': ' + fmt(ctx.raw);
+            }
+          }
+        }
+      },
+      scales: {
+        x: { grid: { display: false }, ticks: { color: '#475569', font: { size: 11 } } },
+        'y-axis-count': {
+          type: 'linear',
+          position: 'left',
+          grid: { color: '#e2e8f0' },
+          ticks: { color: '#94a3b8', font: { size: 11 } },
+          title: { display: true, text: 'Cantidad', color: '#94a3b8', font: { size: 10 } }
+        },
+        'y-axis-value': {
+          type: 'linear',
+          position: 'right',
+          grid: { display: false },
+          ticks: { color: '#94a3b8', font: { size: 11 }, callback: v => '$' + v.toLocaleString() },
+          title: { display: true, text: 'Ganancia ($)', color: '#94a3b8', font: { size: 10 } }
+        }
+      }
+    }
+  });
+
+  // ── Gráfico 3: Pago al Médico vs Ganancia Clínica (ROI) ──
+  const canvasPagoVsGanancia = document.getElementById('chart-pago-vs-ganancia');
+  if (chartPagoVsGanancia) chartPagoVsGanancia.destroy();
+  chartPagoVsGanancia = new Chart(canvasPagoVsGanancia, {
+    type: 'bar',
+    data: {
+      labels: labels,
+      datasets: [
+        {
+          label: 'Total Pagado al Médico',
+          data: sortedData.map(d => d.comision_pagada + d.salario_pagado),
+          backgroundColor: '#f59e0b', // Ámbar
+          borderRadius: 4,
+          maxBarThickness: 30
+        },
+        {
+          label: 'Ganancia Neta para Clínica',
+          data: sortedData.map(d => d.total_ganancia_generada),
+          backgroundColor: '#10b981', // Verde esmeralda
+          borderRadius: 4,
+          maxBarThickness: 30
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { position: 'top', labels: { color: '#475569', font: { size: 11 } } },
+        tooltip: { callbacks: { label: ctx => ctx.dataset.label + ': ' + fmt(ctx.raw) } }
+      },
+      scales: {
+        x: { grid: { display: false }, ticks: { color: '#475569', font: { size: 11 } } },
+        y: { grid: { color: '#e2e8f0' }, ticks: { color: '#94a3b8', font: { size: 11 }, callback: v => '$' + v.toLocaleString() } }
+      }
+    }
+  });
+}
+
 async function fetchData() {
   renderTable('table-wrap', [], [], '', true);
+  renderTable('table-resumen-wrap', [], [], '', true);
   try {
     const mes = selYear + '-' + String(selMonth).padStart(2, '0');
-    const res = await API.get('/edr/pagos-doctores?mes=' + mes);
-    tableData = Array.isArray(res) ? res : (res.pagos || []);
-  } catch { Toast.error('Error al cargar pagos'); tableData = []; }
-  updateStats();
-  renderTable_();
+    
+    // Fetch individual payments history and summary/calculations in parallel
+    const [resRaw, resumenRaw] = await Promise.all([
+      API.get('/edr/pagos-doctores?mes=' + mes),
+      API.get('/edr/pagos-doctores/resumen?mes=' + mes)
+    ]);
+    
+    tableData = Array.isArray(resRaw) ? resRaw : (resRaw.pagos || []);
+    resumenDoctoresData = resumenRaw.resumen_doctores || [];
+    
+    // Update stats cards from the totals returned by backend
+    const totals = resumenRaw.totales_mes || {};
+    const totalPaid = (totals.total_pagado_comisiones || 0) + (totals.total_pagado_salarios || 0);
+    document.getElementById('stat-total').textContent = fmt(totalPaid);
+    document.getElementById('stat-salarios').textContent = fmt(totals.total_pagado_salarios || 0);
+    document.getElementById('stat-comisiones').textContent = fmt(totals.total_pagado_comisiones || 0);
+    
+    const pctSal = totalPaid > 0 ? ((totals.total_pagado_salarios / totalPaid) * 100).toFixed(0) : 0;
+    const pctCom = totalPaid > 0 ? ((totals.total_pagado_comisiones / totalPaid) * 100).toFixed(0) : 0;
+    document.getElementById('stat-salarios-pct').textContent = pctSal + '% del total';
+    document.getElementById('stat-comisiones-pct').textContent = pctCom + '% del total';
+    
+  } catch (err) { 
+    console.error(err);
+    Toast.error('Error al cargar pagos'); 
+    tableData = []; 
+    resumenDoctoresData = [];
+  }
+  
+  // Render active tab view
+  if (currentTab === 'resumen') {
+    renderTableResumen();
+    renderCharts();
+  } else {
+    renderTable_();
+  }
 }
 
 function openCreate() {
