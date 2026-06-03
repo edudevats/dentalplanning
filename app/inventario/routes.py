@@ -364,18 +364,19 @@ def actualizar_material_inv(material_id):
     except ValidationError as e:
         return jsonify({"errors": e.messages}), 400
 
-    en_inv_previo = m.en_inventario
-    for field in ("expira", "unidad_inventario", "en_inventario", "nombre"):
+    # Politica auto-sync: en_inventario se ignora aqui (siempre True).
+    for field in ("expira", "unidad_inventario", "nombre"):
         if field in data:
             setattr(m, field, data[field])
+
+    if not m.en_inventario:
+        m.en_inventario = True
+        _inicializar_stock_material(g.tenant_id, m.id)
 
     if "categorias" in data:
         MaterialCategoria.query.filter_by(material_id=m.id).delete()
         for cid in data["categorias"]:
             db.session.add(MaterialCategoria(material_id=m.id, categoria_id=cid))
-
-    if m.en_inventario and not en_inv_previo:
-        _inicializar_stock_material(g.tenant_id, m.id)
 
     for u in data.get("umbrales", []):
         su = _get_or_create_stock_ubicacion(g.tenant_id, m.id, u.get("operatorio_id"))

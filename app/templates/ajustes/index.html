@@ -22,9 +22,9 @@
             <input id="cfg-gastos_fijos" type="number" step="0.01" class="block w-full rounded-lg border border-border px-3 py-2.5 text-sm font-body bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-500 min-h-[44px]" />
           </div>
           <div>
-            <label class="block text-sm font-medium text-text-secondary mb-1 font-body">Numero de Unidades</label>
-            <input id="cfg-numero_unidades" type="number" min="1" readonly class="block w-full rounded-lg border border-border px-3 py-2.5 text-sm font-body bg-surface-alt text-text-secondary min-h-[44px] cursor-not-allowed" />
-            <p class="text-xs text-text-muted mt-1 font-body">Se ajusta desde la pestana <b>Operatorios</b>.</p>
+            <label class="block text-sm font-medium text-text-secondary mb-1 font-body">Numero de Unidades (operatorios)</label>
+            <input id="cfg-numero_unidades" type="number" min="1" class="block w-full rounded-lg border border-border px-3 py-2.5 text-sm font-body bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-500 min-h-[44px]" />
+            <p class="text-xs text-text-muted mt-1 font-body">Subir crea operatorios nuevos. Bajar abre un dialogo para suspender o reparar los que sobran.</p>
           </div>
         </div>
       </div>
@@ -63,37 +63,20 @@
       </div>
     </div>
 
-    <!-- OPERATORIOS -->
+    <!-- OPERATORIOS (lista + estado individual; la capacidad se ajusta desde Consultorio) -->
     <div id="panel-operatorios" class="hidden space-y-6">
       <div class="bg-surface rounded-xl border border-border shadow-sm">
-        <div class="px-5 py-4 border-b border-border">
-          <h3 class="text-sm font-semibold font-heading text-text-primary">Capacidad de Operatorios</h3>
+        <div class="px-5 py-4 border-b border-border flex items-center justify-between">
+          <h3 class="text-sm font-semibold font-heading text-text-primary">Operatorios</h3>
+          <span id="ops-total-badge" class="text-xs text-text-muted font-body"></span>
         </div>
-        <div class="p-5 space-y-4">
-          <div class="flex items-end gap-3">
-            <div class="flex-1">
-              <label class="block text-sm font-medium text-text-secondary mb-1 font-body">Numero total de operatorios</label>
-              <input id="ops-numero" type="number" min="1"
-                class="block w-full rounded-lg border border-border px-3 py-2.5 text-sm font-body bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-500 min-h-[44px]" />
-            </div>
-            <button id="btn-ops-aplicar"
-              class="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-accent-600 hover:bg-accent-700 text-white text-sm font-medium font-body transition-colors cursor-pointer min-h-[44px]">
-              <i data-lucide="check" class="h-4 w-4"></i> Aplicar
-            </button>
-          </div>
+        <div id="ops-lista" class="divide-y divide-border"></div>
+        <div class="p-5 border-t border-border">
           <p class="text-xs text-text-muted font-body">
-            Subir el numero crea operatorios nuevos automaticamente.
-            Bajarlo abrira un dialogo para suspender o poner en reparacion los que sobran.
+            Para cambiar la cantidad total ajusta <b>Numero de Unidades</b> en la pestana Consultorio.
             Los operatorios suspendidos o en reparacion siguen contando para el costo / hora.
           </p>
         </div>
-      </div>
-
-      <div class="bg-surface rounded-xl border border-border shadow-sm">
-        <div class="px-5 py-4 border-b border-border">
-          <h3 class="text-sm font-semibold font-heading text-text-primary">Operatorios</h3>
-        </div>
-        <div id="ops-lista" class="divide-y divide-border"></div>
       </div>
     </div>
 
@@ -284,19 +267,54 @@ async function loadConfig() {
   } catch { Toast.error('Error al cargar configuracion'); }
 }
 
+function applyCalculados(data) {
+  const calc = data.calculado || data;
+  document.getElementById('calc-horas_semana').textContent = calc.horas_semana ?? '-';
+  document.getElementById('calc-horas_mes').textContent = calc.horas_mes ?? '-';
+  document.getElementById('calc-costo_hora').textContent = fmt(calc.costo_hora);
+  document.getElementById('calc-costo_operario_hora').textContent = fmt(calc.costo_operario_hora);
+}
+
 document.getElementById('btn-save-cfg').addEventListener('click', async () => {
-  const payload = {};
-  payload['gastos_fijos'] = Number(document.getElementById('cfg-gastos_fijos').value) || 0;
+  const payload = { gastos_fijos: Number(document.getElementById('cfg-gastos_fijos').value) || 0 };
   DAYS.forEach(d => { payload[d.key] = Number(document.getElementById('cfg-' + d.key).value) || 0; });
+
+  const nuevoNum = Number(document.getElementById('cfg-numero_unidades').value) || 0;
+  const previo = Number(cfgData?.numero_unidades) || 0;
+  const numeroCambio = nuevoNum > 0 && nuevoNum !== previo;
+
   try {
     cfgData = await API.put('/config', payload);
-    const calc = cfgData.calculado || cfgData;
-    document.getElementById('calc-horas_semana').textContent = calc.horas_semana ?? '-';
-    document.getElementById('calc-horas_mes').textContent = calc.horas_mes ?? '-';
-    document.getElementById('calc-costo_hora').textContent = fmt(calc.costo_hora);
-    document.getElementById('calc-costo_operario_hora').textContent = fmt(calc.costo_operario_hora);
+  } catch (e) {
+    Toast.error(e?.response?.data?.error || e?.message || 'Error al guardar configuracion');
+    return;
+  }
+
+  if (!numeroCambio) {
+    applyCalculados(cfgData);
     Toast.success('Configuracion guardada');
-  } catch (e) { Toast.error(e?.error || 'Error al guardar'); }
+    return;
+  }
+
+  try {
+    const r = await API.put('/config/operatorios', { numero_unidades: nuevoNum });
+    cfgData.numero_unidades = r.numero_unidades;
+    opsState = r;
+    document.getElementById('cfg-numero_unidades').value = r.numero_unidades;
+    applyCalculados(r);
+    renderOpsLista();
+    Toast.success('Configuracion y operatorios actualizados');
+  } catch (e) {
+    const body = e?.response?.data || {};
+    if (Array.isArray(body.operatorios)) {
+      opsState.operatorios = body.operatorios;
+      openOpsDecreaseModal(nuevoNum, body.operatorios.length);
+    } else {
+      Toast.error(body.error || e?.message || 'Error al ajustar operatorios');
+    }
+    // revertir el numero en pantalla (no se aplico)
+    document.getElementById('cfg-numero_unidades').value = previo;
+  }
 });
 
 loadConfig();
@@ -313,7 +331,6 @@ let opsState = { numero_unidades: 0, operatorios: [] };
 async function loadOperatorios() {
   try {
     opsState = await API.get('/config/operatorios');
-    document.getElementById('ops-numero').value = opsState.numero_unidades;
     renderOpsLista();
   } catch { Toast.error('Error al cargar operatorios'); }
 }
@@ -326,9 +343,15 @@ function badge(estado) {
 function renderOpsLista() {
   const list = document.getElementById('ops-lista');
   list.replaceChildren();
+  const badge = document.getElementById('ops-total-badge');
   if (!opsState.operatorios.length) {
     list.appendChild(domEl('div', 'p-5 text-sm text-text-muted font-body', 'Sin operatorios aun.'));
+    if (badge) badge.textContent = '';
     return;
+  }
+  if (badge) {
+    const activos = opsState.operatorios.filter(o => o.estado === 'activo').length;
+    badge.textContent = `${opsState.operatorios.length} total · ${activos} activos`;
   }
   opsState.operatorios.forEach(op => {
     list.appendChild(renderOpsRow(op, 'main'));
@@ -365,26 +388,6 @@ function renderOpsRow(op, ctx) {
   row.appendChild(sel);
   return row;
 }
-
-document.getElementById('btn-ops-aplicar').addEventListener('click', async () => {
-  const valor = Number(document.getElementById('ops-numero').value) || 0;
-  if (valor < 1) { Toast.error('Debe ser >= 1'); return; }
-  try {
-    const r = await API.put('/config/operatorios', { numero_unidades: valor });
-    opsState = r;
-    document.getElementById('ops-numero').value = r.numero_unidades;
-    renderOpsLista();
-    Toast.success('Capacidad actualizada');
-  } catch (e) {
-    const body = e?.response?.data || {};
-    if (Array.isArray(body.operatorios)) {
-      opsState.operatorios = body.operatorios;
-      openOpsDecreaseModal(valor, body.operatorios.length);
-    } else {
-      Toast.error(body.error || e?.message || 'Error al aplicar');
-    }
-  }
-});
 
 function openOpsDecreaseModal(deseado, actual) {
   document.getElementById('modal-ops-decrease-msg').textContent =

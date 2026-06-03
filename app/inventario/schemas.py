@@ -48,7 +48,7 @@ class MaterialInventarioSchema(Schema):
     categorias = fields.List(fields.Int(), load_default=[])
     expira = fields.Bool(load_default=True)
     unidad_inventario = fields.Str(load_default="pieza")
-    en_inventario = fields.Bool(load_default=True)
+    en_inventario = fields.Bool(dump_only=True)  # politica auto-sync: siempre True
     umbrales = fields.List(fields.Nested(UmbralesUbicacionSchema), load_default=[])
 
 
