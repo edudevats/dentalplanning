@@ -40,9 +40,8 @@ def crear_operatorio():
     op = Operatorio(tenant_id=g.tenant_id, **data)
     db.session.add(op)
     db.session.flush()
-    for m in Material.query.filter_by(
-        tenant_id=g.tenant_id, en_inventario=True
-    ).all():
+    # Stock=0 para todos los materiales del tenant (fuente unica).
+    for m in Material.query.filter_by(tenant_id=g.tenant_id).all():
         _get_or_create_stock_ubicacion(g.tenant_id, m.id, op.id)
     db.session.commit()
     return jsonify(OperatorioSchema().dump(op)), 201
@@ -277,9 +276,11 @@ def _serializar_lista(m):
 @inventario_bp.route("/materiales", methods=["GET"])
 @require_auth
 def listar_materiales_inv():
+    # Fuente unica: el catalogo del tenant. No filtramos por en_inventario;
+    # todo material listado en /materiales debe aparecer aqui con su stock.
     categoria = request.args.get("categoria")
     busqueda = request.args.get("busqueda")
-    q = Material.query.filter_by(tenant_id=g.tenant_id, en_inventario=True)
+    q = Material.query.filter_by(tenant_id=g.tenant_id)
     if categoria:
         q = q.join(Material.categorias).filter(Categoria.nombre == categoria)
     if busqueda:
@@ -292,7 +293,7 @@ def listar_materiales_inv():
 @require_auth
 def inspeccionar_material(material_id):
     m = Material.query.filter_by(
-        id=material_id, tenant_id=g.tenant_id, en_inventario=True
+        id=material_id, tenant_id=g.tenant_id,
     ).first_or_404()
     stocks = StockUbicacion.query.filter_by(
         tenant_id=g.tenant_id, material_id=m.id
@@ -395,7 +396,6 @@ def master_disponibles():
     subq = db.session.query(Material.master_id).filter(
         Material.tenant_id == g.tenant_id,
         Material.master_id.isnot(None),
-        Material.en_inventario == True,  # noqa: E712
     )
     q = MaterialMaster.query.filter(~MaterialMaster.id.in_(subq))
     categoria = request.args.get("categoria")

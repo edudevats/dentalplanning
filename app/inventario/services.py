@@ -60,7 +60,7 @@ def ajustar_numero_operatorios(tenant_id, nuevo_total):
     """Sincroniza la capacidad de operatorios y ConfigConsultorio.numero_unidades.
 
     Si sube: crea operatorios faltantes ('Operatorio N') con stock=0 para
-    los materiales con en_inventario=True.
+    todos los materiales del tenant (fuente unica = catalogo).
     Si baja: levanta CapacidadDecreaseError con la lista actual; el caller
     decide cuales suspender o poner en reparacion antes de reintentar.
     Sincroniza numero_unidades = nuevo_total al final.
@@ -96,9 +96,8 @@ def ajustar_numero_operatorios(tenant_id, nuevo_total):
     if nuevo_total > actual_total:
         max_orden = max((op.orden for op in actuales), default=-1)
         nombres_existentes = {op.nombre for op in actuales}
-        materiales = (
-            Material.query.filter_by(tenant_id=tenant_id, en_inventario=True).all()
-        )
+        # Init stock para todos los materiales del tenant (fuente unica).
+        materiales = Material.query.filter_by(tenant_id=tenant_id).all()
         for i in range(nuevo_total - actual_total):
             n = actual_total + i + 1
             base_nombre = f"Operatorio {n}"
@@ -400,9 +399,10 @@ def calcular_kpis_dashboard(*, tenant_id):
         .scalar()
     )
 
+    # Fuente unica: todos los materiales del tenant (los mismos que /materiales).
     active_materials = (
         db.session.query(db.func.count(Material.id))
-        .filter(Material.tenant_id == tenant_id, Material.en_inventario.is_(True))
+        .filter(Material.tenant_id == tenant_id)
         .scalar()
     )
 
