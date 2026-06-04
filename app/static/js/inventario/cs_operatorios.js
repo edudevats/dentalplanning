@@ -6,8 +6,10 @@
   const detail     = document.getElementById("cs-op-detail");
   const detailName = document.getElementById("cs-op-detail-name");
   const itemsUl    = document.getElementById("cs-op-detail-items");
+  const renameBtn  = document.getElementById("cs-op-rename-btn");
 
   let distribucion = [];
+  let selectedOp   = null;
 
   // Represents a "full" operatory stock level for the progress bar visual.
   const FULL_STOCK_THRESHOLD = 1000;
@@ -72,6 +74,7 @@
   }
 
   async function selectOperatory(op) {
+    selectedOp = op;
     setActiveCard(op.id);
     detail.classList.remove("hidden");
     detailName.textContent = op.nombre ?? "—";
@@ -148,6 +151,29 @@
   document.getElementById("cs-op-detail-close").addEventListener("click", () => {
     detail.classList.add("hidden");
   });
+
+  if (renameBtn) {
+    renameBtn.addEventListener("click", async () => {
+      if (!selectedOp) return;
+      const nuevoNombre = prompt("Nuevo nombre para el operatorio:", selectedOp.nombre);
+      if (nuevoNombre === null) return;
+      const nombreLimpio = nuevoNombre.trim();
+      if (!nombreLimpio) {
+        Toast.error("El nombre no puede estar vacío");
+        return;
+      }
+      if (nombreLimpio === selectedOp.nombre) return;
+      try {
+        const res = await invApi.put("/operatorios/" + selectedOp.id, { nombre: nombreLimpio });
+        Toast.success("Operatorio renombrado con éxito");
+        selectedOp.nombre = res.nombre;
+        detailName.textContent = res.nombre;
+        await loadOps();
+      } catch (err) {
+        Toast.error(err.message || "Error al renombrar el operatorio");
+      }
+    });
+  }
 
   await loadOps();
 })();

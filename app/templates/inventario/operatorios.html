@@ -34,7 +34,12 @@
       <div class="flex items-start justify-between mb-5">
         <div>
           <p class="text-xs font-semibold uppercase tracking-widest text-cs-primary">Seleccionado</p>
-          <h3 id="cs-op-detail-name" class="font-cs-display text-2xl font-bold text-cs-on-surface mt-1"></h3>
+          <div class="flex items-center gap-2 mt-1">
+            <h3 id="cs-op-detail-name" class="font-cs-display text-2xl font-bold text-cs-on-surface"></h3>
+            <button id="cs-op-rename-btn" class="p-1 rounded-lg text-cs-on-surface-var hover:text-cs-primary hover:bg-cs-surface-container transition-colors duration-200 cursor-pointer" title="Renombrar Operatorio">
+              <i data-lucide="edit-2" class="h-4.5 w-4.5"></i>
+            </button>
+          </div>
           <p class="text-xs text-cs-on-surface-var mt-0.5">Detalle de Inventario del Operatorio</p>
         </div>
         <button id="cs-op-detail-close" class="p-1 rounded text-cs-on-surface-var hover:text-cs-on-surface" aria-label="Cerrar">
