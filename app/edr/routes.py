@@ -1,31 +1,16 @@
-from datetime import date
 from flask import Blueprint, request, jsonify, g
 from sqlalchemy import extract
 from app.extensions import db
 from app.middleware.tenant import require_auth, require_role
 from app.edr.models import Ingreso, GastoOperativo, PagoDoctor
 from app.edr.schemas import IngresoSchema, GastoOperativoSchema, PagoDoctorSchema
-from app.ajustes.models import MetodoPago, Especialista
+from app.ajustes.models import Especialista
 from app.configuracion.models import ConfigConsultorio
 from app.tratamientos.models import Tratamiento
+# parse_mes y ganancia_tratamiento viven en el núcleo contable unificado
+from app.engine.accounting import parse_mes as _parse_mes, ganancia_tratamiento
 
 edr_bp = Blueprint("edr", __name__, url_prefix="/api/v1/edr")
-
-
-def _parse_mes(mes_str):
-    """Parse 'YYYY-MM' to (year, month)."""
-    if not mes_str:
-        today = date.today()
-        return today.year, today.month
-    try:
-        parts = mes_str.split("-")
-        year, month = int(parts[0]), int(parts[1])
-        if not (1 <= month <= 12):
-            raise ValueError
-        return year, month
-    except (IndexError, ValueError):
-        today = date.today()
-        return today.year, today.month
 
 
 def _enrich_ingreso(ingreso):
@@ -58,21 +43,9 @@ def crear_ingreso():
     schema = IngresoSchema()
     data = schema.load(request.get_json() or {})
 
-    # Auto-calculate commissions if metodo_pago or especialista provided
-    if data.get("metodo_pago_id") and data.get("comision_bancaria", 0) == 0:
-        mp = MetodoPago.query.filter_by(
-            id=data["metodo_pago_id"], tenant_id=g.tenant_id
-        ).first()
-        if mp:
-            data["comision_bancaria"] = round(data["monto"] * (mp.comision_pct / 100), 2)
-
-    if data.get("especialista_id") and data.get("comision_doctor", 0) == 0:
-        esp = Especialista.query.filter_by(
-            id=data["especialista_id"], tenant_id=g.tenant_id
-        ).first()
-        if esp:
-            data["comision_doctor"] = round(data["monto"] * (esp.comision_pct / 100), 2)
-
+    # Las comisiones las define el usuario. El frontend las pre-llena con los
+    # datos del tratamiento al seleccionarlo, pero quedan editables: el backend
+    # respeta lo que llega y NO las sobrescribe.
     ingreso = Ingreso(tenant_id=g.tenant_id, **data)
     db.session.add(ingreso)
     db.session.commit()
@@ -89,6 +62,7 @@ def actualizar_ingreso(ingreso_id):
 
     schema = IngresoSchema(partial=True)
     data = schema.load(request.get_json() or {})
+    # Passthrough: se respetan las comisiones que captura el usuario
     for key, value in data.items():
         setattr(ingreso, key, value)
     db.session.commit()
@@ -282,8 +256,14 @@ def resumen_pagos_doctores():
             comision_bancaria = i.comision_bancaria or 0.0
             comision_doctor = i.comision_doctor or 0.0
 
-            costo_total = costo_consultorio + costo_materiales + comision_bancaria + comision_doctor
-            ganancia_neta_tx = i.monto - costo_total
+            # Misma fórmula de ganancia que el motor de precios (planeación)
+            ganancia_neta_tx = ganancia_tratamiento(
+                i.monto,
+                costo_materiales=costo_materiales,
+                comision_bancaria=comision_bancaria,
+                comision_especialista=comision_doctor,
+                costo_consultorio=costo_consultorio,
+            )
 
             total_ganancia_esp += ganancia_neta_tx
 

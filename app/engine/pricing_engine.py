@@ -19,6 +19,7 @@ D9  = (D8 / D7) * 100              │ pct_ganancia
 E10 = D6 / (1 - 0.3)              │ precio_minimo_sugerido
 ─────────────────────────────────────────────────────────────
 """
+from app.engine import accounting
 
 
 def calcular_precio_tratamiento(config, tratamiento, materiales_tx):
@@ -71,8 +72,10 @@ def calcular_precio_tratamiento(config, tratamiento, materiales_tx):
     # 6. Costo de venta
     costo_venta = costo_materiales + comision_bancaria + comision_especialista
 
-    # 7. Costo total del tratamiento
-    costo_tratamiento = costo_venta + costo_consultorio
+    # 7. Costo total del tratamiento (fórmula compartida con el EDR)
+    costo_tratamiento = accounting.costo_tratamiento(
+        costo_materiales, comision_bancaria, comision_especialista, costo_consultorio
+    )
 
     # 8. Ganancia neta
     ganancia_neta = precio - costo_tratamiento

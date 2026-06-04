@@ -231,11 +231,7 @@ function renderPieChart(pieData) {
 }
 
 // ── Main load ──
-// Guard against race conditions: only the most-recent call wins
-let _dashLoadSeq = 0;
-
 async function loadDashboard() {
-  const mySeq = ++_dashLoadSeq;
   const mes = selYear + '-' + String(selMonth).padStart(2, '0');
 
   // Update subtitles
@@ -268,17 +264,6 @@ async function loadDashboard() {
     ...yearsNeeded.map(y => API.get('/reportes/trimestral?year=' + y)),
   ]);
 
-  // A newer loadDashboard() call was made while we were waiting — discard this result
-  if (mySeq !== _dashLoadSeq) return;
-
-  // ── Bar chart: últimos 6 meses ──
-  const trimByYear = {};
-  yearsNeeded.forEach((y, i) => {
-    if (trimResults[i]?.status === 'fulfilled') {
-      trimByYear[y] = trimResults[i].value.meses || [];
-    }
-  });
-
   // ── Stats ──
   let ing = 0, gas = 0, pag = 0, gan = 0, pe = 0, ventas50 = 0;
   if (resumenRes.status === 'fulfilled') {
@@ -290,43 +275,15 @@ async function loadDashboard() {
     pe       = (r.punto_de_equilibrio || {}).punto_equilibrio || 0;
     ventas50 = (r.punto_de_equilibrio || {}).cincuenta_pct_ventas || 0;
   }
-
-  // ── Auto-fallback: si el mes actual no tiene datos, saltar al último mes con datos ──
-  if (ing === 0 && gas === 0 && pag === 0) {
-    // Buscar el mes más reciente con datos en los trimestral ya cargados
-    const candidates = [];
-    for (const [yr, meses] of Object.entries(trimByYear)) {
-      for (const m of meses) {
-        if (m.total > 0) candidates.push({ year: parseInt(yr), month: m.mes });
-      }
-    }
-    // Si no hay candidatos en los 6 meses visibles, intentar el año anterior
-    if (candidates.length === 0) {
-      const prevYear = Math.min(...yearsNeeded) - 1;
-      try {
-        const prevTrim = await API.get('/reportes/trimestral?year=' + prevYear);
-        if (mySeq !== _dashLoadSeq) return;
-        for (const m of (prevTrim.meses || [])) {
-          if (m.total > 0) candidates.push({ year: prevYear, month: m.mes });
-        }
-      } catch (_) { /* ignore */ }
-    }
-    if (candidates.length > 0) {
-      candidates.sort((a, b) => b.year - a.year || b.month - a.month);
-      const best = candidates[0];
-      if (best.year !== selYear || best.month !== selMonth) {
-        selYear  = best.year;
-        selMonth = best.month;
-        document.getElementById('dash-year').value  = String(selYear);
-        document.getElementById('dash-month').value = String(selMonth);
-        loadDashboard();
-        return;
-      }
-    }
-  }
-
   renderStats(ing, gas, pag, gan, pe, ventas50);
 
+  // ── Bar chart: últimos 6 meses ──
+  const trimByYear = {};
+  yearsNeeded.forEach((y, i) => {
+    if (trimResults[i]?.status === 'fulfilled') {
+      trimByYear[y] = trimResults[i].value.meses || [];
+    }
+  });
   const barData = last6.map(d => {
     const meses = trimByYear[d.year] || [];
     const m = meses.find(x => x.mes === d.month) || { total: 0, gastos: 0 };

@@ -12,6 +12,10 @@ from app.finanzas_personales.models import (
     PresupuestoCategoria, SaldoInicial,
 )
 from app.edr.models import Ingreso
+from app.engine.accounting import MESES_ES
+
+# Alias retro-compatible; la definición única vive en app/engine/accounting.py
+month_names_es = MESES_ES
 
 
 DEFAULT_CATEGORIES = [
@@ -92,8 +96,7 @@ def _ingreso_clinica(tenant_id: int, year: int, month: int) -> float:
 
 
 def _tasa_ahorro_12m(tenant_id: int, user_id: int, year: int, month: int) -> list:
-    month_names_es = ["Ene", "Feb", "Mar", "Abr", "May", "Jun",
-                      "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"]
+    # meses en español: ver MESES_ES (alias month_names_es) en accounting
     months_back = []
     yy, mm = year, month
     for _ in range(12):
@@ -176,7 +179,7 @@ def build_dashboard_summary(tenant_id: int, user_id: int, year: int, month: int)
         months_back.append((yy, mm))
         yy, mm = _prev_month(yy, mm)
     months_back.reverse()
-    month_names_es = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"]
+    # meses en español: ver MESES_ES (alias month_names_es) en accounting
     history6m = []
     for yy, mm in months_back:
         ms, me = _month_bounds(yy, mm)
@@ -296,8 +299,7 @@ def build_dashboard_anual(tenant_id: int, user_id: int, year: int) -> dict:
     gasto_diario = gastos_anuales / dias_transcurridos if dias_transcurridos > 0 else 0
     dias_reserva = round(saldo_acumulado / gasto_diario) if (gasto_diario > 0 and saldo_acumulado > 0) else None
 
-    month_names_es = ["Ene", "Feb", "Mar", "Abr", "May", "Jun",
-                      "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"]
+    # meses en español: ver MESES_ES (alias month_names_es) en accounting
     history12m = []
     saldo_corriente = saldo_inicial
     for mes in range(1, 13):
@@ -494,7 +496,7 @@ def build_category_detail(tenant_id: int, user_id: int, categoria_id: int,
         months_back.append((yy, mm))
         yy, mm = _prev_month(yy, mm)
     months_back.reverse()
-    month_names_es = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"]
+    # meses en español: ver MESES_ES (alias month_names_es) en accounting
     history6m = []
     for yy, mm in months_back:
         ms, me = _month_bounds(yy, mm)

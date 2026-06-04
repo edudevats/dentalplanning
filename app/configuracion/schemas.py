@@ -15,6 +15,8 @@ class ConfigSchema(Schema):
     horas_sabado = fields.Float(validate=validate.Range(min=0, max=24))
     horas_domingo = fields.Float(validate=validate.Range(min=0, max=24))
     numero_unidades = fields.Int(dump_only=True)
+    # Tasa de impuesto informativa (estimación). Editable.
+    tasa_impuesto_pct = fields.Float(validate=validate.Range(min=0, max=100))
     # Calculados (read only)
     horas_semana = fields.Float(dump_only=True)
     horas_mes = fields.Float(dump_only=True)

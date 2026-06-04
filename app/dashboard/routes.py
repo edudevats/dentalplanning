@@ -8,23 +8,10 @@ from app.tratamientos.models import Tratamiento
 from app.configuracion.models import ConfigConsultorio
 from app.ajustes.models import DistribucionConfig, DistribucionCategoria, DIST_CATEGORIAS_DEFAULT
 from app.engine.pricing_engine import generar_dashboard_ganancias
+# parse_mes y el Estado de Resultados canónico viven en el núcleo contable
+from app.engine.accounting import parse_mes as _parse_mes, estado_resultados
 
 dashboard_bp = Blueprint("dashboard", __name__, url_prefix="/api/v1")
-
-
-def _parse_mes(mes_str):
-    if not mes_str:
-        today = date.today()
-        return today.year, today.month
-    try:
-        parts = mes_str.split("-")
-        year, month = int(parts[0]), int(parts[1])
-        if not (1 <= month <= 12):
-            raise ValueError
-        return year, month
-    except (IndexError, ValueError):
-        today = date.today()
-        return today.year, today.month
 
 
 # ── DASHBOARD GANANCIAS (réplica hoja Ganancias del Excel PRECIOS) ──
@@ -78,7 +65,6 @@ def resumen_mensual():
     ).all()
     total_gastos_fijos = sum(g_.monto for g_ in gastos if g_.tipo == "fijo")
     total_gastos_variables = sum(g_.monto for g_ in gastos if g_.tipo == "variable")
-    total_impuestos = sum(g_.monto for g_ in gastos if g_.tipo == "impuesto")
 
     # Pagos a doctores (unificados: salario + comision)
     pagos = PagoDoctor.query.filter(
@@ -90,46 +76,36 @@ def resumen_mensual():
     pagos_doctores_salarios  = sum(p.monto for p in pagos if p.tipo == "salario")
     pagos_doctores_comisiones = sum(p.monto for p in pagos if p.tipo == "comision")
 
-    # Estado de resultados
-    total_egresos = (
-        total_comisiones_bancarias
-        + total_comisiones_doctores
-        + total_gastos_fijos
-        + total_gastos_variables
-        + total_pagos_doctores
-        + total_impuestos
-    )
-    utilidad_neta = total_ingresos - total_egresos
+    # ── ESTADO DE RESULTADOS (definición ÚNICA en app/engine/accounting.py) ──
+    # La misma función calcula utilidad_neta para el resumen, el trimestral y
+    # la distribución, así que SIEMPRE significan lo mismo.
+    config = ConfigConsultorio.query.filter_by(tenant_id=g.tenant_id).first()
+    tasa_impuesto = config.tasa_impuesto_pct if config else 0
 
-    # ── ESTADO DE RESULTADOS (réplica hoja RESUMEN del Excel) ──
-    # VENTAS TOTALES = total de ingresos del período
+    er = estado_resultados(
+        ventas=total_ingresos,
+        comisiones_bancarias=total_comisiones_bancarias,
+        comisiones_especialistas=total_comisiones_doctores,
+        gastos_variables=total_gastos_variables,
+        gastos_fijos=total_gastos_fijos,
+        pagos_doctores=total_pagos_doctores,
+        tasa_impuesto_pct=tasa_impuesto,
+    )
+
     ventas_totales = total_ingresos
-    # GASTOS VARIABLES = comisiones bancarias + comisiones especialistas
-    #                    + gastos variables EDR + pagos a doctores
-    gastos_variables_er = (
-        total_comisiones_bancarias
-        + total_comisiones_doctores
-        + total_gastos_variables
-        + total_pagos_doctores
-    )
-    # UTILIDAD BRUTA = ventas - gastos variables
-    utilidad_bruta = ventas_totales - gastos_variables_er
-    # % UTILIDAD BRUTA = utilidad_bruta / ventas_totales
-    pct_utilidad_bruta = utilidad_bruta / ventas_totales if ventas_totales > 0 else 0
-    # UTILIDAD ANTES DE IMPUESTOS = utilidad bruta - gastos fijos
-    utilidad_antes_impuestos = utilidad_bruta - total_gastos_fijos
-    # UTILIDAD DESPUES DE IMPUESTOS = utilidad antes - impuestos
-    utilidad_despues_impuestos = utilidad_antes_impuestos - total_impuestos
-    # % UTILIDAD = utilidad despues de impuestos / ventas totales
-    pct_utilidad = utilidad_despues_impuestos / ventas_totales if ventas_totales > 0 else 0
+    gastos_variables_er = er["gastos_variables_totales"]
+    utilidad_bruta = er["utilidad_bruta"]
+    pct_utilidad_bruta = er["pct_utilidad_bruta"]
+    # utilidad antes de impuestos == utilidad neta canónica (los impuestos son
+    # SOLO informativos y no se restan en el resto de la app)
+    utilidad_antes_impuestos = er["utilidad_neta"]
+    utilidad_neta = er["utilidad_neta"]
+    impuestos_estimados = er["impuestos_estimados"]
+    utilidad_despues_impuestos = er["utilidad_despues_impuestos"]
+    pct_utilidad = er["pct_utilidad"]
 
-    # ── PUNTO DE EQUILIBRIO ──
-    # Fórmula Excel: =SI.ERROR(-D24/D23,0)
-    # D24 = GASTOS FIJOS (negativo en Excel), D23 = % UTILIDAD BRUTA
-    # Python: gastos_fijos / pct_utilidad_bruta
-    punto_equilibrio = (
-        total_gastos_fijos / pct_utilidad_bruta if pct_utilidad_bruta != 0 else 0
-    )
+    total_egresos = gastos_variables_er + total_gastos_fijos
+    punto_equilibrio = er["punto_equilibrio"]
     cincuenta_pct_ventas = ventas_totales * 0.5
 
     # Balance diario
@@ -190,7 +166,11 @@ def resumen_mensual():
             "pct_utilidad_bruta": round(pct_utilidad_bruta, 4),
             "gastos_fijos": round(total_gastos_fijos, 2),
             "utilidad_antes_impuestos": round(utilidad_antes_impuestos, 2),
-            "impuestos": round(total_impuestos, 2),
+            # Impuestos: SOLO estimación informativa (no afecta utilidad_neta)
+            "tasa_impuesto_pct": tasa_impuesto,
+            "impuestos": round(impuestos_estimados, 2),
+            "impuestos_estimados": round(impuestos_estimados, 2),
+            "es_estimado": True,
             "pct_utilidad": round(pct_utilidad, 4),
             "utilidad_despues_impuestos": round(utilidad_despues_impuestos, 2),
         },
@@ -237,13 +217,23 @@ def trimestral():
             extract("month", PagoDoctor.fecha) == month,
         ).scalar()
 
-        utilidad_neta = float(total_ing) - float(total_comisiones) - float(total_gas) - float(total_pagos_doc)
+        # utilidad_neta con la MISMA definición que el resumen y la distribución.
+        # Aquí los gastos operativos van lumpeados (el trimestral no separa
+        # fijo/variable); el resultado de utilidad_neta es idéntico.
+        er = estado_resultados(
+            ventas=float(total_ing),
+            comisiones_bancarias=float(total_comisiones),
+            comisiones_especialistas=0,
+            gastos_variables=float(total_gas),
+            gastos_fijos=0,
+            pagos_doctores=float(total_pagos_doc),
+        )
 
         meses.append({
             "mes": month,
             "total": round(float(total_ing), 2),
             "gastos": round(float(total_gas), 2),
-            "utilidad_neta": round(utilidad_neta, 2),
+            "utilidad_neta": round(er["utilidad_neta"], 2),
         })
 
     # Trimestrales
@@ -339,7 +329,16 @@ def distribucion():
         extract("month", PagoDoctor.fecha) == month,
     ).scalar()
 
-    ingreso_neto = float(total_ingresos) - float(total_gastos_var) - float(total_comisiones) - float(total_gastos_fijos) - float(total_pagos_doc)
+    # ingreso_neto = utilidad_neta canónica (misma función que el resumen)
+    er = estado_resultados(
+        ventas=float(total_ingresos),
+        comisiones_bancarias=float(total_comisiones),
+        comisiones_especialistas=0,
+        gastos_variables=float(total_gastos_var),
+        gastos_fijos=float(total_gastos_fijos),
+        pagos_doctores=float(total_pagos_doc),
+    )
+    ingreso_neto = er["utilidad_neta"]
 
     # Use DistribucionCategoria (dynamic) — falls back to DistribucionConfig if not seeded yet
     cats = DistribucionCategoria.query.filter_by(

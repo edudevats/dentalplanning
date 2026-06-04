@@ -163,13 +163,22 @@ ajustes_bp.add_url_rule(
 @ajustes_bp.route("/distribucion", methods=["GET"])
 @require_auth
 def obtener_distribucion():
-    dist = DistribucionConfig.query.filter_by(tenant_id=g.tenant_id).first()
-    if not dist:
-        return jsonify({
-            "pct_sueldo": 50, "pct_bonos": 10, "pct_mcmp": 20,
-            "pct_fondo_emergencia": 10, "pct_marketing": 10,
-        })
-    return jsonify(DistribucionConfigSchema().dump(dist))
+    # Fuente ÚNICA: DistribucionCategoria. Se exponen las 5 categorías del
+    # sistema como llaves pct_* para compatibilidad con consumidores legacy.
+    cats = DistribucionCategoria.query.filter_by(
+        tenant_id=g.tenant_id, es_sistema=True
+    ).all()
+    if not cats:
+        _seed_categorias(g.tenant_id)
+        cats = DistribucionCategoria.query.filter_by(
+            tenant_id=g.tenant_id, es_sistema=True
+        ).all()
+
+    result = {d["clave"]: d["porcentaje"] for d in DIST_CATEGORIAS_DEFAULT}
+    for c in cats:
+        if c.clave:
+            result[c.clave] = c.porcentaje
+    return jsonify(result)
 
 
 @ajustes_bp.route("/distribucion", methods=["PUT"])
@@ -179,16 +188,24 @@ def actualizar_distribucion():
     schema = DistribucionConfigSchema()
     data = schema.load(request.get_json() or {})
 
-    dist = DistribucionConfig.query.filter_by(tenant_id=g.tenant_id).first()
-    if not dist:
-        dist = DistribucionConfig(tenant_id=g.tenant_id)
-        db.session.add(dist)
+    # Escribir sobre las categorías del sistema (fuente única)
+    cats = DistribucionCategoria.query.filter_by(
+        tenant_id=g.tenant_id, es_sistema=True
+    ).all()
+    if not cats:
+        _seed_categorias(g.tenant_id)
+        cats = DistribucionCategoria.query.filter_by(
+            tenant_id=g.tenant_id, es_sistema=True
+        ).all()
 
-    for key, value in data.items():
-        setattr(dist, key, value)
+    for c in cats:
+        if c.clave in data:
+            c.porcentaje = data[c.clave]
 
+    # DistribucionConfig queda como espejo derivado de las categorías
+    _sync_config_from_categorias(g.tenant_id)
     db.session.commit()
-    return jsonify(schema.dump(dist))
+    return jsonify(data)
 
 
 # ── Distribución — Categorías dinámicas ──
