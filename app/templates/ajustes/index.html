@@ -15,27 +15,38 @@
     <!-- CONSULTORIO -->
     <div id="panel-consultorio" class="space-y-6">
       <div class="bg-surface rounded-xl border border-border shadow-sm">
-        <div class="px-5 py-4 border-b border-border"><h3 class="text-sm font-semibold font-heading text-text-primary">Gastos y Unidades</h3></div>
+        <div class="px-5 py-4 border-b border-border">
+          <h3 class="text-sm font-semibold font-heading text-text-primary">Gastos y Unidades</h3>
+        </div>
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 p-5">
           <div>
-            <label class="block text-sm font-medium text-text-secondary mb-1 font-body">Gastos Fijos Mensuales ($)</label>
-            <input id="cfg-gastos_fijos" type="number" step="0.01" class="block w-full rounded-lg border border-border px-3 py-2.5 text-sm font-body bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-500 min-h-[44px]" />
+            <label class="block text-sm font-medium text-text-secondary mb-1 font-body">Gastos Fijos Mensuales
+              ($)</label>
+            <input id="cfg-gastos_fijos" type="number" step="0.01"
+              class="block w-full rounded-lg border border-border px-3 py-2.5 text-sm font-body bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-500 min-h-[44px]" />
           </div>
           <div>
-            <label class="block text-sm font-medium text-text-secondary mb-1 font-body">Numero de Unidades (operatorios)</label>
-            <input id="cfg-numero_unidades" type="number" min="1" class="block w-full rounded-lg border border-border px-3 py-2.5 text-sm font-body bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-500 min-h-[44px]" />
-            <p class="text-xs text-text-muted mt-1 font-body">Subir crea operatorios nuevos. Bajar abre un dialogo para suspender o reparar los que sobran.</p>
+            <label class="block text-sm font-medium text-text-secondary mb-1 font-body">Numero de Unidades
+              (operatorios)</label>
+            <input id="cfg-numero_unidades" type="number" min="1"
+              class="block w-full rounded-lg border border-border px-3 py-2.5 text-sm font-body bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-500 min-h-[44px]" />
+            <p class="text-xs text-text-muted mt-1 font-body">Subir crea operatorios nuevos. Bajar abre un dialogo para
+              suspender o reparar los que sobran.</p>
           </div>
         </div>
       </div>
 
       <div class="bg-surface rounded-xl border border-border shadow-sm">
-        <div class="px-5 py-4 border-b border-border"><h3 class="text-sm font-semibold font-heading text-text-primary">Horario Semanal (horas por dia)</h3></div>
+        <div class="px-5 py-4 border-b border-border">
+          <h3 class="text-sm font-semibold font-heading text-text-primary">Horario Semanal (horas por dia)</h3>
+        </div>
         <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3 p-5" id="horario-grid"></div>
       </div>
 
       <div class="bg-surface rounded-xl border border-border shadow-sm">
-        <div class="px-5 py-4 border-b border-border"><h3 class="text-sm font-semibold font-heading text-text-primary">Valores Calculados</h3></div>
+        <div class="px-5 py-4 border-b border-border">
+          <h3 class="text-sm font-semibold font-heading text-text-primary">Valores Calculados</h3>
+        </div>
         <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 p-5">
           <div class="bg-surface-alt rounded-lg p-4 text-center">
             <p class="text-xs text-text-muted mb-1 font-body">Horas / Semana</p>
@@ -50,35 +61,21 @@
             <p class="text-xl font-bold tabular-nums text-primary-700 font-heading" id="calc-costo_hora">-</p>
           </div>
           <div class="bg-surface-alt rounded-lg p-4 text-center">
-            <p class="text-xs text-text-muted mb-1 font-body">Costo Operario / Hora</p>
+            <p class="text-xs text-text-muted mb-1 font-body">Hora Consultorio</p>
             <p class="text-xl font-bold tabular-nums text-primary-700 font-heading" id="calc-costo_operario_hora">-</p>
           </div>
         </div>
       </div>
 
       <div class="flex justify-end">
-        <button id="btn-save-cfg" class="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-accent-600 hover:bg-accent-700 text-white text-sm font-medium font-body transition-colors cursor-pointer min-h-[44px]">
+        <button id="btn-save-cfg"
+          class="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-accent-600 hover:bg-accent-700 text-white text-sm font-medium font-body transition-colors cursor-pointer min-h-[44px]">
           <i data-lucide="save" class="h-4 w-4"></i> Guardar Configuracion
         </button>
       </div>
     </div>
 
-    <!-- OPERATORIOS (lista + estado individual; la capacidad se ajusta desde Consultorio) -->
-    <div id="panel-operatorios" class="hidden space-y-6">
-      <div class="bg-surface rounded-xl border border-border shadow-sm">
-        <div class="px-5 py-4 border-b border-border flex items-center justify-between">
-          <h3 class="text-sm font-semibold font-heading text-text-primary">Operatorios</h3>
-          <span id="ops-total-badge" class="text-xs text-text-muted font-body"></span>
-        </div>
-        <div id="ops-lista" class="divide-y divide-border"></div>
-        <div class="p-5 border-t border-border">
-          <p class="text-xs text-text-muted font-body">
-            Para cambiar la cantidad total ajusta <b>Numero de Unidades</b> en la pestana Consultorio.
-            Los operatorios suspendidos o en reparacion siguen contando para el costo / hora.
-          </p>
-        </div>
-      </div>
-    </div>
+
 
     <!-- CRUD PANELS (especialistas, metodos-pago, gastos-conceptos, estrategias) -->
     <div id="panel-especialistas" class="hidden space-y-4"></div>
@@ -121,7 +118,8 @@
       </p>
 
       <div class="flex justify-end">
-        <button id="btn-save-dist" class="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-accent-600 hover:bg-accent-700 text-white text-sm font-medium font-body transition-colors cursor-pointer min-h-[44px] disabled:opacity-50 disabled:cursor-not-allowed">
+        <button id="btn-save-dist"
+          class="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-accent-600 hover:bg-accent-700 text-white text-sm font-medium font-body transition-colors cursor-pointer min-h-[44px] disabled:opacity-50 disabled:cursor-not-allowed">
           <i data-lucide="save" class="h-4 w-4"></i> Guardar Distribucion
         </button>
       </div>
@@ -135,7 +133,8 @@
   <div class="relative bg-surface rounded-2xl shadow-xl w-full max-w-sm">
     <div class="flex items-center justify-between px-5 py-4 border-b border-border">
       <h2 class="text-base font-semibold font-heading text-text-primary" id="modal-crud-title">Modal</h2>
-      <button id="modal-crud-close" class="p-1.5 rounded-lg text-text-muted hover:bg-surface-hover cursor-pointer"><i data-lucide="x" class="h-4 w-4"></i></button>
+      <button id="modal-crud-close" class="p-1.5 rounded-lg text-text-muted hover:bg-surface-hover cursor-pointer"><i
+          data-lucide="x" class="h-4 w-4"></i></button>
     </div>
     <div class="p-5 space-y-4" id="modal-crud-body"></div>
   </div>
@@ -147,13 +146,16 @@
   <div class="relative bg-surface rounded-2xl shadow-xl w-full max-w-lg">
     <div class="flex items-center justify-between px-5 py-4 border-b border-border">
       <h2 class="text-base font-semibold font-heading text-text-primary">Reducir Capacidad</h2>
-      <button id="modal-ops-decrease-close" class="p-1.5 rounded-lg text-text-muted hover:bg-surface-hover cursor-pointer"><i data-lucide="x" class="h-4 w-4"></i></button>
+      <button id="modal-ops-decrease-close"
+        class="p-1.5 rounded-lg text-text-muted hover:bg-surface-hover cursor-pointer"><i data-lucide="x"
+          class="h-4 w-4"></i></button>
     </div>
     <div class="p-5 space-y-4">
       <p class="text-sm text-text-secondary font-body" id="modal-ops-decrease-msg"></p>
       <div id="modal-ops-decrease-list" class="divide-y divide-border border border-border rounded-lg"></div>
       <div class="flex justify-end gap-3">
-        <button id="modal-ops-decrease-cancel" class="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg border border-border bg-surface hover:bg-surface-hover text-sm font-medium font-body text-text-primary transition-colors cursor-pointer min-h-[44px]">Cerrar</button>
+        <button id="modal-ops-decrease-cancel"
+          class="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg border border-border bg-surface hover:bg-surface-hover text-sm font-medium font-body text-text-primary transition-colors cursor-pointer min-h-[44px]">Cerrar</button>
       </div>
     </div>
   </div>
@@ -165,13 +167,16 @@
   <div class="relative bg-surface rounded-2xl shadow-xl w-full max-w-sm">
     <div class="flex items-center justify-between px-5 py-4 border-b border-border">
       <h2 class="text-base font-semibold font-heading text-text-primary" id="modal-delete-title">Eliminar</h2>
-      <button id="modal-delete-close" class="p-1.5 rounded-lg text-text-muted hover:bg-surface-hover cursor-pointer"><i data-lucide="x" class="h-4 w-4"></i></button>
+      <button id="modal-delete-close" class="p-1.5 rounded-lg text-text-muted hover:bg-surface-hover cursor-pointer"><i
+          data-lucide="x" class="h-4 w-4"></i></button>
     </div>
     <div class="p-5">
       <p class="text-sm text-text-secondary mb-6 font-body" id="modal-delete-msg"></p>
       <div class="flex justify-end gap-3">
-        <button id="modal-delete-cancel" class="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg border border-border bg-surface hover:bg-surface-hover text-sm font-medium font-body text-text-primary transition-colors cursor-pointer min-h-[44px]">Cancelar</button>
-        <button id="modal-delete-confirm" class="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-danger-600 hover:bg-danger-700 text-white text-sm font-medium font-body transition-colors cursor-pointer min-h-[44px]">
+        <button id="modal-delete-cancel"
+          class="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg border border-border bg-surface hover:bg-surface-hover text-sm font-medium font-body text-text-primary transition-colors cursor-pointer min-h-[44px]">Cancelar</button>
+        <button id="modal-delete-confirm"
+          class="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-danger-600 hover:bg-danger-700 text-white text-sm font-medium font-body transition-colors cursor-pointer min-h-[44px]">
           <i data-lucide="trash-2" class="h-4 w-4"></i> Eliminar
         </button>
       </div>
@@ -182,747 +187,751 @@
 
 {% block scripts %}
 <script>
-lucide.createIcons();
-
-// ── Tab setup ────────────────────────────────────────────
-const TABS = [
-  { key: 'consultorio',     label: 'Consultorio',       icon: 'building-2' },
-  { key: 'operatorios',     label: 'Operatorios',       icon: 'door-open' },
-  { key: 'especialistas',   label: 'Especialistas',     icon: 'users' },
-  { key: 'metodos-pago',    label: 'Metodos de Pago',   icon: 'credit-card' },
-  { key: 'gastos-conceptos',label: 'Conceptos Gasto',   icon: 'folder-open' },
-  { key: 'estrategias',     label: 'Estrategias MKT',   icon: 'megaphone' },
-  { key: 'distribucion',    label: 'Distribucion',      icon: 'pie-chart' },
-];
-
-let activeTab = 'consultorio';
-
-function buildNav() {
-  const nav = document.getElementById('tab-nav');
-  nav.replaceChildren();
-  TABS.forEach(t => {
-    const btn = domEl('button', 'w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium font-body transition-colors cursor-pointer text-left ' + (t.key === activeTab ? 'bg-primary-50 text-primary-700' : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary'));
-    btn.type = 'button';
-    btn.appendChild(domIcon(t.icon, 'h-4 w-4 shrink-0'));
-    btn.appendChild(domEl('span', '', t.label));
-    btn.addEventListener('click', () => switchTab(t.key));
-    nav.appendChild(btn);
-  });
   lucide.createIcons();
-}
 
-function switchTab(key) {
-  activeTab = key;
-  buildNav();
-  TABS.forEach(t => {
-    const panel = document.getElementById('panel-' + t.key);
-    if (panel) panel.classList.toggle('hidden', t.key !== key);
-  });
-  if (key === 'consultorio') loadConfig();
-  else if (key === 'operatorios') loadOperatorios();
-  else if (key === 'especialistas') loadCrud('especialistas');
-  else if (key === 'metodos-pago') loadCrud('metodos-pago');
-  else if (key === 'gastos-conceptos') loadCrud('gastos-conceptos');
-  else if (key === 'estrategias') loadCrud('estrategias');
-  else if (key === 'distribucion') loadDist();
-}
+  // ── Tab setup ────────────────────────────────────────────
+  const TABS = [
+    { key: 'consultorio', label: 'Consultorio', icon: 'building-2' },
+    { key: 'especialistas', label: 'Especialistas', icon: 'users' },
+    { key: 'metodos-pago', label: 'Metodos de Pago', icon: 'credit-card' },
+    { key: 'gastos-conceptos', label: 'Conceptos Gasto', icon: 'folder-open' },
+    { key: 'estrategias', label: 'Estrategias MKT', icon: 'megaphone' },
+    { key: 'distribucion', label: 'Distribucion', icon: 'pie-chart' },
+  ];
 
-buildNav();
+  let activeTab = 'consultorio';
 
-// ── CONSULTORIO ───────────────────────────────────────────
-const DAYS = [
-  { key: 'horas_lunes', label: 'Lunes' }, { key: 'horas_martes', label: 'Martes' },
-  { key: 'horas_miercoles', label: 'Miercoles' }, { key: 'horas_jueves', label: 'Jueves' },
-  { key: 'horas_viernes', label: 'Viernes' }, { key: 'horas_sabado', label: 'Sabado' },
-  { key: 'horas_domingo', label: 'Domingo' },
-];
-
-(function buildHorario() {
-  const grid = document.getElementById('horario-grid');
-  DAYS.forEach(d => {
-    const wrap = domEl('div', '');
-    wrap.appendChild(domEl('label', 'block text-sm font-medium text-text-secondary mb-1 font-body', d.label));
-    const inp = document.createElement('input');
-    inp.id = 'cfg-' + d.key;
-    inp.type = 'number'; inp.step = '0.5'; inp.min = '0'; inp.max = '24';
-    inp.className = 'block w-full rounded-lg border border-border px-3 py-2.5 text-sm font-body bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-500 min-h-[44px]';
-    wrap.appendChild(inp);
-    grid.appendChild(wrap);
-  });
-})();
-
-let cfgData = null;
-async function loadConfig() {
-  try {
-    cfgData = await API.get('/config');
-    ['gastos_fijos', 'numero_unidades', ...DAYS.map(d => d.key)].forEach(k => {
-      const el = document.getElementById('cfg-' + k);
-      if (el) el.value = cfgData[k] ?? '';
+  function buildNav() {
+    const nav = document.getElementById('tab-nav');
+    nav.replaceChildren();
+    TABS.forEach(t => {
+      const btn = domEl('button', 'w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium font-body transition-colors cursor-pointer text-left ' + (t.key === activeTab ? 'bg-primary-50 text-primary-700' : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary'));
+      btn.type = 'button';
+      btn.appendChild(domIcon(t.icon, 'h-4 w-4 shrink-0'));
+      btn.appendChild(domEl('span', '', t.label));
+      btn.addEventListener('click', () => switchTab(t.key));
+      nav.appendChild(btn);
     });
-    const calc = cfgData.calculado || cfgData;
+    lucide.createIcons();
+  }
+
+  function switchTab(key) {
+    activeTab = key;
+    buildNav();
+    TABS.forEach(t => {
+      const panel = document.getElementById('panel-' + t.key);
+      if (panel) panel.classList.toggle('hidden', t.key !== key);
+    });
+    if (key === 'consultorio') loadConfig();
+    else if (key === 'especialistas') loadCrud('especialistas');
+    else if (key === 'metodos-pago') loadCrud('metodos-pago');
+    else if (key === 'gastos-conceptos') loadCrud('gastos-conceptos');
+    else if (key === 'estrategias') loadCrud('estrategias');
+    else if (key === 'distribucion') loadDist();
+  }
+
+  buildNav();
+
+  // ── CONSULTORIO ───────────────────────────────────────────
+  const DAYS = [
+    { key: 'horas_lunes', label: 'Lunes' }, { key: 'horas_martes', label: 'Martes' },
+    { key: 'horas_miercoles', label: 'Miercoles' }, { key: 'horas_jueves', label: 'Jueves' },
+    { key: 'horas_viernes', label: 'Viernes' }, { key: 'horas_sabado', label: 'Sabado' },
+    { key: 'horas_domingo', label: 'Domingo' },
+  ];
+
+  (function buildHorario() {
+    const grid = document.getElementById('horario-grid');
+    DAYS.forEach(d => {
+      const wrap = domEl('div', '');
+      wrap.appendChild(domEl('label', 'block text-sm font-medium text-text-secondary mb-1 font-body', d.label));
+      const inp = document.createElement('input');
+      inp.id = 'cfg-' + d.key;
+      inp.type = 'number'; inp.step = '0.5'; inp.min = '0'; inp.max = '24';
+      inp.className = 'block w-full rounded-lg border border-border px-3 py-2.5 text-sm font-body bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-500 min-h-[44px]';
+      wrap.appendChild(inp);
+      grid.appendChild(wrap);
+    });
+  })();
+
+  let cfgData = null;
+  async function loadConfig() {
+    try {
+      cfgData = await API.get('/config');
+      ['gastos_fijos', 'numero_unidades', ...DAYS.map(d => d.key)].forEach(k => {
+        const el = document.getElementById('cfg-' + k);
+        if (el) el.value = cfgData[k] ?? '';
+      });
+      const calc = cfgData.calculado || cfgData;
+      document.getElementById('calc-horas_semana').textContent = calc.horas_semana ?? '-';
+      document.getElementById('calc-horas_mes').textContent = calc.horas_mes ?? '-';
+      document.getElementById('calc-costo_hora').textContent = fmt(calc.costo_hora);
+      document.getElementById('calc-costo_operario_hora').textContent = fmt(calc.costo_operario_hora);
+    } catch { Toast.error('Error al cargar configuracion'); }
+  }
+
+  function applyCalculados(data) {
+    const calc = data.calculado || data;
     document.getElementById('calc-horas_semana').textContent = calc.horas_semana ?? '-';
     document.getElementById('calc-horas_mes').textContent = calc.horas_mes ?? '-';
     document.getElementById('calc-costo_hora').textContent = fmt(calc.costo_hora);
     document.getElementById('calc-costo_operario_hora').textContent = fmt(calc.costo_operario_hora);
-  } catch { Toast.error('Error al cargar configuracion'); }
-}
-
-function applyCalculados(data) {
-  const calc = data.calculado || data;
-  document.getElementById('calc-horas_semana').textContent = calc.horas_semana ?? '-';
-  document.getElementById('calc-horas_mes').textContent = calc.horas_mes ?? '-';
-  document.getElementById('calc-costo_hora').textContent = fmt(calc.costo_hora);
-  document.getElementById('calc-costo_operario_hora').textContent = fmt(calc.costo_operario_hora);
-}
-
-document.getElementById('btn-save-cfg').addEventListener('click', async () => {
-  const payload = { gastos_fijos: Number(document.getElementById('cfg-gastos_fijos').value) || 0 };
-  DAYS.forEach(d => { payload[d.key] = Number(document.getElementById('cfg-' + d.key).value) || 0; });
-
-  const nuevoNum = Number(document.getElementById('cfg-numero_unidades').value) || 0;
-  const previo = Number(cfgData?.numero_unidades) || 0;
-  const numeroCambio = nuevoNum > 0 && nuevoNum !== previo;
-
-  try {
-    cfgData = await API.put('/config', payload);
-  } catch (e) {
-    Toast.error(e?.response?.data?.error || e?.message || 'Error al guardar configuracion');
-    return;
   }
 
-  if (!numeroCambio) {
-    applyCalculados(cfgData);
-    Toast.success('Configuracion guardada');
-    return;
-  }
+  document.getElementById('btn-save-cfg').addEventListener('click', async () => {
+    const payload = { gastos_fijos: Number(document.getElementById('cfg-gastos_fijos').value) || 0 };
+    DAYS.forEach(d => { payload[d.key] = Number(document.getElementById('cfg-' + d.key).value) || 0; });
 
-  try {
-    const r = await API.put('/config/operatorios', { numero_unidades: nuevoNum });
-    cfgData.numero_unidades = r.numero_unidades;
-    opsState = r;
-    document.getElementById('cfg-numero_unidades').value = r.numero_unidades;
-    applyCalculados(r);
-    renderOpsLista();
-    Toast.success('Configuracion y operatorios actualizados');
-  } catch (e) {
-    const body = e?.response?.data || {};
-    if (Array.isArray(body.operatorios)) {
-      opsState.operatorios = body.operatorios;
-      openOpsDecreaseModal(nuevoNum, body.operatorios.length);
-    } else {
-      Toast.error(body.error || e?.message || 'Error al ajustar operatorios');
-    }
-    // revertir el numero en pantalla (no se aplico)
-    document.getElementById('cfg-numero_unidades').value = previo;
-  }
-});
+    const nuevoNum = Number(document.getElementById('cfg-numero_unidades').value) || 0;
+    const previo = Number(cfgData?.numero_unidades) || 0;
+    const numeroCambio = nuevoNum > 0 && nuevoNum !== previo;
 
-loadConfig();
-
-// ── OPERATORIOS ───────────────────────────────────────────
-const ESTADO_BADGES = {
-  activo:     { label: 'Activo',         cls: 'bg-accent-50 text-accent-700' },
-  suspendido: { label: 'Suspendido',     cls: 'bg-neutral-100 text-neutral-600' },
-  reparacion: { label: 'En reparacion',  cls: 'bg-amber-50 text-amber-700' },
-};
-
-let opsState = { numero_unidades: 0, operatorios: [] };
-
-async function loadOperatorios() {
-  try {
-    opsState = await API.get('/config/operatorios');
-    renderOpsLista();
-  } catch { Toast.error('Error al cargar operatorios'); }
-}
-
-function badge(estado) {
-  const cfg = ESTADO_BADGES[estado] || ESTADO_BADGES.activo;
-  return domEl('span', 'inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ' + cfg.cls, cfg.label);
-}
-
-function renderOpsLista() {
-  const list = document.getElementById('ops-lista');
-  list.replaceChildren();
-  const badge = document.getElementById('ops-total-badge');
-  if (!opsState.operatorios.length) {
-    list.appendChild(domEl('div', 'p-5 text-sm text-text-muted font-body', 'Sin operatorios aun.'));
-    if (badge) badge.textContent = '';
-    return;
-  }
-  if (badge) {
-    const activos = opsState.operatorios.filter(o => o.estado === 'activo').length;
-    badge.textContent = `${opsState.operatorios.length} total · ${activos} activos`;
-  }
-  opsState.operatorios.forEach(op => {
-    list.appendChild(renderOpsRow(op, 'main'));
-  });
-  lucide.createIcons();
-}
-
-function renderOpsRow(op, ctx) {
-  const row = domEl('div', 'flex items-center gap-3 px-5 py-3');
-
-  // Nombre editable (display + input modes)
-  const nameWrap = domEl('div', 'flex-1 min-w-0 flex items-center gap-2');
-  const nameDisplay = domEl('span', 'text-sm font-body text-text-primary truncate', op.nombre);
-  const nameInput = document.createElement('input');
-  nameInput.type = 'text';
-  nameInput.value = op.nombre;
-  nameInput.maxLength = 100;
-  nameInput.className = 'hidden flex-1 min-w-0 rounded-lg border border-border px-2 py-1.5 text-sm font-body bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-500';
-  const editBtn = domEl('button', 'p-1.5 rounded-md text-text-muted hover:text-primary-600 hover:bg-primary-50 transition-colors cursor-pointer shrink-0');
-  editBtn.type = 'button';
-  editBtn.title = 'Renombrar operatorio';
-  editBtn.appendChild(domIcon('pencil', 'h-4 w-4'));
-  const saveBtn = domEl('button', 'hidden p-1.5 rounded-md text-accent-600 hover:text-accent-700 hover:bg-accent-50 transition-colors cursor-pointer shrink-0');
-  saveBtn.type = 'button';
-  saveBtn.title = 'Guardar nombre';
-  saveBtn.appendChild(domIcon('check', 'h-4 w-4'));
-  const cancelBtn = domEl('button', 'hidden p-1.5 rounded-md text-text-muted hover:text-danger-600 hover:bg-danger-50 transition-colors cursor-pointer shrink-0');
-  cancelBtn.type = 'button';
-  cancelBtn.title = 'Cancelar';
-  cancelBtn.appendChild(domIcon('x', 'h-4 w-4'));
-
-  function enterEdit() {
-    nameDisplay.classList.add('hidden');
-    editBtn.classList.add('hidden');
-    nameInput.classList.remove('hidden');
-    saveBtn.classList.remove('hidden');
-    cancelBtn.classList.remove('hidden');
-    nameInput.value = op.nombre;
-    nameInput.focus();
-    nameInput.select();
-  }
-  function exitEdit() {
-    nameInput.classList.add('hidden');
-    saveBtn.classList.add('hidden');
-    cancelBtn.classList.add('hidden');
-    nameDisplay.classList.remove('hidden');
-    editBtn.classList.remove('hidden');
-  }
-  async function commit() {
-    const nuevo = nameInput.value.trim();
-    if (!nuevo) { Toast.error('El nombre no puede estar vacio'); return; }
-    if (nuevo === op.nombre) { exitEdit(); return; }
     try {
-      const updated = await API.put(`/inventario/operatorios/${op.id}`, { nombre: nuevo });
-      op.nombre = updated.nombre;
-      nameDisplay.textContent = updated.nombre;
-      exitEdit();
-      if (ctx === 'main') renderOpsLista();
-      else renderOpsDecreaseList();
-      Toast.success('Nombre actualizado');
-    } catch (e) { Toast.error(e?.message || e?.error || 'Error al renombrar'); }
-  }
-
-  editBtn.addEventListener('click', enterEdit);
-  saveBtn.addEventListener('click', commit);
-  cancelBtn.addEventListener('click', exitEdit);
-  nameInput.addEventListener('keydown', (ev) => {
-    if (ev.key === 'Enter') { ev.preventDefault(); commit(); }
-    else if (ev.key === 'Escape') { ev.preventDefault(); exitEdit(); }
-  });
-
-  nameWrap.appendChild(nameDisplay);
-  nameWrap.appendChild(nameInput);
-  nameWrap.appendChild(editBtn);
-  nameWrap.appendChild(saveBtn);
-  nameWrap.appendChild(cancelBtn);
-  row.appendChild(nameWrap);
-  row.appendChild(badge(op.estado));
-
-  const sel = document.createElement('select');
-  sel.className = 'rounded-lg border border-border px-2 py-1.5 text-xs font-body bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300';
-  [
-    { v: 'activo',     l: 'Activar' },
-    { v: 'suspendido', l: 'Suspender' },
-    { v: 'reparacion', l: 'En reparacion' },
-  ].forEach(o => {
-    const opt = document.createElement('option');
-    opt.value = o.v; opt.textContent = o.l;
-    if (o.v === op.estado) opt.selected = true;
-    sel.appendChild(opt);
-  });
-  sel.addEventListener('change', async () => {
-    try {
-      const updated = await API.put(`/inventario/operatorios/${op.id}/estado`, { estado: sel.value });
-      op.estado = updated.estado;
-      if (ctx === 'main') renderOpsLista();
-      else renderOpsDecreaseList();
-      Toast.success('Estado actualizado');
-    } catch (e) { Toast.error(e?.error || 'Error al cambiar estado'); }
-  });
-  row.appendChild(sel);
-  return row;
-}
-
-function openOpsDecreaseModal(deseado, actual) {
-  document.getElementById('modal-ops-decrease-msg').textContent =
-    `Tienes ${actual} operatorios y quieres bajar a ${deseado}. Marca como Suspendido o En reparacion los que sobran y luego vuelve a aplicar.`;
-  renderOpsDecreaseList();
-  Modal.open('modal-ops-decrease');
-}
-
-function renderOpsDecreaseList() {
-  const cont = document.getElementById('modal-ops-decrease-list');
-  cont.replaceChildren();
-  opsState.operatorios.forEach(op => cont.appendChild(renderOpsRow(op, 'modal')));
-  lucide.createIcons();
-}
-
-document.getElementById('modal-ops-decrease-close').addEventListener('click', () => Modal.close('modal-ops-decrease'));
-document.getElementById('modal-ops-decrease-backdrop').addEventListener('click', () => Modal.close('modal-ops-decrease'));
-document.getElementById('modal-ops-decrease-cancel').addEventListener('click', () => {
-  Modal.close('modal-ops-decrease');
-  loadOperatorios();
-});
-
-// ── CRUD TABS ─────────────────────────────────────────────
-const CRUD_CFG = {
-  'especialistas': {
-    entity: 'Especialista', endpoint: '/ajustes/especialistas',
-    cols: [
-      { key: 'nombre', label: 'Nombre' },
-      { key: 'comision_pct', label: 'Comision %', align: 'right', render: v => domEl('span', 'tabular-nums', v + '%') },
-      { key: 'is_active', label: 'Estado', align: 'center', render: v => {
-        const s = domEl('span', 'inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ' + (v ? 'bg-accent-50 text-accent-700' : 'bg-neutral-100 text-neutral-600'), v ? 'Activo' : 'Inactivo');
-        return s;
-      }},
-    ],
-    fields: [
-      { key: 'nombre', label: 'Nombre', type: 'text' },
-      { key: 'comision_pct', label: 'Comision (%)', type: 'number', step: '0.1', min: '0', max: '100' },
-      { key: 'is_active', label: 'Activo', type: 'checkbox', defaultValue: true },
-    ],
-  },
-  'metodos-pago': {
-    entity: 'Metodo de Pago', endpoint: '/ajustes/metodos-pago',
-    cols: [
-      { key: 'nombre', label: 'Nombre' },
-      { key: 'comision_pct', label: 'Comision %', align: 'right', render: v => domEl('span', 'tabular-nums', v + '%') },
-    ],
-    fields: [
-      { key: 'nombre', label: 'Nombre', type: 'text' },
-      { key: 'comision_pct', label: 'Comision (%)', type: 'number', step: '0.1', min: '0', max: '100' },
-    ],
-  },
-  'gastos-conceptos': {
-    entity: 'Concepto de Gasto', endpoint: '/ajustes/gastos-conceptos',
-    cols: [
-      { key: 'nombre', label: 'Nombre' },
-      { key: 'tipo', label: 'Tipo', render: v => {
-        return domEl('span', 'inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ' + (v === 'fijo' ? 'bg-primary-50 text-primary-700' : 'bg-amber-50 text-amber-700'), v);
-      }},
-    ],
-    fields: [
-      { key: 'nombre', label: 'Nombre', type: 'text' },
-      { key: 'tipo', label: 'Tipo', type: 'select', options: [{ value: 'fijo', label: 'Fijo' }, { value: 'variable', label: 'Variable' }] },
-    ],
-  },
-  'estrategias': {
-    entity: 'Estrategia', endpoint: '/ajustes/estrategias',
-    cols: [{ key: 'nombre', label: 'Nombre' }],
-    fields: [{ key: 'nombre', label: 'Nombre', type: 'text' }],
-  },
-};
-
-let crudState = {};
-
-function buildCrudPanel(tab, items) {
-  const cfg = CRUD_CFG[tab];
-  const panel = document.getElementById('panel-' + tab);
-  panel.replaceChildren();
-
-  const topBar = domEl('div', 'flex justify-end');
-  const addBtn = domEl('button', 'inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-accent-600 hover:bg-accent-700 text-white text-sm font-medium font-body transition-colors cursor-pointer min-h-[40px]');
-  addBtn.type = 'button';
-  addBtn.appendChild(domIcon('plus', 'h-4 w-4'));
-  addBtn.appendChild(domEl('span', '', 'Agregar'));
-  addBtn.addEventListener('click', () => openCrudModal(tab, null));
-  topBar.appendChild(addBtn);
-  panel.appendChild(topBar);
-
-  const tblWrap = domEl('div', '');
-  tblWrap.id = 'tbl-' + tab;
-  panel.appendChild(tblWrap);
-
-  const colsWithActions = [
-    ...cfg.cols,
-    { key: '_actions', label: 'Acciones', align: 'right', render: (_, row) => {
-      const wrap = domEl('div', 'flex justify-end gap-1');
-      const editBtn = domEl('button', 'p-1.5 rounded-md text-text-muted hover:text-primary-600 hover:bg-primary-50 transition-colors cursor-pointer');
-      editBtn.type = 'button';
-      editBtn.appendChild(domIcon('edit-3', 'h-4 w-4'));
-      editBtn.addEventListener('click', () => openCrudModal(tab, row));
-      const delBtn = domEl('button', 'p-1.5 rounded-md text-text-muted hover:text-danger-600 hover:bg-danger-50 transition-colors cursor-pointer');
-      delBtn.type = 'button';
-      delBtn.appendChild(domIcon('trash-2', 'h-4 w-4'));
-      delBtn.addEventListener('click', () => openDeleteModal(tab, row));
-      wrap.appendChild(editBtn);
-      wrap.appendChild(delBtn);
-      return wrap;
-    }},
-  ];
-
-  renderTable('tbl-' + tab, colsWithActions, items, 'No hay registros', false);
-  lucide.createIcons();
-}
-
-async function loadCrud(tab) {
-  try {
-    const items = await API.get(CRUD_CFG[tab].endpoint);
-    crudState[tab] = items;
-    buildCrudPanel(tab, items);
-  } catch { Toast.error('Error al cargar datos'); }
-}
-
-function openCrudModal(tab, item) {
-  const cfg = CRUD_CFG[tab];
-  crudState._editItem = item;
-  crudState._editTab = tab;
-  document.getElementById('modal-crud-title').textContent = item ? ('Editar ' + cfg.entity) : ('Nuevo ' + cfg.entity);
-  const body = document.getElementById('modal-crud-body');
-  body.replaceChildren();
-
-  cfg.fields.forEach(f => {
-    const wrap = domEl('div', '');
-    if (f.type === 'checkbox') {
-      const lbl = domEl('label', 'flex items-center gap-3 cursor-pointer');
-      const chk = document.createElement('input');
-      chk.type = 'checkbox'; chk.id = 'mf-' + f.key;
-      chk.className = 'w-4 h-4 rounded border-border text-primary-500 focus:ring-primary-300';
-      chk.checked = item ? !!item[f.key] : (f.defaultValue !== undefined ? f.defaultValue : false);
-      lbl.appendChild(chk);
-      lbl.appendChild(domEl('span', 'text-sm font-medium text-text-secondary font-body', f.label));
-      wrap.appendChild(lbl);
-    } else if (f.type === 'select') {
-      wrap.appendChild(domEl('label', 'block text-sm font-medium text-text-secondary mb-1 font-body', f.label));
-      const sel = document.createElement('select');
-      sel.id = 'mf-' + f.key;
-      sel.className = 'block w-full rounded-lg border border-border px-3 py-2.5 text-sm font-body bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-500 min-h-[44px]';
-      (f.options || []).forEach(o => {
-        const opt = document.createElement('option');
-        opt.value = o.value; opt.textContent = o.label;
-        sel.appendChild(opt);
-      });
-      sel.value = item ? (item[f.key] ?? '') : '';
-      wrap.appendChild(sel);
-    } else {
-      wrap.appendChild(domEl('label', 'block text-sm font-medium text-text-secondary mb-1 font-body', f.label));
-      const inp = document.createElement('input');
-      inp.id = 'mf-' + f.key; inp.type = f.type || 'text';
-      if (f.step) inp.step = f.step; if (f.min) inp.min = f.min; if (f.max) inp.max = f.max;
-      inp.className = 'block w-full rounded-lg border border-border px-3 py-2.5 text-sm font-body bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-500 min-h-[44px]';
-      inp.value = item ? (item[f.key] ?? '') : '';
-      wrap.appendChild(inp);
+      cfgData = await API.put('/config', payload);
+    } catch (e) {
+      Toast.error(e?.response?.data?.error || e?.message || 'Error al guardar configuracion');
+      return;
     }
-    body.appendChild(wrap);
+
+    if (!numeroCambio) {
+      applyCalculados(cfgData);
+      Toast.success('Configuracion guardada');
+      return;
+    }
+
+    try {
+      const r = await API.put('/config/operatorios', { numero_unidades: nuevoNum });
+      cfgData.numero_unidades = r.numero_unidades;
+      opsState = r;
+      document.getElementById('cfg-numero_unidades').value = r.numero_unidades;
+      applyCalculados(r);
+      Toast.success('Configuracion y operatorios actualizados');
+    } catch (e) {
+      const body = e?.response?.data || {};
+      if (Array.isArray(body.operatorios)) {
+        opsState.operatorios = body.operatorios;
+        openOpsDecreaseModal(nuevoNum, body.operatorios.length);
+      } else {
+        Toast.error(body.error || e?.message || 'Error al ajustar operatorios');
+      }
+      // revertir el numero en pantalla (no se aplico)
+      document.getElementById('cfg-numero_unidades').value = previo;
+    }
   });
 
-  const footer = domEl('div', 'flex justify-end gap-3 pt-2');
-  const cancelBtn = domEl('button', 'inline-flex items-center gap-2 px-4 py-2.5 rounded-lg border border-border bg-surface hover:bg-surface-hover text-sm font-medium font-body text-text-primary transition-colors cursor-pointer min-h-[44px]', 'Cancelar');
-  cancelBtn.type = 'button';
-  cancelBtn.addEventListener('click', () => Modal.close('modal-crud'));
-  const saveBtn = domEl('button', 'inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-accent-600 hover:bg-accent-700 text-white text-sm font-medium font-body transition-colors cursor-pointer min-h-[44px]');
-  saveBtn.type = 'button';
-  saveBtn.appendChild(domIcon('save', 'h-4 w-4'));
-  saveBtn.appendChild(domEl('span', '', 'Guardar'));
-  saveBtn.addEventListener('click', () => saveCrud(tab, item));
-  footer.appendChild(cancelBtn);
-  footer.appendChild(saveBtn);
-  body.appendChild(footer);
+  loadConfig();
 
-  Modal.open('modal-crud');
-  lucide.createIcons();
-}
-
-async function saveCrud(tab, item) {
-  const cfg = CRUD_CFG[tab];
-  const payload = {};
-  cfg.fields.forEach(f => {
-    const el = document.getElementById('mf-' + f.key);
-    if (!el) return;
-    if (f.type === 'checkbox') payload[f.key] = el.checked;
-    else if (f.type === 'number') payload[f.key] = Number(el.value);
-    else payload[f.key] = el.value;
-  });
-  try {
-    if (item) await API.put(cfg.endpoint + '/' + item.id, payload);
-    else await API.post(cfg.endpoint, payload);
-    Toast.success(item ? 'Actualizado' : 'Registrado');
-    Modal.close('modal-crud');
-    loadCrud(tab);
-  } catch (e) { Toast.error(e?.error || 'Error al guardar'); }
-}
-
-function openDeleteModal(tab, item) {
-  crudState._deleteItem = item;
-  crudState._deleteTab = tab;
-  document.getElementById('modal-delete-title').textContent = 'Eliminar ' + CRUD_CFG[tab].entity;
-  document.getElementById('modal-delete-msg').textContent = '¿Estas seguro de eliminar "' + (item.nombre || item.id) + '"? Esta accion no se puede deshacer.';
-  Modal.open('modal-delete');
-}
-
-document.getElementById('modal-crud-close').addEventListener('click', () => Modal.close('modal-crud'));
-document.getElementById('modal-crud-backdrop').addEventListener('click', () => Modal.close('modal-crud'));
-document.getElementById('modal-delete-close').addEventListener('click', () => Modal.close('modal-delete'));
-document.getElementById('modal-delete-cancel').addEventListener('click', () => Modal.close('modal-delete'));
-document.getElementById('modal-delete-backdrop').addEventListener('click', () => Modal.close('modal-delete'));
-
-// ── DISTRIBUCION (dynamic categories) ────────────────────
-let distCats = [];        // array of {id, nombre, clave, color, porcentaje, es_sistema}
-let distPendingDelete = null;
-
-// ── helpers ──────────────────────────────────────────────
-function distGetTotal() {
-  return distCats.reduce((s, c) => {
-    const inp = document.getElementById('dc-pct-' + c.id);
-    return s + (inp ? (Number(inp.value) || 0) : (c.porcentaje || 0));
-  }, 0);
-}
-
-function distReadRow(cat) {
-  const pctEl  = document.getElementById('dc-pct-'   + cat.id);
-  const nomEl  = document.getElementById('dc-nom-'   + cat.id);
-  const colEl  = document.getElementById('dc-col-'   + cat.id);
-  return {
-    id:         cat.id,
-    nombre:     nomEl  ? nomEl.value  : cat.nombre,
-    color:      colEl  ? colEl.value  : cat.color,
-    porcentaje: pctEl  ? (Number(pctEl.value) || 0) : cat.porcentaje,
+  // ── OPERATORIOS ───────────────────────────────────────────
+  const ESTADO_BADGES = {
+    activo: { label: 'Activo', cls: 'bg-accent-50 text-accent-700' },
+    suspendido: { label: 'Suspendido', cls: 'bg-neutral-100 text-neutral-600' },
+    reparacion: { label: 'En reparacion', cls: 'bg-amber-50 text-amber-700' },
   };
-}
 
-function updateDistBar() {
-  const total = distGetTotal();
-  const ok    = Math.abs(total - 100) < 0.01;
+  let opsState = { numero_unidades: 0, operatorios: [] };
 
-  // bar
-  const bar = document.getElementById('dist-bar');
-  bar.replaceChildren();
-  distCats.forEach(c => {
-    const pctEl = document.getElementById('dc-pct-' + c.id);
-    const colEl = document.getElementById('dc-col-' + c.id);
-    const w = pctEl ? (Number(pctEl.value) || 0) : (c.porcentaje || 0);
-    const col = colEl ? colEl.value : c.color;
-    if (w <= 0) return;
-    const seg = domEl('div', 'flex items-center justify-center text-[10px] font-bold text-white transition-all duration-300');
-    seg.style.width = w + '%';
-    seg.style.backgroundColor = col;
-    seg.title = c.nombre + ': ' + w + '%';
-    seg.textContent = w >= 8 ? (w + '%') : '';
-    bar.appendChild(seg);
+  async function loadOperatorios() {
+    try {
+      opsState = await API.get('/config/operatorios');
+      renderOpsLista();
+    } catch { Toast.error('Error al cargar operatorios'); }
+  }
+
+  function badge(estado) {
+    const cfg = ESTADO_BADGES[estado] || ESTADO_BADGES.activo;
+    return domEl('span', 'inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ' + cfg.cls, cfg.label);
+  }
+
+  function renderOpsLista() {
+    const list = document.getElementById('ops-lista');
+    if (!list) return;
+    list.replaceChildren();
+    const badge = document.getElementById('ops-total-badge');
+    if (!opsState.operatorios.length) {
+      list.appendChild(domEl('div', 'p-5 text-sm text-text-muted font-body', 'Sin operatorios aun.'));
+      if (badge) badge.textContent = '';
+      return;
+    }
+    if (badge) {
+      const activos = opsState.operatorios.filter(o => o.estado === 'activo').length;
+      badge.textContent = `${opsState.operatorios.length} total · ${activos} activos`;
+    }
+    opsState.operatorios.forEach(op => {
+      list.appendChild(renderOpsRow(op, 'main'));
+    });
+    lucide.createIcons();
+  }
+
+  function renderOpsRow(op, ctx) {
+    const row = domEl('div', 'flex items-center gap-3 px-5 py-3');
+
+    // Nombre editable (display + input modes)
+    const nameWrap = domEl('div', 'flex-1 min-w-0 flex items-center gap-2');
+    const nameDisplay = domEl('span', 'text-sm font-body text-text-primary truncate', op.nombre);
+    const nameInput = document.createElement('input');
+    nameInput.type = 'text';
+    nameInput.value = op.nombre;
+    nameInput.maxLength = 100;
+    nameInput.className = 'hidden flex-1 min-w-0 rounded-lg border border-border px-2 py-1.5 text-sm font-body bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-500';
+    const editBtn = domEl('button', 'p-1.5 rounded-md text-text-muted hover:text-primary-600 hover:bg-primary-50 transition-colors cursor-pointer shrink-0');
+    editBtn.type = 'button';
+    editBtn.title = 'Renombrar operatorio';
+    editBtn.appendChild(domIcon('pencil', 'h-4 w-4'));
+    const saveBtn = domEl('button', 'hidden p-1.5 rounded-md text-accent-600 hover:text-accent-700 hover:bg-accent-50 transition-colors cursor-pointer shrink-0');
+    saveBtn.type = 'button';
+    saveBtn.title = 'Guardar nombre';
+    saveBtn.appendChild(domIcon('check', 'h-4 w-4'));
+    const cancelBtn = domEl('button', 'hidden p-1.5 rounded-md text-text-muted hover:text-danger-600 hover:bg-danger-50 transition-colors cursor-pointer shrink-0');
+    cancelBtn.type = 'button';
+    cancelBtn.title = 'Cancelar';
+    cancelBtn.appendChild(domIcon('x', 'h-4 w-4'));
+
+    function enterEdit() {
+      nameDisplay.classList.add('hidden');
+      editBtn.classList.add('hidden');
+      nameInput.classList.remove('hidden');
+      saveBtn.classList.remove('hidden');
+      cancelBtn.classList.remove('hidden');
+      nameInput.value = op.nombre;
+      nameInput.focus();
+      nameInput.select();
+    }
+    function exitEdit() {
+      nameInput.classList.add('hidden');
+      saveBtn.classList.add('hidden');
+      cancelBtn.classList.add('hidden');
+      nameDisplay.classList.remove('hidden');
+      editBtn.classList.remove('hidden');
+    }
+    async function commit() {
+      const nuevo = nameInput.value.trim();
+      if (!nuevo) { Toast.error('El nombre no puede estar vacio'); return; }
+      if (nuevo === op.nombre) { exitEdit(); return; }
+      try {
+        const updated = await API.put(`/inventario/operatorios/${op.id}`, { nombre: nuevo });
+        op.nombre = updated.nombre;
+        nameDisplay.textContent = updated.nombre;
+        exitEdit();
+        if (ctx === 'main') renderOpsLista();
+        else renderOpsDecreaseList();
+        Toast.success('Nombre actualizado');
+      } catch (e) { Toast.error(e?.message || e?.error || 'Error al renombrar'); }
+    }
+
+    editBtn.addEventListener('click', enterEdit);
+    saveBtn.addEventListener('click', commit);
+    cancelBtn.addEventListener('click', exitEdit);
+    nameInput.addEventListener('keydown', (ev) => {
+      if (ev.key === 'Enter') { ev.preventDefault(); commit(); }
+      else if (ev.key === 'Escape') { ev.preventDefault(); exitEdit(); }
+    });
+
+    nameWrap.appendChild(nameDisplay);
+    nameWrap.appendChild(nameInput);
+    nameWrap.appendChild(editBtn);
+    nameWrap.appendChild(saveBtn);
+    nameWrap.appendChild(cancelBtn);
+    row.appendChild(nameWrap);
+    row.appendChild(badge(op.estado));
+
+    const sel = document.createElement('select');
+    sel.className = 'rounded-lg border border-border px-2 py-1.5 text-xs font-body bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300';
+    [
+      { v: 'activo', l: 'Activar' },
+      { v: 'suspendido', l: 'Suspender' },
+      { v: 'reparacion', l: 'En reparacion' },
+    ].forEach(o => {
+      const opt = document.createElement('option');
+      opt.value = o.v; opt.textContent = o.l;
+      if (o.v === op.estado) opt.selected = true;
+      sel.appendChild(opt);
+    });
+    sel.addEventListener('change', async () => {
+      try {
+        const updated = await API.put(`/inventario/operatorios/${op.id}/estado`, { estado: sel.value });
+        op.estado = updated.estado;
+        if (ctx === 'main') renderOpsLista();
+        else renderOpsDecreaseList();
+        Toast.success('Estado actualizado');
+      } catch (e) { Toast.error(e?.error || 'Error al cambiar estado'); }
+    });
+    row.appendChild(sel);
+    return row;
+  }
+
+  function openOpsDecreaseModal(deseado, actual) {
+    document.getElementById('modal-ops-decrease-msg').textContent =
+      `Tienes ${actual} operatorios y quieres bajar a ${deseado}. Marca como Suspendido o En reparacion los que sobran y luego vuelve a aplicar.`;
+    renderOpsDecreaseList();
+    Modal.open('modal-ops-decrease');
+  }
+
+  function renderOpsDecreaseList() {
+    const cont = document.getElementById('modal-ops-decrease-list');
+    cont.replaceChildren();
+    opsState.operatorios.forEach(op => cont.appendChild(renderOpsRow(op, 'modal')));
+    lucide.createIcons();
+  }
+
+  document.getElementById('modal-ops-decrease-close').addEventListener('click', () => Modal.close('modal-ops-decrease'));
+  document.getElementById('modal-ops-decrease-backdrop').addEventListener('click', () => Modal.close('modal-ops-decrease'));
+  document.getElementById('modal-ops-decrease-cancel').addEventListener('click', () => {
+    Modal.close('modal-ops-decrease');
+    loadOperatorios();
   });
 
-  // total badge
-  const row = document.getElementById('dist-total-row');
-  row.className = 'flex items-center px-3 py-1.5 rounded-lg text-xs font-medium ' +
-    (ok ? 'bg-accent-50 text-accent-700' : 'bg-danger-50 text-danger-700');
-  document.getElementById('dist-total-val').textContent = total.toFixed(1) + '%';
+  // ── CRUD TABS ─────────────────────────────────────────────
+  const CRUD_CFG = {
+    'especialistas': {
+      entity: 'Especialista', endpoint: '/ajustes/especialistas',
+      cols: [
+        { key: 'nombre', label: 'Nombre' },
+        { key: 'comision_pct', label: 'Comision %', align: 'right', render: v => domEl('span', 'tabular-nums', v + '%') },
+        {
+          key: 'is_active', label: 'Estado', align: 'center', render: v => {
+            const s = domEl('span', 'inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ' + (v ? 'bg-accent-50 text-accent-700' : 'bg-neutral-100 text-neutral-600'), v ? 'Activo' : 'Inactivo');
+            return s;
+          }
+        },
+      ],
+      fields: [
+        { key: 'nombre', label: 'Nombre', type: 'text' },
+        { key: 'comision_pct', label: 'Comision (%)', type: 'number', step: '0.1', min: '0', max: '100' },
+        { key: 'is_active', label: 'Activo', type: 'checkbox', defaultValue: true },
+      ],
+    },
+    'metodos-pago': {
+      entity: 'Metodo de Pago', endpoint: '/ajustes/metodos-pago',
+      cols: [
+        { key: 'nombre', label: 'Nombre' },
+        { key: 'comision_pct', label: 'Comision %', align: 'right', render: v => domEl('span', 'tabular-nums', v + '%') },
+      ],
+      fields: [
+        { key: 'nombre', label: 'Nombre', type: 'text' },
+        { key: 'comision_pct', label: 'Comision (%)', type: 'number', step: '0.1', min: '0', max: '100' },
+      ],
+    },
+    'gastos-conceptos': {
+      entity: 'Concepto de Gasto', endpoint: '/ajustes/gastos-conceptos',
+      cols: [
+        { key: 'nombre', label: 'Nombre' },
+        {
+          key: 'tipo', label: 'Tipo', render: v => {
+            return domEl('span', 'inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ' + (v === 'fijo' ? 'bg-primary-50 text-primary-700' : 'bg-amber-50 text-amber-700'), v);
+          }
+        },
+      ],
+      fields: [
+        { key: 'nombre', label: 'Nombre', type: 'text' },
+        { key: 'tipo', label: 'Tipo', type: 'select', options: [{ value: 'fijo', label: 'Fijo' }, { value: 'variable', label: 'Variable' }] },
+      ],
+    },
+    'estrategias': {
+      entity: 'Estrategia', endpoint: '/ajustes/estrategias',
+      cols: [{ key: 'nombre', label: 'Nombre' }],
+      fields: [{ key: 'nombre', label: 'Nombre', type: 'text' }],
+    },
+  };
 
-  // save btn
-  document.getElementById('btn-save-dist').disabled = !ok;
-}
+  let crudState = {};
 
-// ── render rows ───────────────────────────────────────────
-function buildDistList() {
-  const list = document.getElementById('dist-cat-list');
-  list.replaceChildren();
+  function buildCrudPanel(tab, items) {
+    const cfg = CRUD_CFG[tab];
+    const panel = document.getElementById('panel-' + tab);
+    panel.replaceChildren();
 
-  distCats.forEach(c => {
-    const row = domEl('div', 'flex items-center gap-3 px-5 py-3');
-    row.id = 'dc-row-' + c.id;
+    const topBar = domEl('div', 'flex justify-end');
+    const addBtn = domEl('button', 'inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-accent-600 hover:bg-accent-700 text-white text-sm font-medium font-body transition-colors cursor-pointer min-h-[40px]');
+    addBtn.type = 'button';
+    addBtn.appendChild(domIcon('plus', 'h-4 w-4'));
+    addBtn.appendChild(domEl('span', '', 'Agregar'));
+    addBtn.addEventListener('click', () => openCrudModal(tab, null));
+    topBar.appendChild(addBtn);
+    panel.appendChild(topBar);
 
-    // color picker
-    const colWrap = domEl('div', 'flex-shrink-0');
-    const colInp = document.createElement('input');
-    colInp.type = 'color'; colInp.id = 'dc-col-' + c.id;
-    colInp.value = c.color || '#6b7280';
-    colInp.className = 'w-8 h-8 rounded-md border border-border cursor-pointer p-0.5';
-    colInp.title = 'Color';
-    colInp.addEventListener('input', updateDistBar);
-    colWrap.appendChild(colInp);
+    const tblWrap = domEl('div', '');
+    tblWrap.id = 'tbl-' + tab;
+    panel.appendChild(tblWrap);
+
+    const colsWithActions = [
+      ...cfg.cols,
+      {
+        key: '_actions', label: 'Acciones', align: 'right', render: (_, row) => {
+          const wrap = domEl('div', 'flex justify-end gap-1');
+          const editBtn = domEl('button', 'p-1.5 rounded-md text-text-muted hover:text-primary-600 hover:bg-primary-50 transition-colors cursor-pointer');
+          editBtn.type = 'button';
+          editBtn.appendChild(domIcon('edit-3', 'h-4 w-4'));
+          editBtn.addEventListener('click', () => openCrudModal(tab, row));
+          const delBtn = domEl('button', 'p-1.5 rounded-md text-text-muted hover:text-danger-600 hover:bg-danger-50 transition-colors cursor-pointer');
+          delBtn.type = 'button';
+          delBtn.appendChild(domIcon('trash-2', 'h-4 w-4'));
+          delBtn.addEventListener('click', () => openDeleteModal(tab, row));
+          wrap.appendChild(editBtn);
+          wrap.appendChild(delBtn);
+          return wrap;
+        }
+      },
+    ];
+
+    renderTable('tbl-' + tab, colsWithActions, items, 'No hay registros', false);
+    lucide.createIcons();
+  }
+
+  async function loadCrud(tab) {
+    try {
+      const items = await API.get(CRUD_CFG[tab].endpoint);
+      crudState[tab] = items;
+      buildCrudPanel(tab, items);
+    } catch { Toast.error('Error al cargar datos'); }
+  }
+
+  function openCrudModal(tab, item) {
+    const cfg = CRUD_CFG[tab];
+    crudState._editItem = item;
+    crudState._editTab = tab;
+    document.getElementById('modal-crud-title').textContent = item ? ('Editar ' + cfg.entity) : ('Nuevo ' + cfg.entity);
+    const body = document.getElementById('modal-crud-body');
+    body.replaceChildren();
+
+    cfg.fields.forEach(f => {
+      const wrap = domEl('div', '');
+      if (f.type === 'checkbox') {
+        const lbl = domEl('label', 'flex items-center gap-3 cursor-pointer');
+        const chk = document.createElement('input');
+        chk.type = 'checkbox'; chk.id = 'mf-' + f.key;
+        chk.className = 'w-4 h-4 rounded border-border text-primary-500 focus:ring-primary-300';
+        chk.checked = item ? !!item[f.key] : (f.defaultValue !== undefined ? f.defaultValue : false);
+        lbl.appendChild(chk);
+        lbl.appendChild(domEl('span', 'text-sm font-medium text-text-secondary font-body', f.label));
+        wrap.appendChild(lbl);
+      } else if (f.type === 'select') {
+        wrap.appendChild(domEl('label', 'block text-sm font-medium text-text-secondary mb-1 font-body', f.label));
+        const sel = document.createElement('select');
+        sel.id = 'mf-' + f.key;
+        sel.className = 'block w-full rounded-lg border border-border px-3 py-2.5 text-sm font-body bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-500 min-h-[44px]';
+        (f.options || []).forEach(o => {
+          const opt = document.createElement('option');
+          opt.value = o.value; opt.textContent = o.label;
+          sel.appendChild(opt);
+        });
+        sel.value = item ? (item[f.key] ?? '') : '';
+        wrap.appendChild(sel);
+      } else {
+        wrap.appendChild(domEl('label', 'block text-sm font-medium text-text-secondary mb-1 font-body', f.label));
+        const inp = document.createElement('input');
+        inp.id = 'mf-' + f.key; inp.type = f.type || 'text';
+        if (f.step) inp.step = f.step; if (f.min) inp.min = f.min; if (f.max) inp.max = f.max;
+        inp.className = 'block w-full rounded-lg border border-border px-3 py-2.5 text-sm font-body bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-500 min-h-[44px]';
+        inp.value = item ? (item[f.key] ?? '') : '';
+        wrap.appendChild(inp);
+      }
+      body.appendChild(wrap);
+    });
+
+    const footer = domEl('div', 'flex justify-end gap-3 pt-2');
+    const cancelBtn = domEl('button', 'inline-flex items-center gap-2 px-4 py-2.5 rounded-lg border border-border bg-surface hover:bg-surface-hover text-sm font-medium font-body text-text-primary transition-colors cursor-pointer min-h-[44px]', 'Cancelar');
+    cancelBtn.type = 'button';
+    cancelBtn.addEventListener('click', () => Modal.close('modal-crud'));
+    const saveBtn = domEl('button', 'inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-accent-600 hover:bg-accent-700 text-white text-sm font-medium font-body transition-colors cursor-pointer min-h-[44px]');
+    saveBtn.type = 'button';
+    saveBtn.appendChild(domIcon('save', 'h-4 w-4'));
+    saveBtn.appendChild(domEl('span', '', 'Guardar'));
+    saveBtn.addEventListener('click', () => saveCrud(tab, item));
+    footer.appendChild(cancelBtn);
+    footer.appendChild(saveBtn);
+    body.appendChild(footer);
+
+    Modal.open('modal-crud');
+    lucide.createIcons();
+  }
+
+  async function saveCrud(tab, item) {
+    const cfg = CRUD_CFG[tab];
+    const payload = {};
+    cfg.fields.forEach(f => {
+      const el = document.getElementById('mf-' + f.key);
+      if (!el) return;
+      if (f.type === 'checkbox') payload[f.key] = el.checked;
+      else if (f.type === 'number') payload[f.key] = Number(el.value);
+      else payload[f.key] = el.value;
+    });
+    try {
+      if (item) await API.put(cfg.endpoint + '/' + item.id, payload);
+      else await API.post(cfg.endpoint, payload);
+      Toast.success(item ? 'Actualizado' : 'Registrado');
+      Modal.close('modal-crud');
+      loadCrud(tab);
+    } catch (e) { Toast.error(e?.error || 'Error al guardar'); }
+  }
+
+  function openDeleteModal(tab, item) {
+    crudState._deleteItem = item;
+    crudState._deleteTab = tab;
+    document.getElementById('modal-delete-title').textContent = 'Eliminar ' + CRUD_CFG[tab].entity;
+    document.getElementById('modal-delete-msg').textContent = '¿Estas seguro de eliminar "' + (item.nombre || item.id) + '"? Esta accion no se puede deshacer.';
+    Modal.open('modal-delete');
+  }
+
+  document.getElementById('modal-crud-close').addEventListener('click', () => Modal.close('modal-crud'));
+  document.getElementById('modal-crud-backdrop').addEventListener('click', () => Modal.close('modal-crud'));
+  document.getElementById('modal-delete-close').addEventListener('click', () => Modal.close('modal-delete'));
+  document.getElementById('modal-delete-cancel').addEventListener('click', () => Modal.close('modal-delete'));
+  document.getElementById('modal-delete-backdrop').addEventListener('click', () => Modal.close('modal-delete'));
+
+  // ── DISTRIBUCION (dynamic categories) ────────────────────
+  let distCats = [];        // array of {id, nombre, clave, color, porcentaje, es_sistema}
+  let distPendingDelete = null;
+
+  // ── helpers ──────────────────────────────────────────────
+  function distGetTotal() {
+    return distCats.reduce((s, c) => {
+      const inp = document.getElementById('dc-pct-' + c.id);
+      return s + (inp ? (Number(inp.value) || 0) : (c.porcentaje || 0));
+    }, 0);
+  }
+
+  function distReadRow(cat) {
+    const pctEl = document.getElementById('dc-pct-' + cat.id);
+    const nomEl = document.getElementById('dc-nom-' + cat.id);
+    const colEl = document.getElementById('dc-col-' + cat.id);
+    return {
+      id: cat.id,
+      nombre: nomEl ? nomEl.value : cat.nombre,
+      color: colEl ? colEl.value : cat.color,
+      porcentaje: pctEl ? (Number(pctEl.value) || 0) : cat.porcentaje,
+    };
+  }
+
+  function updateDistBar() {
+    const total = distGetTotal();
+    const ok = Math.abs(total - 100) < 0.01;
+
+    // bar
+    const bar = document.getElementById('dist-bar');
+    bar.replaceChildren();
+    distCats.forEach(c => {
+      const pctEl = document.getElementById('dc-pct-' + c.id);
+      const colEl = document.getElementById('dc-col-' + c.id);
+      const w = pctEl ? (Number(pctEl.value) || 0) : (c.porcentaje || 0);
+      const col = colEl ? colEl.value : c.color;
+      if (w <= 0) return;
+      const seg = domEl('div', 'flex items-center justify-center text-[10px] font-bold text-white transition-all duration-300');
+      seg.style.width = w + '%';
+      seg.style.backgroundColor = col;
+      seg.title = c.nombre + ': ' + w + '%';
+      seg.textContent = w >= 8 ? (w + '%') : '';
+      bar.appendChild(seg);
+    });
+
+    // total badge
+    const row = document.getElementById('dist-total-row');
+    row.className = 'flex items-center px-3 py-1.5 rounded-lg text-xs font-medium ' +
+      (ok ? 'bg-accent-50 text-accent-700' : 'bg-danger-50 text-danger-700');
+    document.getElementById('dist-total-val').textContent = total.toFixed(1) + '%';
+
+    // save btn
+    document.getElementById('btn-save-dist').disabled = !ok;
+  }
+
+  // ── render rows ───────────────────────────────────────────
+  function buildDistList() {
+    const list = document.getElementById('dist-cat-list');
+    list.replaceChildren();
+
+    distCats.forEach(c => {
+      const row = domEl('div', 'flex items-center gap-3 px-5 py-3');
+      row.id = 'dc-row-' + c.id;
+
+      // color picker
+      const colWrap = domEl('div', 'flex-shrink-0');
+      const colInp = document.createElement('input');
+      colInp.type = 'color'; colInp.id = 'dc-col-' + c.id;
+      colInp.value = c.color || '#6b7280';
+      colInp.className = 'w-8 h-8 rounded-md border border-border cursor-pointer p-0.5';
+      colInp.title = 'Color';
+      colInp.addEventListener('input', updateDistBar);
+      colWrap.appendChild(colInp);
+
+      // nombre
+      const nomInp = document.createElement('input');
+      nomInp.type = 'text'; nomInp.id = 'dc-nom-' + c.id;
+      nomInp.value = c.nombre;
+      nomInp.className = 'flex-1 min-w-0 border border-border rounded-lg px-3 py-2 text-sm font-body bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-500';
+      if (c.es_sistema) {
+        nomInp.title = 'Categoria del sistema';
+      }
+
+      // porcentaje
+      const pctWrap = domEl('div', 'relative flex-shrink-0 w-24');
+      const pctInp = document.createElement('input');
+      pctInp.type = 'number'; pctInp.id = 'dc-pct-' + c.id;
+      pctInp.value = c.porcentaje; pctInp.step = '0.1'; pctInp.min = '0'; pctInp.max = '100';
+      pctInp.className = 'w-full border border-border rounded-lg px-3 py-2 pr-7 text-sm text-right tabular-nums focus:ring-2 focus:ring-primary-300 focus:border-primary-500 outline-none';
+      pctInp.addEventListener('input', updateDistBar);
+      const pctSuf = domEl('span', 'absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-text-muted pointer-events-none', '%');
+      pctWrap.appendChild(pctInp); pctWrap.appendChild(pctSuf);
+
+      // sistema badge / delete btn
+      const actWrap = domEl('div', 'flex-shrink-0 w-8 flex justify-center');
+      if (c.es_sistema) {
+        const badge = domEl('span', 'text-[10px] text-text-muted font-body', 'SYS');
+        badge.title = 'Categoria del sistema';
+        actWrap.appendChild(badge);
+      } else {
+        const delBtn = domEl('button', 'p-1.5 rounded-md text-text-muted hover:text-danger-600 hover:bg-danger-50 transition-colors cursor-pointer');
+        delBtn.type = 'button'; delBtn.title = 'Eliminar categoria';
+        delBtn.appendChild(domIcon('trash-2', 'h-4 w-4'));
+        delBtn.addEventListener('click', () => openDistDeleteModal(c));
+        actWrap.appendChild(delBtn);
+      }
+
+      row.appendChild(colWrap);
+      row.appendChild(nomInp);
+      row.appendChild(pctWrap);
+      row.appendChild(actWrap);
+      list.appendChild(row);
+    });
+
+    lucide.createIcons();
+    updateDistBar();
+  }
+
+  async function loadDist() {
+    try {
+      distCats = await API.get('/ajustes/distribucion/categorias');
+      buildDistList();
+    } catch { Toast.error('Error al cargar distribucion'); }
+  }
+
+  // ── save ──────────────────────────────────────────────────
+  document.getElementById('btn-save-dist').addEventListener('click', async () => {
+    const payload = { categorias: distCats.map(c => distReadRow(c)) };
+    const total = payload.categorias.reduce((s, c) => s + c.porcentaje, 0);
+    if (Math.abs(total - 100) > 0.01) {
+      Toast.error('Los porcentajes deben sumar 100%. Total: ' + total.toFixed(1) + '%');
+      return;
+    }
+    try {
+      distCats = await API.put('/ajustes/distribucion/categorias/batch', payload);
+      buildDistList();
+      Toast.success('Distribucion guardada');
+    } catch (e) { Toast.error(e?.error || 'Error al guardar'); }
+  });
+
+  // ── add new category ──────────────────────────────────────
+  document.getElementById('btn-add-cat').addEventListener('click', () => {
+    openDistAddModal();
+  });
+
+  function openDistAddModal() {
+    const body = document.getElementById('modal-crud-body');
+    body.replaceChildren();
+    document.getElementById('modal-crud-title').textContent = 'Nueva Categoria';
 
     // nombre
+    const nomWrap = domEl('div', '');
+    nomWrap.appendChild(domEl('label', 'block text-sm font-medium text-text-secondary mb-1 font-body', 'Nombre'));
     const nomInp = document.createElement('input');
-    nomInp.type = 'text'; nomInp.id = 'dc-nom-' + c.id;
-    nomInp.value = c.nombre;
-    nomInp.className = 'flex-1 min-w-0 border border-border rounded-lg px-3 py-2 text-sm font-body bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-500';
-    if (c.es_sistema) {
-      nomInp.title = 'Categoria del sistema';
-    }
+    nomInp.id = 'new-cat-nom'; nomInp.type = 'text';
+    nomInp.className = 'block w-full rounded-lg border border-border px-3 py-2.5 text-sm font-body bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-500 min-h-[44px]';
+    nomInp.placeholder = 'Ej. Inversión';
+    nomWrap.appendChild(nomInp);
 
     // porcentaje
-    const pctWrap = domEl('div', 'relative flex-shrink-0 w-24');
+    const pctWrap = domEl('div', '');
+    pctWrap.appendChild(domEl('label', 'block text-sm font-medium text-text-secondary mb-1 font-body', 'Porcentaje (%)'));
     const pctInp = document.createElement('input');
-    pctInp.type = 'number'; pctInp.id = 'dc-pct-' + c.id;
-    pctInp.value = c.porcentaje; pctInp.step = '0.1'; pctInp.min = '0'; pctInp.max = '100';
-    pctInp.className = 'w-full border border-border rounded-lg px-3 py-2 pr-7 text-sm text-right tabular-nums focus:ring-2 focus:ring-primary-300 focus:border-primary-500 outline-none';
-    pctInp.addEventListener('input', updateDistBar);
-    const pctSuf = domEl('span', 'absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-text-muted pointer-events-none', '%');
-    pctWrap.appendChild(pctInp); pctWrap.appendChild(pctSuf);
+    pctInp.id = 'new-cat-pct'; pctInp.type = 'number'; pctInp.step = '0.1'; pctInp.min = '0'; pctInp.max = '100'; pctInp.value = '0';
+    pctInp.className = 'block w-full rounded-lg border border-border px-3 py-2.5 text-sm font-body bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-500 min-h-[44px]';
+    pctWrap.appendChild(pctInp);
 
-    // sistema badge / delete btn
-    const actWrap = domEl('div', 'flex-shrink-0 w-8 flex justify-center');
-    if (c.es_sistema) {
-      const badge = domEl('span', 'text-[10px] text-text-muted font-body', 'SYS');
-      badge.title = 'Categoria del sistema';
-      actWrap.appendChild(badge);
-    } else {
-      const delBtn = domEl('button', 'p-1.5 rounded-md text-text-muted hover:text-danger-600 hover:bg-danger-50 transition-colors cursor-pointer');
-      delBtn.type = 'button'; delBtn.title = 'Eliminar categoria';
-      delBtn.appendChild(domIcon('trash-2', 'h-4 w-4'));
-      delBtn.addEventListener('click', () => openDistDeleteModal(c));
-      actWrap.appendChild(delBtn);
-    }
+    // color
+    const colWrap = domEl('div', '');
+    colWrap.appendChild(domEl('label', 'block text-sm font-medium text-text-secondary mb-1 font-body', 'Color'));
+    const colRow = domEl('div', 'flex items-center gap-3');
+    const colInp = document.createElement('input');
+    colInp.id = 'new-cat-col'; colInp.type = 'color'; colInp.value = '#6b7280';
+    colInp.className = 'w-10 h-10 rounded-md border border-border cursor-pointer p-0.5';
+    colRow.appendChild(colInp);
+    colRow.appendChild(domEl('span', 'text-xs text-text-muted font-body', 'Elige un color para la categoria'));
+    colWrap.appendChild(colRow);
 
-    row.appendChild(colWrap);
-    row.appendChild(nomInp);
-    row.appendChild(pctWrap);
-    row.appendChild(actWrap);
-    list.appendChild(row);
-  });
+    // hint: available %
+    const curTotal = distGetTotal();
+    const avail = Math.max(0, 100 - curTotal).toFixed(1);
+    const hint = domEl('p', 'text-xs text-text-muted font-body', `Porcentaje disponible: ${avail}%`);
 
-  lucide.createIcons();
-  updateDistBar();
-}
+    const footer = domEl('div', 'flex justify-end gap-3 pt-2');
+    const cancelBtn = domEl('button', 'inline-flex items-center gap-2 px-4 py-2.5 rounded-lg border border-border bg-surface hover:bg-surface-hover text-sm font-medium font-body text-text-primary transition-colors cursor-pointer min-h-[44px]', 'Cancelar');
+    cancelBtn.type = 'button';
+    cancelBtn.addEventListener('click', () => Modal.close('modal-crud'));
+    const saveBtn = domEl('button', 'inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-accent-600 hover:bg-accent-700 text-white text-sm font-medium font-body transition-colors cursor-pointer min-h-[44px]');
+    saveBtn.type = 'button';
+    saveBtn.appendChild(domIcon('save', 'h-4 w-4'));
+    saveBtn.appendChild(domEl('span', '', 'Agregar'));
+    saveBtn.addEventListener('click', saveNewCat);
+    footer.appendChild(cancelBtn);
+    footer.appendChild(saveBtn);
 
-async function loadDist() {
-  try {
-    distCats = await API.get('/ajustes/distribucion/categorias');
-    buildDistList();
-  } catch { Toast.error('Error al cargar distribucion'); }
-}
+    body.appendChild(nomWrap);
+    body.appendChild(pctWrap);
+    body.appendChild(colWrap);
+    body.appendChild(hint);
+    body.appendChild(footer);
 
-// ── save ──────────────────────────────────────────────────
-document.getElementById('btn-save-dist').addEventListener('click', async () => {
-  const payload = { categorias: distCats.map(c => distReadRow(c)) };
-  const total = payload.categorias.reduce((s, c) => s + c.porcentaje, 0);
-  if (Math.abs(total - 100) > 0.01) {
-    Toast.error('Los porcentajes deben sumar 100%. Total: ' + total.toFixed(1) + '%');
-    return;
+    Modal.open('modal-crud');
+    lucide.createIcons();
+    nomInp.focus();
   }
-  try {
-    distCats = await API.put('/ajustes/distribucion/categorias/batch', payload);
-    buildDistList();
-    Toast.success('Distribucion guardada');
-  } catch (e) { Toast.error(e?.error || 'Error al guardar'); }
-});
 
-// ── add new category ──────────────────────────────────────
-document.getElementById('btn-add-cat').addEventListener('click', () => {
-  openDistAddModal();
-});
+  async function saveNewCat() {
+    const nombre = document.getElementById('new-cat-nom')?.value?.trim();
+    const porcentaje = Number(document.getElementById('new-cat-pct')?.value) || 0;
+    const color = document.getElementById('new-cat-col')?.value || '#6b7280';
 
-function openDistAddModal() {
-  const body = document.getElementById('modal-crud-body');
-  body.replaceChildren();
-  document.getElementById('modal-crud-title').textContent = 'Nueva Categoria';
+    if (!nombre) { Toast.error('El nombre es requerido'); return; }
 
-  // nombre
-  const nomWrap = domEl('div', '');
-  nomWrap.appendChild(domEl('label', 'block text-sm font-medium text-text-secondary mb-1 font-body', 'Nombre'));
-  const nomInp = document.createElement('input');
-  nomInp.id = 'new-cat-nom'; nomInp.type = 'text';
-  nomInp.className = 'block w-full rounded-lg border border-border px-3 py-2.5 text-sm font-body bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-500 min-h-[44px]';
-  nomInp.placeholder = 'Ej. Inversión';
-  nomWrap.appendChild(nomInp);
-
-  // porcentaje
-  const pctWrap = domEl('div', '');
-  pctWrap.appendChild(domEl('label', 'block text-sm font-medium text-text-secondary mb-1 font-body', 'Porcentaje (%)'));
-  const pctInp = document.createElement('input');
-  pctInp.id = 'new-cat-pct'; pctInp.type = 'number'; pctInp.step = '0.1'; pctInp.min = '0'; pctInp.max = '100'; pctInp.value = '0';
-  pctInp.className = 'block w-full rounded-lg border border-border px-3 py-2.5 text-sm font-body bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-500 min-h-[44px]';
-  pctWrap.appendChild(pctInp);
-
-  // color
-  const colWrap = domEl('div', '');
-  colWrap.appendChild(domEl('label', 'block text-sm font-medium text-text-secondary mb-1 font-body', 'Color'));
-  const colRow = domEl('div', 'flex items-center gap-3');
-  const colInp = document.createElement('input');
-  colInp.id = 'new-cat-col'; colInp.type = 'color'; colInp.value = '#6b7280';
-  colInp.className = 'w-10 h-10 rounded-md border border-border cursor-pointer p-0.5';
-  colRow.appendChild(colInp);
-  colRow.appendChild(domEl('span', 'text-xs text-text-muted font-body', 'Elige un color para la categoria'));
-  colWrap.appendChild(colRow);
-
-  // hint: available %
-  const curTotal = distGetTotal();
-  const avail = Math.max(0, 100 - curTotal).toFixed(1);
-  const hint = domEl('p', 'text-xs text-text-muted font-body', `Porcentaje disponible: ${avail}%`);
-
-  const footer = domEl('div', 'flex justify-end gap-3 pt-2');
-  const cancelBtn = domEl('button', 'inline-flex items-center gap-2 px-4 py-2.5 rounded-lg border border-border bg-surface hover:bg-surface-hover text-sm font-medium font-body text-text-primary transition-colors cursor-pointer min-h-[44px]', 'Cancelar');
-  cancelBtn.type = 'button';
-  cancelBtn.addEventListener('click', () => Modal.close('modal-crud'));
-  const saveBtn = domEl('button', 'inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-accent-600 hover:bg-accent-700 text-white text-sm font-medium font-body transition-colors cursor-pointer min-h-[44px]');
-  saveBtn.type = 'button';
-  saveBtn.appendChild(domIcon('save', 'h-4 w-4'));
-  saveBtn.appendChild(domEl('span', '', 'Agregar'));
-  saveBtn.addEventListener('click', saveNewCat);
-  footer.appendChild(cancelBtn);
-  footer.appendChild(saveBtn);
-
-  body.appendChild(nomWrap);
-  body.appendChild(pctWrap);
-  body.appendChild(colWrap);
-  body.appendChild(hint);
-  body.appendChild(footer);
-
-  Modal.open('modal-crud');
-  lucide.createIcons();
-  nomInp.focus();
-}
-
-async function saveNewCat() {
-  const nombre     = document.getElementById('new-cat-nom')?.value?.trim();
-  const porcentaje = Number(document.getElementById('new-cat-pct')?.value) || 0;
-  const color      = document.getElementById('new-cat-col')?.value || '#6b7280';
-
-  if (!nombre) { Toast.error('El nombre es requerido'); return; }
-
-  try {
-    const newCat = await API.post('/ajustes/distribucion/categorias', { nombre, porcentaje, color });
-    distCats.push(newCat);
-    Modal.close('modal-crud');
-    buildDistList();
-    Toast.success('Categoria agregada');
-  } catch (e) { Toast.error(e?.error || 'Error al agregar categoria'); }
-}
-
-// ── delete custom category ────────────────────────────────
-function openDistDeleteModal(cat) {
-  distPendingDelete = cat;
-  document.getElementById('modal-delete-title').textContent = 'Eliminar Categoria';
-  document.getElementById('modal-delete-msg').textContent =
-    `¿Estas seguro de eliminar la categoria "${cat.nombre}"? Los reportes existentes no se veran afectados pero esta categoria dejara de estar disponible.`;
-  Modal.open('modal-delete');
-}
-
-document.getElementById('modal-delete-confirm').addEventListener('click', async () => {
-  // Check if it's a dist delete or a crud delete
-  if (distPendingDelete) {
-    const cat = distPendingDelete;
-    distPendingDelete = null;
     try {
-      await API.delete('/ajustes/distribucion/categorias/' + cat.id);
-      distCats = distCats.filter(c => c.id !== cat.id);
-      Modal.close('modal-delete');
+      const newCat = await API.post('/ajustes/distribucion/categorias', { nombre, porcentaje, color });
+      distCats.push(newCat);
+      Modal.close('modal-crud');
       buildDistList();
-      Toast.success('Categoria eliminada');
-    } catch (e) { Toast.error(e?.error || 'Error al eliminar'); }
-    return;
+      Toast.success('Categoria agregada');
+    } catch (e) { Toast.error(e?.error || 'Error al agregar categoria'); }
   }
-  // original crud delete
-  const { _deleteItem: item, _deleteTab: tab } = crudState;
-  if (!item || !tab) return;
-  try {
-    await API.delete(CRUD_CFG[tab].endpoint + '/' + item.id);
-    Toast.success('Eliminado');
-    Modal.close('modal-delete');
-    loadCrud(tab);
-  } catch (e) { Toast.error(e?.error || 'Error al eliminar'); }
-});
+
+  // ── delete custom category ────────────────────────────────
+  function openDistDeleteModal(cat) {
+    distPendingDelete = cat;
+    document.getElementById('modal-delete-title').textContent = 'Eliminar Categoria';
+    document.getElementById('modal-delete-msg').textContent =
+      `¿Estas seguro de eliminar la categoria "${cat.nombre}"? Los reportes existentes no se veran afectados pero esta categoria dejara de estar disponible.`;
+    Modal.open('modal-delete');
+  }
+
+  document.getElementById('modal-delete-confirm').addEventListener('click', async () => {
+    // Check if it's a dist delete or a crud delete
+    if (distPendingDelete) {
+      const cat = distPendingDelete;
+      distPendingDelete = null;
+      try {
+        await API.delete('/ajustes/distribucion/categorias/' + cat.id);
+        distCats = distCats.filter(c => c.id !== cat.id);
+        Modal.close('modal-delete');
+        buildDistList();
+        Toast.success('Categoria eliminada');
+      } catch (e) { Toast.error(e?.error || 'Error al eliminar'); }
+      return;
+    }
+    // original crud delete
+    const { _deleteItem: item, _deleteTab: tab } = crudState;
+    if (!item || !tab) return;
+    try {
+      await API.delete(CRUD_CFG[tab].endpoint + '/' + item.id);
+      Toast.success('Eliminado');
+      Modal.close('modal-delete');
+      loadCrud(tab);
+    } catch (e) { Toast.error(e?.error || 'Error al eliminar'); }
+  });
 </script>
 {% endblock %}
