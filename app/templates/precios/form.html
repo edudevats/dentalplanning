@@ -229,11 +229,12 @@ async function handleSave() {
     if (isEdit) {
       await API.put('/tratamientos/' + TX_ID, payload);
       Toast.success('Tratamiento actualizado');
+      location.href = '/tratamientos/' + TX_ID;
     } else {
       await API.post('/tratamientos', payload);
       Toast.success('Tratamiento creado');
+      location.href = '/tratamientos';
     }
-    location.href = '/tratamientos';
   } catch (err) {
     Toast.error(err.response?.data?.error || 'No se pudo guardar');
     btn.disabled = false; txt.textContent = isEdit ? 'Guardar Cambios' : 'Crear Tratamiento';

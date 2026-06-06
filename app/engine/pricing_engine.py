@@ -110,7 +110,7 @@ def calcular_descuentos(costo_tratamiento, precio, porcentajes=None):
     Calcula escenarios de descuento (réplica de las 4 columnas G/J del Excel).
     """
     if porcentajes is None:
-        porcentajes = [0.10, 0.20, 0.30, 0.50]
+        porcentajes = [0.10, 0.20, 0.30, 0.40, 0.50]
 
     resultados = []
     for pct in porcentajes:
