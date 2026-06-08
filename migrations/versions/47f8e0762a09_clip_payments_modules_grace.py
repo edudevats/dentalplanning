@@ -29,7 +29,10 @@ def upgrade():
 
     if not _has_column('plans', 'modulos'):
         with op.batch_alter_table('plans', schema=None) as batch_op:
-            batch_op.add_column(sa.Column('modulos', sa.JSON(), nullable=False, server_default='[]'))
+            batch_op.add_column(sa.Column('modulos', sa.JSON(), nullable=True))
+        op.execute("UPDATE plans SET modulos = '[]' WHERE modulos IS NULL")
+        with op.batch_alter_table('plans', schema=None) as batch_op:
+            batch_op.alter_column('modulos', existing_type=sa.JSON(), nullable=False)
 
     if not _has_column('subscriptions', 'clip_checkout_id'):
         with op.batch_alter_table('subscriptions', schema=None) as batch_op:
