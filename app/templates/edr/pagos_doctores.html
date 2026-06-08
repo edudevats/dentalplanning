@@ -15,12 +15,12 @@
     </div>
   </div>
 
-  <!-- Stats: 3 tarjetas -->
-  <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+  <!-- Stats: 4 tarjetas -->
+  <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
     <!-- Total general -->
     <div class="bg-surface rounded-xl border border-border p-5 shadow-sm">
       <div class="flex items-center justify-between">
-        <p class="text-sm font-medium text-text-secondary font-body">Total Pagos</p>
+        <p class="text-sm font-medium text-text-secondary font-body">Total Pagado</p>
         <div class="h-9 w-9 rounded-lg bg-primary-50 flex items-center justify-center">
           <i data-lucide="users" class="h-4 w-4 text-primary-600"></i>
         </div>
@@ -39,16 +39,27 @@
       <p class="mt-3 text-2xl font-bold font-heading tabular-nums text-accent-700" id="stat-salarios">$0.00</p>
       <p class="mt-1 text-xs text-text-muted font-body" id="stat-salarios-pct">0% del total</p>
     </div>
-    <!-- Comisiones -->
+    <!-- Comisiones pagadas -->
     <div class="bg-surface rounded-xl border border-border p-5 shadow-sm">
       <div class="flex items-center justify-between">
-        <p class="text-sm font-medium text-text-secondary font-body">Comisiones</p>
+        <p class="text-sm font-medium text-text-secondary font-body">Comisiones Pagadas</p>
         <div class="h-9 w-9 rounded-lg bg-secondary-50 flex items-center justify-center">
           <i data-lucide="percent" class="h-4 w-4 text-secondary-600"></i>
         </div>
       </div>
       <p class="mt-3 text-2xl font-bold font-heading tabular-nums text-secondary-700" id="stat-comisiones">$0.00</p>
-      <p class="mt-1 text-xs text-text-muted font-body" id="stat-comisiones-pct">0% del total</p>
+      <p class="mt-1 text-xs text-text-muted font-body" id="stat-comisiones-gen">De $0.00 generado</p>
+    </div>
+    <!-- Comisiones pendientes -->
+    <div class="bg-surface rounded-xl border border-border p-5 shadow-sm">
+      <div class="flex items-center justify-between">
+        <p class="text-sm font-medium text-text-secondary font-body">Comisiones Pendientes</p>
+        <div class="h-9 w-9 rounded-lg bg-warning-50 flex items-center justify-center">
+          <i data-lucide="clock" class="h-4 w-4 text-warning-600"></i>
+        </div>
+      </div>
+      <p class="mt-3 text-2xl font-bold font-heading tabular-nums text-warning-700" id="stat-pendiente">$0.00</p>
+      <p class="mt-1 text-xs text-text-muted font-body">Por pagar a doctores</p>
     </div>
   </div>
 
@@ -285,38 +296,53 @@ function renderTable_() {
 
 function renderTableResumen() {
   const cols = [
-    { 
-      key: 'especialista_nombre', 
-      label: 'Doctor', 
+    {
+      key: 'especialista_nombre',
+      label: 'Doctor',
       render: v => domEl('span', 'font-medium text-text-primary', v)
     },
-    { 
-      key: 'tratamientos_count', 
-      label: 'Tratamientos Realizados', 
+    {
+      key: 'tratamientos_count',
+      label: 'Tratamientos',
       align: 'center',
       render: v => domEl('span', 'inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-primary-50 text-primary-700', String(v))
     },
-    { 
-      key: 'comision_pagada', 
-      label: 'Comisiones Pagadas', 
+    {
+      key: 'comision_generada',
+      label: 'Comisión Generada',
+      align: 'right',
+      render: v => domEl('span', 'tabular-nums font-semibold text-secondary-700', fmt(v))
+    },
+    {
+      key: 'comision_pagada',
+      label: 'Comisión Pagada',
       align: 'right',
       render: v => domEl('span', 'tabular-nums', fmt(v))
     },
-    { 
-      key: 'salario_pagado', 
-      label: 'Salario Pagado', 
+    {
+      key: 'comision_pendiente',
+      label: 'Pendiente',
+      align: 'right',
+      render: v => {
+        const el = domEl('span', 'tabular-nums font-semibold ' + (v > 0 ? 'text-warning-700' : 'text-text-muted'), fmt(v));
+        return el;
+      }
+    },
+    {
+      key: 'salario_pagado',
+      label: 'Salario Pagado',
       align: 'right',
       render: v => domEl('span', 'tabular-nums', fmt(v))
     },
-    { 
-      key: 'total_generado', 
-      label: 'Total Venta Generada', 
+    {
+      key: 'total_generado',
+      label: 'Total Venta',
       align: 'right',
       render: v => domEl('span', 'tabular-nums font-semibold text-text-primary', fmt(v))
     },
-    { 
-      key: 'total_ganancia_generada', 
-      label: 'Ganancia Neta Clínica', 
+    {
+      key: 'total_ganancia_generada',
+      label: 'Ganancia Neta Clínica',
       align: 'right',
       render: v => domEl('span', 'tabular-nums font-semibold ' + (v >= 0 ? 'text-accent-700' : 'text-danger-600'), fmt(v))
     },
@@ -590,11 +616,11 @@ async function fetchData() {
     document.getElementById('stat-total').textContent = fmt(totalPaid);
     document.getElementById('stat-salarios').textContent = fmt(totals.total_pagado_salarios || 0);
     document.getElementById('stat-comisiones').textContent = fmt(totals.total_pagado_comisiones || 0);
-    
+    document.getElementById('stat-pendiente').textContent = fmt(totals.total_pendiente_comisiones || 0);
+
     const pctSal = totalPaid > 0 ? ((totals.total_pagado_salarios / totalPaid) * 100).toFixed(0) : 0;
-    const pctCom = totalPaid > 0 ? ((totals.total_pagado_comisiones / totalPaid) * 100).toFixed(0) : 0;
     document.getElementById('stat-salarios-pct').textContent = pctSal + '% del total';
-    document.getElementById('stat-comisiones-pct').textContent = pctCom + '% del total';
+    document.getElementById('stat-comisiones-gen').textContent = 'De ' + fmt(totals.total_generado_comisiones || 0) + ' generado';
     
   } catch (err) { 
     console.error(err);

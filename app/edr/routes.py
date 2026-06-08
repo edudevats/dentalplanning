@@ -223,6 +223,7 @@ def resumen_pagos_doctores():
     resumen_doctores = []
     
     total_tratamientos = 0
+    total_generado_comisiones = 0
     total_pagado_comisiones = 0
     total_pagado_salarios = 0
     total_generado = 0
@@ -237,6 +238,7 @@ def resumen_pagos_doctores():
         comision_pagada = sum(p.monto for p in pagos_esp if p.tipo == "comision")
         salario_pagado = sum(p.monto for p in pagos_esp if p.tipo == "salario")
         total_gen_esp = sum(i.monto for i in ingresos_esp)
+        comision_generada = sum(i.comision_doctor or 0.0 for i in ingresos_esp)
 
         total_ganancia_esp = 0
         detalle_tratamientos = []
@@ -281,6 +283,8 @@ def resumen_pagos_doctores():
         salario_pagado = round(salario_pagado, 2)
         total_gen_esp = round(total_gen_esp, 2)
         total_ganancia_esp = round(total_ganancia_esp, 2)
+        comision_generada = round(comision_generada, 2)
+        comision_pendiente = round(comision_generada - comision_pagada, 2)
 
         # Agregar al total general si el doctor tiene actividad o pagos en el mes
         if esp.is_active or tratamientos_count > 0 or comision_pagada > 0 or salario_pagado > 0:
@@ -288,7 +292,9 @@ def resumen_pagos_doctores():
                 "especialista_id": esp.id,
                 "especialista_nombre": esp.nombre,
                 "tratamientos_count": tratamientos_count,
+                "comision_generada": comision_generada,
                 "comision_pagada": comision_pagada,
+                "comision_pendiente": comision_pendiente,
                 "salario_pagado": salario_pagado,
                 "total_generado": total_gen_esp,
                 "total_ganancia_generada": total_ganancia_esp,
@@ -296,6 +302,7 @@ def resumen_pagos_doctores():
             })
 
             total_tratamientos += tratamientos_count
+            total_generado_comisiones += comision_generada
             total_pagado_comisiones += comision_pagada
             total_pagado_salarios += salario_pagado
             total_generado += total_gen_esp
@@ -306,7 +313,9 @@ def resumen_pagos_doctores():
         "resumen_doctores": resumen_doctores,
         "totales_mes": {
             "total_tratamientos": total_tratamientos,
+            "total_generado_comisiones": round(total_generado_comisiones, 2),
             "total_pagado_comisiones": round(total_pagado_comisiones, 2),
+            "total_pendiente_comisiones": round(total_generado_comisiones - total_pagado_comisiones, 2),
             "total_pagado_salarios": round(total_pagado_salarios, 2),
             "total_generado": round(total_generado, 2),
             "total_ganancia": round(total_ganancia, 2)
