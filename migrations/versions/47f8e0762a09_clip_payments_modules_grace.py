@@ -17,9 +17,8 @@ depends_on = None
 
 
 def _has_column(table, column):
-    conn = op.get_bind()
-    result = conn.execute(sa.text(f"PRAGMA table_info('{table}')"))
-    return column in [row[1] for row in result]
+    insp = sa.inspect(op.get_bind())
+    return column in [col['name'] for col in insp.get_columns(table)]
 
 
 def upgrade():
