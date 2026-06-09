@@ -489,7 +489,7 @@
     <div class="bg-surface rounded-xl border border-border shadow-sm">
       <div class="px-5 py-4 border-b border-border">
         <h3 class="text-sm font-semibold font-heading text-text-primary">Promedios Trimestrales</h3>
-        <p class="text-xs text-text-muted mt-0.5 font-body">Ganancia neta mensual, totales y promedios por trimestre, crecimiento mes-a-mes</p>
+        <p class="text-xs text-text-muted mt-0.5 font-body">Ventas totales mensual, totales y promedios por trimestre, crecimiento mes-a-mes</p>
       </div>
       <div class="grid grid-cols-1 lg:grid-cols-3 gap-0">
         <div class="border-r border-border">
@@ -953,7 +953,7 @@ async function loadReporteAnual() {
     const count_nonzero = meses.filter(m => m.total !== 0).length;
     const promedio_mensual = count_nonzero > 0 ? total_anual / count_nonzero : 0;
 
-    // Calculate trimestres
+    // Calculate trimestres (ganancia neta — for stats/ahorro)
     const trimestres = [];
     for (let t = 0; t < 4; t++) {
       const start = t * 3;
@@ -979,6 +979,28 @@ async function loadReporteAnual() {
         a_mes: i + 1,
         porcentaje: pct
       });
+    }
+
+    // Ventas totales — Promedios Trimestrales section
+    const mesesVentas = mesesRaw; // raw total = ventas totales (total_ing from backend)
+    const trimestresVentas = [];
+    for (let t = 0; t < 4; t++) {
+      const start = t * 3;
+      const mesesQ = mesesVentas.slice(start, start + 3);
+      const total_trim = mesesQ.reduce((s, m) => s + m.total, 0);
+      const count_nonzero_trim = mesesQ.filter(m => m.total !== 0).length;
+      const promedio = count_nonzero_trim > 0 ? total_trim / count_nonzero_trim : 0;
+      trimestresVentas.push({ trimestre: t + 1, total: total_trim, promedio });
+    }
+    const total_anual_ventas = mesesVentas.reduce((s, m) => s + m.total, 0);
+    const count_nonzero_ventas = mesesVentas.filter(m => m.total !== 0).length;
+    const promedio_mensual_ventas = count_nonzero_ventas > 0 ? total_anual_ventas / count_nonzero_ventas : 0;
+    const crecimientoVentas = [];
+    for (let i = 1; i < 12; i++) {
+      const prev = mesesVentas[i - 1].total;
+      const curr = mesesVentas[i].total;
+      const pct = (prev !== 0) ? ((curr - prev) / Math.abs(prev)) : 0;
+      crecimientoVentas.push({ de_mes: i, a_mes: i + 1, porcentaje: pct });
     }
 
     // Stats
@@ -1025,11 +1047,11 @@ async function loadReporteAnual() {
       });
     } else { raChartCard.classList.add('hidden'); }
 
-    // ── PROMEDIOS TRIMESTRALES ──
+    // ── PROMEDIOS TRIMESTRALES (ventas totales) ──
     const tblMeses = document.getElementById('ra-tbl-meses');
     tblMeses.replaceChildren();
     const TRIM_BG = ['bg-emerald-50/40','bg-amber-50/40','bg-rose-50/40','bg-violet-50/40'];
-    meses.forEach((m, idx) => {
+    mesesVentas.forEach((m, idx) => {
       const tr = document.createElement('tr');
       tr.className = TRIM_BG[Math.floor(idx / 3)];
       const tdName = document.createElement('td');
@@ -1044,7 +1066,7 @@ async function loadReporteAnual() {
 
     const tblTrims = document.getElementById('ra-tbl-trims');
     tblTrims.replaceChildren();
-    trimestres.forEach((t, i) => {
+    trimestresVentas.forEach((t, i) => {
       const trT = document.createElement('tr');
       trT.className = TRIM_BG[i];
       const tdTN = document.createElement('td');
@@ -1074,7 +1096,7 @@ async function loadReporteAnual() {
     tdTAN.textContent = 'Total anual';
     const tdTAV = document.createElement('td');
     tdTAV.className = 'px-4 py-2 text-right tabular-nums font-bold text-primary-900';
-    tdTAV.textContent = fmt(total_anual);
+    tdTAV.textContent = fmt(total_anual_ventas);
     trTA.appendChild(tdTAN); trTA.appendChild(tdTAV);
     tblTrims.appendChild(trTA);
 
@@ -1085,13 +1107,13 @@ async function loadReporteAnual() {
     tdPAN.textContent = 'Promedio anual';
     const tdPAV = document.createElement('td');
     tdPAV.className = 'px-4 py-2 text-right tabular-nums font-bold text-primary-900';
-    tdPAV.textContent = fmt(promedio_mensual);
+    tdPAV.textContent = fmt(promedio_mensual_ventas);
     trPA.appendChild(tdPAN); trPA.appendChild(tdPAV);
     tblTrims.appendChild(trPA);
 
     const tblCrec = document.getElementById('ra-tbl-crec');
     tblCrec.replaceChildren();
-    crecimiento.forEach((c, i) => {
+    crecimientoVentas.forEach((c, i) => {
       const tr = document.createElement('tr');
       const tdN = document.createElement('td');
       tdN.className = 'px-4 py-2 font-medium text-text-primary font-body';
