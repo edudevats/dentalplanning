@@ -81,6 +81,10 @@ def eliminar_ingreso(ingreso_id):
     ingreso = Ingreso.query.filter_by(
         id=ingreso_id, tenant_id=g.tenant_id
     ).first_or_404()
+    # Limpiar ligas de comisión (la FK bloquearía el borrado en MySQL).
+    PagoComisionIngreso.query.filter_by(
+        ingreso_id=ingreso.id, tenant_id=g.tenant_id
+    ).delete()
     db.session.delete(ingreso)
     db.session.commit()
     return jsonify({"message": "Ingreso eliminado"})
