@@ -83,8 +83,10 @@ class PagoComisionIngreso(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     tenant_id = db.Column(db.Integer, db.ForeignKey("tenants.id"), nullable=False)
+    # NULL = liquidación histórica (marcada como pagada en la migración inicial,
+    # sin un PagoDoctor asociado). Los pagos nuevos sí llevan pago_id.
     pago_id = db.Column(
-        db.Integer, db.ForeignKey("pagos_doctores.id"), nullable=False
+        db.Integer, db.ForeignKey("pagos_doctores.id"), nullable=True
     )
     ingreso_id = db.Column(
         db.Integer, db.ForeignKey("ingresos.id"), nullable=False
