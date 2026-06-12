@@ -57,3 +57,15 @@ class PagoDoctorSchema(Schema):
     monto = fields.Float(required=True, validate=validate.Range(min=0))
     especialista_nombre = fields.Str(dump_only=True)
     created_at = fields.DateTime(dump_only=True)
+
+
+class ComisionPagoSchema(Schema):
+    """Request para liquidar comisiones pendientes de un doctor."""
+    class Meta:
+        unknown = EXCLUDE
+
+    especialista_id = fields.Int(required=True)
+    fecha = fields.Date(required=True)
+    ingreso_ids = fields.List(
+        fields.Int(), required=True, validate=validate.Length(min=1)
+    )

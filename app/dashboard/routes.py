@@ -82,10 +82,15 @@ def resumen_mensual():
     config = ConfigConsultorio.query.filter_by(tenant_id=g.tenant_id).first()
     tasa_impuesto = config.tasa_impuesto_pct if config else 0
 
+    # Base de caja: la comisión del doctor es gasto SOLO cuando se paga (vía
+    # PagoDoctor en su fecha real), no cuando se crea el ingreso. Por eso
+    # comisiones_especialistas=0 aquí — igual que el anual y el trimestral —
+    # para no contar la comisión dos veces. total_comisiones_doctores se sigue
+    # devolviendo abajo como dato informativo (comisión generada del mes).
     er = estado_resultados(
         ventas=total_ingresos,
         comisiones_bancarias=total_comisiones_bancarias,
-        comisiones_especialistas=total_comisiones_doctores,
+        comisiones_especialistas=0,
         gastos_variables=total_gastos_variables,
         gastos_fijos=total_gastos_fijos,
         pagos_doctores=total_pagos_doctores,
@@ -115,7 +120,9 @@ def resumen_mensual():
         if day not in balance_diario:
             balance_diario[day] = {"ingresos": 0, "egresos": 0}
         balance_diario[day]["ingresos"] += i.monto
-        balance_diario[day]["egresos"] += i.comision_bancaria + i.comision_doctor
+        # La comisión del doctor NO es egreso aquí (base de caja): se cuenta
+        # como egreso cuando se paga, en el bucle de PagoDoctor de abajo.
+        balance_diario[day]["egresos"] += i.comision_bancaria
     for g_ in gastos:
         day = g_.fecha.isoformat()
         if day not in balance_diario:
@@ -202,8 +209,10 @@ def trimestral():
             extract("year", GastoOperativo.fecha) == year,
             extract("month", GastoOperativo.fecha) == month,
         ).scalar()
+        # Base de caja: solo la comisión bancaria es gasto al crear el ingreso.
+        # La comisión del doctor se cuenta cuando se paga (vía PagoDoctor).
         total_comisiones = db.session.query(
-            func.coalesce(func.sum(Ingreso.comision_bancaria + Ingreso.comision_doctor), 0)
+            func.coalesce(func.sum(Ingreso.comision_bancaria), 0)
         ).filter(
             Ingreso.tenant_id == g.tenant_id,
             extract("year", Ingreso.fecha) == year,
@@ -304,8 +313,10 @@ def distribucion():
         extract("month", GastoOperativo.fecha) == month,
     ).scalar()
 
+    # Base de caja: solo la comisión bancaria es gasto al crear el ingreso.
+    # La comisión del doctor se cuenta cuando se paga (vía PagoDoctor).
     total_comisiones = db.session.query(
-        func.coalesce(func.sum(Ingreso.comision_bancaria + Ingreso.comision_doctor), 0)
+        func.coalesce(func.sum(Ingreso.comision_bancaria), 0)
     ).filter(
         Ingreso.tenant_id == g.tenant_id,
         extract("year", Ingreso.fecha) == year,

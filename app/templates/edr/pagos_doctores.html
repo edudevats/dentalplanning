@@ -50,8 +50,9 @@
       <p class="mt-3 text-2xl font-bold font-heading tabular-nums text-secondary-700" id="stat-comisiones">$0.00</p>
       <p class="mt-1 text-xs text-text-muted font-body" id="stat-comisiones-gen">De $0.00 generado</p>
     </div>
-    <!-- Comisiones pendientes -->
-    <div class="bg-surface rounded-xl border border-border p-5 shadow-sm">
+    <!-- Comisiones pendientes (clickeable -> abre modal de pago) -->
+    <button type="button" onclick="openPendientes()"
+      class="text-left bg-surface rounded-xl border border-border p-5 shadow-sm cursor-pointer hover:border-warning-300 hover:shadow-md transition-all focus:outline-none focus:ring-2 focus:ring-warning-300">
       <div class="flex items-center justify-between">
         <p class="text-sm font-medium text-text-secondary font-body">Comisiones Pendientes</p>
         <div class="h-9 w-9 rounded-lg bg-warning-50 flex items-center justify-center">
@@ -59,8 +60,10 @@
         </div>
       </div>
       <p class="mt-3 text-2xl font-bold font-heading tabular-nums text-warning-700" id="stat-pendiente">$0.00</p>
-      <p class="mt-1 text-xs text-text-muted font-body">Por pagar a doctores</p>
-    </div>
+      <p class="mt-1 text-xs text-warning-700 font-body inline-flex items-center gap-1">
+        <i data-lucide="hand-coins" class="h-3.5 w-3.5"></i> Click para pagar
+      </p>
+    </button>
   </div>
 
   <!-- Navegación por Pestañas (Tabs) -->
@@ -150,6 +153,25 @@
       <div class="flex justify-end gap-3 px-6 py-4 border-t border-border bg-surface-alt rounded-b-2xl">
         <button type="button" onclick="Modal.close('modal-detalle-doctor')" class="inline-flex items-center justify-center gap-2 rounded-lg font-medium font-body cursor-pointer border border-border bg-surface hover:bg-surface-hover text-text-secondary px-4 py-2 text-sm min-h-[38px]">Cerrar</button>
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Comisiones Pendientes (pagar) -->
+<div id="modal-pendientes" class="hidden fixed inset-0 z-50 overflow-y-auto">
+  <div class="flex min-h-full items-end sm:items-center justify-center p-4">
+    <div class="fixed inset-0 bg-black/40" onclick="Modal.close('modal-pendientes')"></div>
+    <div class="relative bg-surface rounded-2xl shadow-xl w-full max-w-3xl">
+      <div class="flex items-center justify-between px-6 py-4 border-b border-border">
+        <div>
+          <h2 class="text-base font-semibold font-heading text-text-primary">Comisiones Pendientes de Pago</h2>
+          <p class="text-xs text-text-muted font-body mt-0.5">Selecciona las comisiones que pagaste, elige la fecha y márcalas como pagadas. Entrarán en los gastos del mes de pago.</p>
+        </div>
+        <button type="button" onclick="Modal.close('modal-pendientes')" class="p-2 rounded-lg text-text-muted hover:bg-surface-hover transition-colors cursor-pointer">
+          <i data-lucide="x" class="h-4 w-4"></i>
+        </button>
+      </div>
+      <div id="pendientes-body" class="px-6 py-5 max-h-[65vh] overflow-y-auto space-y-6"></div>
     </div>
   </div>
 </div>
@@ -616,7 +638,9 @@ async function fetchData() {
     document.getElementById('stat-total').textContent = fmt(totalPaid);
     document.getElementById('stat-salarios').textContent = fmt(totals.total_pagado_salarios || 0);
     document.getElementById('stat-comisiones').textContent = fmt(totals.total_pagado_comisiones || 0);
-    document.getElementById('stat-pendiente').textContent = fmt(totals.total_pendiente_comisiones || 0);
+    // La tarjeta "Comisiones Pendientes" muestra el pendiente de TODO el tiempo
+    // (no solo del mes), porque las comisiones se acumulan entre meses fiscales.
+    fetchPendientes();
 
     const pctSal = totalPaid > 0 ? ((totals.total_pagado_salarios / totalPaid) * 100).toFixed(0) : 0;
     document.getElementById('stat-salarios-pct').textContent = pctSal + '% del total';
@@ -704,6 +728,154 @@ async function handleDelete() {
     fetchData();
   } catch { Toast.error('Error al eliminar'); }
   finally { btn.disabled = false; txt.textContent = 'Eliminar'; }
+}
+
+// ── Comisiones pendientes ──
+let pendientesData = { total_pendiente: 0, doctores: [] };
+
+async function fetchPendientes() {
+  try {
+    pendientesData = await API.get('/edr/comisiones/pendientes') ?? { total_pendiente: 0, doctores: [] };
+  } catch { pendientesData = { total_pendiente: 0, doctores: [] }; }
+  document.getElementById('stat-pendiente').textContent = fmt(pendientesData.total_pendiente || 0);
+}
+
+function todayISO() {
+  const d = new Date();
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+
+function openPendientes() {
+  renderPendientes();
+  Modal.open('modal-pendientes');
+}
+
+function renderPendientes() {
+  const body = document.getElementById('pendientes-body');
+  body.innerHTML = '';
+
+  if (!pendientesData.doctores || pendientesData.doctores.length === 0) {
+    const empty = domEl('div', 'text-center py-12');
+    empty.appendChild(domEl('p', 'text-sm text-text-muted font-body', 'No hay comisiones pendientes de pago. ¡Todo al día!'));
+    body.appendChild(empty);
+    lucide.createIcons();
+    return;
+  }
+
+  pendientesData.doctores.forEach(doc => {
+    const card = domEl('div', 'rounded-xl border border-border overflow-hidden');
+
+    // Encabezado del doctor
+    const head = domEl('div', 'flex items-center justify-between gap-3 px-4 py-3 bg-surface-alt border-b border-border');
+    const left = domEl('div', 'flex items-center gap-2');
+    const cbAll = document.createElement('input');
+    cbAll.type = 'checkbox';
+    cbAll.className = 'h-4 w-4 rounded border-border text-primary-600 cursor-pointer';
+    cbAll.id = 'cb-all-' + doc.especialista_id;
+    cbAll.addEventListener('change', () => {
+      card.querySelectorAll('input.cb-com-' + doc.especialista_id).forEach(c => { c.checked = cbAll.checked; });
+      updateDoctorTotal(doc.especialista_id);
+    });
+    const nameWrap = domEl('div', '');
+    nameWrap.appendChild(domEl('p', 'text-sm font-semibold text-text-primary', doc.especialista_nombre));
+    nameWrap.appendChild(domEl('p', 'text-xs text-text-muted', doc.comisiones.length + ' comisión(es) · pendiente ' + fmt(doc.total_pendiente)));
+    left.appendChild(cbAll);
+    left.appendChild(nameWrap);
+
+    const right = domEl('div', 'flex items-center gap-2');
+    const dateInput = document.createElement('input');
+    dateInput.type = 'date';
+    dateInput.value = todayISO();
+    dateInput.id = 'fecha-pago-' + doc.especialista_id;
+    dateInput.className = 'rounded-lg border border-border px-2 py-1.5 text-xs font-body bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300';
+    const payBtn = domEl('button', 'inline-flex items-center gap-1.5 rounded-lg bg-primary-500 hover:bg-primary-600 text-white px-3 py-1.5 text-xs font-medium cursor-pointer');
+    payBtn.type = 'button';
+    payBtn.appendChild(domIcon('check', 'h-3.5 w-3.5'));
+    const payTxt = document.createElement('span');
+    payTxt.id = 'pay-txt-' + doc.especialista_id;
+    payTxt.textContent = 'Pagar seleccionadas';
+    payBtn.appendChild(payTxt);
+    payBtn.addEventListener('click', () => pagarComisiones(doc.especialista_id, payBtn));
+    right.appendChild(dateInput);
+    right.appendChild(payBtn);
+
+    head.appendChild(left);
+    head.appendChild(right);
+    card.appendChild(head);
+
+    // Tabla de comisiones
+    const tbl = document.createElement('table');
+    tbl.className = 'w-full text-sm';
+    const thead = document.createElement('thead');
+    thead.className = 'text-xs text-text-muted';
+    thead.innerHTML = '<tr class="border-b border-border">' +
+      '<th class="py-2 px-3 w-8"></th>' +
+      '<th class="py-2 px-3 text-left font-medium">Fecha</th>' +
+      '<th class="py-2 px-3 text-left font-medium">Paciente</th>' +
+      '<th class="py-2 px-3 text-left font-medium">Tratamiento</th>' +
+      '<th class="py-2 px-3 text-right font-medium">Comisión</th></tr>';
+    tbl.appendChild(thead);
+    const tbody = document.createElement('tbody');
+    doc.comisiones.forEach(c => {
+      const tr = document.createElement('tr');
+      tr.className = 'border-b border-border last:border-0';
+      const tdCb = document.createElement('td');
+      tdCb.className = 'py-2 px-3';
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.className = 'h-4 w-4 rounded border-border text-primary-600 cursor-pointer cb-com-' + doc.especialista_id;
+      cb.value = String(c.ingreso_id);
+      cb.dataset.monto = String(c.comision_doctor);
+      cb.addEventListener('change', () => updateDoctorTotal(doc.especialista_id));
+      tdCb.appendChild(cb);
+      tr.appendChild(tdCb);
+      tr.appendChild(tdText('py-2 px-3 text-left', formatDate(c.fecha)));
+      tr.appendChild(tdText('py-2 px-3 text-left', c.paciente));
+      tr.appendChild(tdText('py-2 px-3 text-left font-medium text-text-primary', c.nombre_tratamiento));
+      tr.appendChild(tdText('py-2 px-3 text-right tabular-nums text-secondary-700', fmt(c.comision_doctor)));
+      tbody.appendChild(tr);
+    });
+    tbl.appendChild(tbody);
+    card.appendChild(tbl);
+    body.appendChild(card);
+  });
+  lucide.createIcons();
+}
+
+function tdText(cls, text) {
+  const td = document.createElement('td');
+  td.className = cls;
+  td.textContent = text;
+  return td;
+}
+
+function updateDoctorTotal(espId) {
+  // (placeholder para futuras mejoras: mostrar total seleccionado)
+}
+
+async function pagarComisiones(espId, btn) {
+  const checks = Array.from(document.querySelectorAll('input.cb-com-' + espId)).filter(c => c.checked);
+  if (checks.length === 0) { Toast.warning('Selecciona al menos una comisión'); return; }
+  const fecha = document.getElementById('fecha-pago-' + espId).value;
+  if (!fecha) { Toast.warning('Elige la fecha de pago'); return; }
+  const ingreso_ids = checks.map(c => Number(c.value));
+
+  const txt = document.getElementById('pay-txt-' + espId);
+  btn.disabled = true;
+  const prev = txt.textContent;
+  txt.textContent = 'Pagando...';
+  try {
+    await API.post('/edr/comisiones/pagar', { especialista_id: espId, fecha, ingreso_ids });
+    Toast.success('Comisiones pagadas');
+    await fetchPendientes();
+    renderPendientes();
+    fetchData();
+    if (!pendientesData.doctores || pendientesData.doctores.length === 0) Modal.close('modal-pendientes');
+  } catch {
+    Toast.error('Error al registrar el pago');
+    btn.disabled = false;
+    txt.textContent = prev;
+  }
 }
 
 async function init() {

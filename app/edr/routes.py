@@ -2,8 +2,13 @@ from flask import Blueprint, request, jsonify, g
 from sqlalchemy import extract
 from app.extensions import db
 from app.middleware.tenant import require_auth, require_role
-from app.edr.models import Ingreso, GastoOperativo, PagoDoctor
-from app.edr.schemas import IngresoSchema, GastoOperativoSchema, PagoDoctorSchema
+from app.edr.models import Ingreso, GastoOperativo, PagoDoctor, PagoComisionIngreso
+from app.edr.schemas import (
+    IngresoSchema,
+    GastoOperativoSchema,
+    PagoDoctorSchema,
+    ComisionPagoSchema,
+)
 from app.ajustes.models import Especialista
 from app.configuracion.models import ConfigConsultorio
 from app.tratamientos.models import Tratamiento
@@ -189,9 +194,141 @@ def eliminar_pago(pago_id):
     pago = PagoDoctor.query.filter_by(
         id=pago_id, tenant_id=g.tenant_id
     ).first_or_404()
+    # Si el pago liquidó comisiones, soltar las ligas: esos ingresos vuelven a
+    # quedar pendientes.
+    PagoComisionIngreso.query.filter_by(
+        pago_id=pago.id, tenant_id=g.tenant_id
+    ).delete()
     db.session.delete(pago)
     db.session.commit()
     return jsonify({"message": "Pago eliminado"})
+
+
+# ── COMISIONES PENDIENTES ──
+
+def _ingresos_liquidados_ids(tenant_id):
+    """Set de ingreso_id que ya tienen su comisión liquidada (tenant)."""
+    filas = PagoComisionIngreso.query.filter_by(tenant_id=tenant_id).all()
+    return {f.ingreso_id for f in filas}
+
+
+@edr_bp.route("/comisiones/pendientes", methods=["GET"])
+@require_auth
+def comisiones_pendientes():
+    """Todas las comisiones sin liquidar (de cualquier mes), agrupadas por doctor.
+
+    Una comisión está pendiente si su Ingreso tiene comision_doctor > 0 y no
+    tiene fila en pago_comision_ingreso.
+    """
+    especialista_filtro = request.args.get("especialista_id", type=int)
+
+    liquidados = _ingresos_liquidados_ids(g.tenant_id)
+
+    q = Ingreso.query.filter(
+        Ingreso.tenant_id == g.tenant_id,
+        Ingreso.comision_doctor > 0,
+        Ingreso.especialista_id.isnot(None),
+    )
+    if especialista_filtro:
+        q = q.filter(Ingreso.especialista_id == especialista_filtro)
+    ingresos = q.order_by(Ingreso.fecha).all()
+
+    por_doctor = {}
+    total_pendiente = 0.0
+    for i in ingresos:
+        if i.id in liquidados:
+            continue
+        grupo = por_doctor.setdefault(i.especialista_id, {
+            "especialista_id": i.especialista_id,
+            "especialista_nombre": i.especialista.nombre if i.especialista else "—",
+            "total_pendiente": 0.0,
+            "comisiones": [],
+        })
+        comision = round(i.comision_doctor or 0.0, 2)
+        grupo["comisiones"].append({
+            "ingreso_id": i.id,
+            "fecha": i.fecha.isoformat(),
+            "paciente": i.paciente or "Paciente",
+            "nombre_tratamiento": i.nombre_tratamiento
+                or (i.tratamiento.nombre if i.tratamiento else "Tratamiento"),
+            "monto": round(i.monto, 2),
+            "comision_doctor": comision,
+        })
+        grupo["total_pendiente"] += comision
+        total_pendiente += comision
+
+    doctores = sorted(por_doctor.values(), key=lambda d: d["especialista_nombre"])
+    for d in doctores:
+        d["total_pendiente"] = round(d["total_pendiente"], 2)
+
+    return jsonify({
+        "total_pendiente": round(total_pendiente, 2),
+        "doctores": doctores,
+    })
+
+
+@edr_bp.route("/comisiones/pagar", methods=["POST"])
+@require_auth
+@require_role("admin", "editor")
+def pagar_comisiones():
+    """Liquida las comisiones de los ingresos indicados en una sola fecha.
+
+    Crea un PagoDoctor (tipo comisión) en la fecha elegida + filas puente que
+    ligan ese pago a cada ingreso. Atómico: si algo no valida, no crea nada.
+    """
+    data = ComisionPagoSchema().load(request.get_json() or {})
+    especialista_id = data["especialista_id"]
+    fecha = data["fecha"]
+    ingreso_ids = data["ingreso_ids"]
+
+    # El especialista debe pertenecer al tenant.
+    esp = Especialista.query.filter_by(
+        id=especialista_id, tenant_id=g.tenant_id
+    ).first()
+    if not esp:
+        return jsonify({"error": "Especialista no encontrado"}), 400
+
+    ingresos = Ingreso.query.filter(
+        Ingreso.tenant_id == g.tenant_id,
+        Ingreso.id.in_(ingreso_ids),
+    ).all()
+
+    # Validar que todos existan, sean del doctor y tengan comisión.
+    if len(ingresos) != len(set(ingreso_ids)):
+        return jsonify({"error": "Algún ingreso no existe o no es de este consultorio"}), 400
+    for i in ingresos:
+        if i.especialista_id != especialista_id:
+            return jsonify({"error": "Algún ingreso no pertenece al especialista indicado"}), 400
+        if not (i.comision_doctor and i.comision_doctor > 0):
+            return jsonify({"error": "Algún ingreso no tiene comisión por pagar"}), 400
+
+    # Ninguno debe estar ya liquidado.
+    ya_liquidados = _ingresos_liquidados_ids(g.tenant_id)
+    if any(i.id in ya_liquidados for i in ingresos):
+        return jsonify({"error": "Alguna comisión ya fue pagada"}), 400
+
+    total = round(sum(i.comision_doctor for i in ingresos), 2)
+    pago = PagoDoctor(
+        tenant_id=g.tenant_id,
+        fecha=fecha,
+        especialista_id=especialista_id,
+        concepto=f"Pago de {len(ingresos)} comisión(es)",
+        tipo="comision",
+        monto=total,
+    )
+    db.session.add(pago)
+    db.session.flush()  # obtener pago.id
+
+    for i in ingresos:
+        db.session.add(PagoComisionIngreso(
+            tenant_id=g.tenant_id,
+            pago_id=pago.id,
+            ingreso_id=i.id,
+            monto=round(i.comision_doctor, 2),
+        ))
+
+    db.session.commit()
+    return jsonify(PagoDoctorSchema().dump(pago)), 201
 
 
 @edr_bp.route("/pagos-doctores/resumen", methods=["GET"])
@@ -220,11 +357,15 @@ def resumen_pagos_doctores():
         extract("month", PagoDoctor.fecha) == month,
     ).all()
 
+    # Ingresos ya liquidados (su comisión ya se pagó, cualquier mes).
+    liquidados = _ingresos_liquidados_ids(g.tenant_id)
+
     resumen_doctores = []
     
     total_tratamientos = 0
     total_generado_comisiones = 0
     total_pagado_comisiones = 0
+    total_pendiente_comisiones = 0
     total_pagado_salarios = 0
     total_generado = 0
     total_ganancia = 0
@@ -284,7 +425,13 @@ def resumen_pagos_doctores():
         total_gen_esp = round(total_gen_esp, 2)
         total_ganancia_esp = round(total_ganancia_esp, 2)
         comision_generada = round(comision_generada, 2)
-        comision_pendiente = round(comision_generada - comision_pagada, 2)
+        # Pendiente = comisión de ingresos de ESTE mes aún no liquidados
+        # (por-ingreso, no aritmética generada-pagada del mes).
+        comision_pendiente = round(sum(
+            i.comision_doctor or 0.0
+            for i in ingresos_esp
+            if i.id not in liquidados
+        ), 2)
 
         # Agregar al total general si el doctor tiene actividad o pagos en el mes
         if esp.is_active or tratamientos_count > 0 or comision_pagada > 0 or salario_pagado > 0:
@@ -304,6 +451,7 @@ def resumen_pagos_doctores():
             total_tratamientos += tratamientos_count
             total_generado_comisiones += comision_generada
             total_pagado_comisiones += comision_pagada
+            total_pendiente_comisiones += comision_pendiente
             total_pagado_salarios += salario_pagado
             total_generado += total_gen_esp
             total_ganancia += total_ganancia_esp
@@ -315,7 +463,7 @@ def resumen_pagos_doctores():
             "total_tratamientos": total_tratamientos,
             "total_generado_comisiones": round(total_generado_comisiones, 2),
             "total_pagado_comisiones": round(total_pagado_comisiones, 2),
-            "total_pendiente_comisiones": round(total_generado_comisiones - total_pagado_comisiones, 2),
+            "total_pendiente_comisiones": round(total_pendiente_comisiones, 2),
             "total_pagado_salarios": round(total_pagado_salarios, 2),
             "total_generado": round(total_generado, 2),
             "total_ganancia": round(total_ganancia, 2)
