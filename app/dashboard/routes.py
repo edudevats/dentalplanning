@@ -77,16 +77,21 @@ def resumen_mensual():
         extract("year", GastoOperativo.fecha) == year,
         extract("month", GastoOperativo.fecha) == month,
     ).all()
-    # El impuesto es un gasto aparte: se EXCLUYE tanto de fijos como de variables
-    # del EdR (va en su propia línea) sin importar el tipo con que se registró,
-    # para que nunca descuadre utilidad_neta ni deje gastos_fijos en negativo.
     def _es_impuesto(g_):
         return bool(g_.concepto and g_.concepto.es_impuesto)
     total_impuestos = sum(g_.monto for g_ in gastos if _es_impuesto(g_))
-    total_gastos_fijos = sum(
+    # Totales para DISPLAY: el impuesto cuenta como un gasto operativo más (igual
+    # que cualquier otro), para que dashboard, comparativas y stat cards lo
+    # incluyan. El impuesto SOLO se separa en el Estado de Resultados (abajo).
+    total_gastos_fijos = sum(g_.monto for g_ in gastos if g_.tipo == "fijo")
+    total_gastos_variables = sum(g_.monto for g_ in gastos if g_.tipo == "variable")
+    # Sumas para utilidad_neta / Estado de Resultados: EXCLUYEN el impuesto (va en
+    # su propia línea) sin importar el tipo con que se registró, para no descuadrar
+    # la utilidad ni dejar gastos_fijos negativo.
+    fijos_sin_impuesto = sum(
         g_.monto for g_ in gastos if g_.tipo == "fijo" and not _es_impuesto(g_)
     )
-    total_gastos_variables = sum(
+    variables_sin_impuesto = sum(
         g_.monto for g_ in gastos if g_.tipo == "variable" and not _es_impuesto(g_)
     )
 
@@ -115,8 +120,8 @@ def resumen_mensual():
         ventas=total_ingresos,
         comisiones_bancarias=total_comisiones_bancarias,
         comisiones_especialistas=0,
-        gastos_variables=total_gastos_variables,
-        gastos_fijos=total_gastos_fijos,
+        gastos_variables=variables_sin_impuesto,
+        gastos_fijos=fijos_sin_impuesto,
         pagos_doctores=total_pagos_doctores,
         tasa_impuesto_pct=tasa_impuesto,
         impuestos=total_impuestos,
@@ -197,7 +202,8 @@ def resumen_mensual():
             "gastos_variables": round(gastos_variables_er, 2),
             "utilidad_bruta": round(utilidad_bruta, 2),
             "pct_utilidad_bruta": round(pct_utilidad_bruta, 4),
-            "gastos_fijos": round(total_gastos_fijos, 2),
+            # Gastos Fijos del EdR EXCLUYE impuestos (el impuesto va en su línea)
+            "gastos_fijos": round(er["gastos_fijos"], 2),
             "utilidad_antes_impuestos": round(utilidad_antes_impuestos, 2),
             # Impuestos: monto REAL registrado (su propia línea, no reduce utilidad_neta)
             "tasa_impuesto_pct": tasa_impuesto,

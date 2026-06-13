@@ -745,7 +745,7 @@ async function loadMensual() {
     ]);
 
     const ing = resumen.total_ingresos || 0;
-    const gas = (resumen.gastos_fijos || 0) + (resumen.impuestos || 0) + (resumen.gastos_variables || 0);
+    const gas = (resumen.gastos_fijos || 0) + (resumen.gastos_variables || 0);
     const pag = resumen.total_pagos_doctores || 0;
     const gan = resumen.utilidad_neta != null ? resumen.utilidad_neta : (ing - gas - pag);
     document.getElementById('m-stat-ing').textContent = fmt(ing);
@@ -802,7 +802,9 @@ async function loadMensual() {
     const salarios   = desglose.salarios   || 0;
     const comisiones = desglose.comisiones || 0;
     renderGastosDesglose('m-tbl-gas', {
-      gastos_fijos:          resumen.gastos_fijos || 0,
+      // "Gastos Fijos" del desglose va SIN impuestos (estos llevan su propia
+      // línea); el total sigue cuadrando: (fijos sin imp) + impuestos + variables.
+      gastos_fijos:          (resumen.gastos_fijos || 0) - (resumen.impuestos || 0),
       impuestos:             resumen.impuestos || 0,
       gastos_variables:      resumen.gastos_variables || 0,
       total_pagos_doctores:  resumen.total_pagos_doctores || 0,
