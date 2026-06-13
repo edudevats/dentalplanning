@@ -37,6 +37,7 @@ class GastoConcepto(db.Model):
     nombre = db.Column(db.String(200), nullable=False)
     tipo = db.Column(db.String(20), default="fijo")  # fijo / variable
     categoria = db.Column(db.String(20), default="operativo")  # operativo / pago_doctor
+    es_impuesto = db.Column(db.Boolean, default=False, nullable=False)
 
     __table_args__ = (
         db.UniqueConstraint("tenant_id", "nombre", name="uq_tenant_gasto_concepto"),
@@ -116,3 +117,28 @@ class DistribucionCategoria(db.Model):
     __table_args__ = (
         db.UniqueConstraint("tenant_id", "nombre", name="uq_tenant_dist_categoria"),
     )
+
+
+def ensure_impuesto_concepto(session, tenant_id):
+    """Crea (o marca) el concepto de gasto 'Impuestos' de un tenant.
+
+    Idempotente: si ya existe un concepto llamado 'Impuestos', lo marca
+    es_impuesto=True en vez de duplicar (respeta el UniqueConstraint
+    tenant_id+nombre). Devuelve el concepto.
+    """
+    existing = GastoConcepto.query.filter_by(
+        tenant_id=tenant_id, nombre="Impuestos"
+    ).first()
+    if existing:
+        if not existing.es_impuesto:
+            existing.es_impuesto = True
+        return existing
+    concepto = GastoConcepto(
+        tenant_id=tenant_id,
+        nombre="Impuestos",
+        tipo="fijo",
+        categoria="operativo",
+        es_impuesto=True,
+    )
+    session.add(concepto)
+    return concepto

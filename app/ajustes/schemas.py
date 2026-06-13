@@ -34,6 +34,7 @@ class GastoConceptoSchema(Schema):
         load_default="operativo",
         validate=validate.OneOf(["operativo", "pago_doctor"]),
     )
+    es_impuesto = fields.Bool(dump_only=True)
 
 
 class EstrategiaMarketingSchema(Schema):

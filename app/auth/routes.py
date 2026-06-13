@@ -15,7 +15,7 @@ from app.auth.schemas import RegisterSchema, LoginSchema, InviteSchema, ChangePa
 from app.middleware.tenant import require_auth, require_role
 from app.middleware.rate_limit import rate_limit
 from app.configuracion.models import ConfigConsultorio
-from app.ajustes.models import DistribucionConfig
+from app.ajustes.models import DistribucionConfig, ensure_impuesto_concepto
 from app.superadmin.models import Plan, Subscription, Payment, SUBSCRIPTION_ACTIVA
 
 auth_bp = Blueprint("auth", __name__, url_prefix="/api/v1/auth")
@@ -142,6 +142,7 @@ def register():
 
     distribucion = DistribucionConfig(tenant_id=tenant.id)
     db.session.add(distribucion)
+    ensure_impuesto_concepto(db.session, tenant.id)
 
     today = date.today()
     if plan.es_temporal and plan.dias_expiracion:

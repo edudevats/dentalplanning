@@ -18,13 +18,16 @@ Glosario de nombres canónicos (usar SIEMPRE estos):
   gastos_variables_totales       comisiones + gastos_variables + pagos_doctores
   utilidad_bruta                 ventas - gastos_variables_totales
   utilidad_neta                  utilidad_bruta - gastos_fijos   (ANTES de impuestos)
+  impuestos                      Impuesto REAL pagado en el periodo (parámetro)
   impuestos_estimados            SOLO informativo: utilidad_neta * tasa_impuesto
-  utilidad_despues_impuestos     utilidad_neta - impuestos_estimados (informativo)
+  utilidad_despues_impuestos     utilidad_neta - impuestos (solo para presentación)
 ─────────────────────────────────────────────────────────────────────────────
 
-IMPORTANTE sobre impuestos: son una ESTIMACIÓN informativa. No se restan de
-`utilidad_neta` ni se usan en la distribución de ingresos ni en ningún otro
-cálculo de la app. Solo se muestran como referencia de "cuánto podrías pagar".
+IMPORTANTE sobre impuestos: `utilidad_neta` es SIEMPRE antes de impuestos y
+es la base de la distribución de ingresos — no cambia. `impuestos` recibe el
+monto real pagado; `utilidad_despues_impuestos` = utilidad_neta - impuestos
+es SOLO para mostrar en pantalla. `impuestos_estimados` se conserva por
+compatibilidad como estimación informativa (utilidad_neta * tasa_impuesto_pct).
 """
 from datetime import date
 
@@ -87,7 +90,7 @@ def ganancia_tratamiento(precio, costo_materiales, comision_bancaria,
 
 def estado_resultados(*, ventas, comisiones_bancarias, comisiones_especialistas,
                       gastos_variables, gastos_fijos, pagos_doctores,
-                      tasa_impuesto_pct=0.0):
+                      tasa_impuesto_pct=0.0, impuestos=0.0):
     """Estado de Resultados canónico de un periodo.
 
     Una sola definición usada por el resumen mensual, el trimestral y la
@@ -109,12 +112,16 @@ def estado_resultados(*, ventas, comisiones_bancarias, comisiones_especialistas,
     utilidad_neta = utilidad_bruta - gastos_fijos
     pct_utilidad = utilidad_neta / ventas if ventas > 0 else 0
 
-    # Impuestos: estimación SOLO informativa (no afecta utilidad_neta)
+    # Impuestos REALES pagados (registrados como gasto). Reemplazan la
+    # estimación por porcentaje para la línea del Estado de Resultados.
+    impuestos_pagados = round(impuestos, 2)
+    utilidad_despues_impuestos = utilidad_neta - impuestos_pagados
+
+    # Estimación legacy (informativa) — conservada por compatibilidad.
     impuestos_estimados = (
         round(utilidad_neta * tasa_impuesto_pct / 100, 2)
         if utilidad_neta > 0 and tasa_impuesto_pct > 0 else 0
     )
-    utilidad_despues_impuestos = utilidad_neta - impuestos_estimados
 
     # Punto de equilibrio (Excel: -GASTOS_FIJOS / %UTILIDAD_BRUTA)
     punto_equilibrio = (
@@ -134,6 +141,7 @@ def estado_resultados(*, ventas, comisiones_bancarias, comisiones_especialistas,
         "utilidad_neta": utilidad_neta,
         "pct_utilidad": pct_utilidad,
         "tasa_impuesto_pct": tasa_impuesto_pct,
+        "impuestos": impuestos_pagados,
         "impuestos_estimados": impuestos_estimados,
         "utilidad_despues_impuestos": utilidad_despues_impuestos,
         "punto_equilibrio": punto_equilibrio,
