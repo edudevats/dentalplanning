@@ -1,31 +1,17 @@
 from datetime import date
 from flask import Blueprint, request, jsonify, g
-from sqlalchemy import extract, func, or_
+from sqlalchemy import extract, func
 from app.extensions import db
 from app.middleware.tenant import require_auth
 from app.edr.models import Ingreso, GastoOperativo, PagoDoctor
 from app.tratamientos.models import Tratamiento
 from app.configuracion.models import ConfigConsultorio
-from app.ajustes.models import DistribucionConfig, DistribucionCategoria, DIST_CATEGORIAS_DEFAULT, GastoConcepto
+from app.ajustes.models import DistribucionConfig, DistribucionCategoria, DIST_CATEGORIAS_DEFAULT
 from app.engine.pricing_engine import generar_dashboard_ganancias
 # parse_mes y el Estado de Resultados canónico viven en el núcleo contable
 from app.engine.accounting import parse_mes as _parse_mes, estado_resultados
 
 dashboard_bp = Blueprint("dashboard", __name__, url_prefix="/api/v1")
-
-
-def _sum_impuestos(tenant_id, year, month):
-    """Suma de gastos del mes cuyo concepto está marcado es_impuesto."""
-    return float(db.session.query(
-        func.coalesce(func.sum(GastoOperativo.monto), 0)
-    ).join(
-        GastoConcepto, GastoOperativo.concepto_id == GastoConcepto.id
-    ).filter(
-        GastoOperativo.tenant_id == tenant_id,
-        GastoConcepto.es_impuesto.is_(True),
-        extract("year", GastoOperativo.fecha) == year,
-        extract("month", GastoOperativo.fecha) == month,
-    ).scalar())
 
 
 # ── DASHBOARD GANANCIAS (réplica hoja Ganancias del Excel PRECIOS) ──
@@ -80,20 +66,17 @@ def resumen_mensual():
     def _es_impuesto(g_):
         return bool(g_.concepto and g_.concepto.es_impuesto)
     total_impuestos = sum(g_.monto for g_ in gastos if _es_impuesto(g_))
-    # Totales para DISPLAY: el impuesto cuenta como un gasto operativo más (igual
-    # que cualquier otro), para que dashboard, comparativas y stat cards lo
-    # incluyan. El impuesto SOLO se separa en el Estado de Resultados (abajo).
+    # El impuesto es un gasto fijo MÁS: cuenta en los totales de gastos como
+    # cualquier otro y reduce la utilidad neta. Solo se separa en una línea del
+    # Estado de Resultados para mostrar cuánto se pagó.
     total_gastos_fijos = sum(g_.monto for g_ in gastos if g_.tipo == "fijo")
     total_gastos_variables = sum(g_.monto for g_ in gastos if g_.tipo == "variable")
-    # Sumas para utilidad_neta / Estado de Resultados: EXCLUYEN el impuesto (va en
-    # su propia línea) sin importar el tipo con que se registró, para no descuadrar
-    # la utilidad ni dejar gastos_fijos negativo.
-    fijos_sin_impuesto = sum(
-        g_.monto for g_ in gastos if g_.tipo == "fijo" and not _es_impuesto(g_)
+    # Para la fila "Gastos Fijos" del EdR (sin el impuesto que sea fijo, porque
+    # ese va en su propia línea). Nunca negativo: es un subconjunto de los fijos.
+    impuestos_fijos = sum(
+        g_.monto for g_ in gastos if g_.tipo == "fijo" and _es_impuesto(g_)
     )
-    variables_sin_impuesto = sum(
-        g_.monto for g_ in gastos if g_.tipo == "variable" and not _es_impuesto(g_)
-    )
+    gastos_fijos_edr = total_gastos_fijos - impuestos_fijos
 
     # Pagos a doctores (unificados: salario + comision)
     pagos = PagoDoctor.query.filter(
@@ -120,8 +103,8 @@ def resumen_mensual():
         ventas=total_ingresos,
         comisiones_bancarias=total_comisiones_bancarias,
         comisiones_especialistas=0,
-        gastos_variables=variables_sin_impuesto,
-        gastos_fijos=fijos_sin_impuesto,
+        gastos_variables=total_gastos_variables,
+        gastos_fijos=total_gastos_fijos,
         pagos_doctores=total_pagos_doctores,
         tasa_impuesto_pct=tasa_impuesto,
         impuestos=total_impuestos,
@@ -131,10 +114,10 @@ def resumen_mensual():
     gastos_variables_er = er["gastos_variables_totales"]
     utilidad_bruta = er["utilidad_bruta"]
     pct_utilidad_bruta = er["pct_utilidad_bruta"]
-    # utilidad antes de impuestos == utilidad neta canónica. El impuesto REAL se
-    # registra como gasto y se muestra en su propia línea; no reduce utilidad_neta
-    # (ni la distribución), solo la utilidad_despues_impuestos.
-    utilidad_antes_impuestos = er["utilidad_neta"]
+    # El impuesto ya está dentro de gastos_fijos: utilidad_neta queda DESPUÉS de
+    # impuestos (ganancia neta y base de distribución). utilidad_antes_impuestos
+    # es solo para la fila del reporte.
+    utilidad_antes_impuestos = er["utilidad_antes_impuestos"]
     utilidad_neta = er["utilidad_neta"]
     utilidad_despues_impuestos = er["utilidad_despues_impuestos"]
     pct_utilidad = er["pct_utilidad"]
@@ -202,8 +185,8 @@ def resumen_mensual():
             "gastos_variables": round(gastos_variables_er, 2),
             "utilidad_bruta": round(utilidad_bruta, 2),
             "pct_utilidad_bruta": round(pct_utilidad_bruta, 4),
-            # Gastos Fijos del EdR EXCLUYE impuestos (el impuesto va en su línea)
-            "gastos_fijos": round(er["gastos_fijos"], 2),
+            # Gastos Fijos del EdR EXCLUYE el impuesto fijo (el impuesto va en su línea)
+            "gastos_fijos": round(gastos_fijos_edr, 2),
             "utilidad_antes_impuestos": round(utilidad_antes_impuestos, 2),
             # Impuestos: monto REAL registrado (su propia línea, no reduce utilidad_neta)
             "tasa_impuesto_pct": tasa_impuesto,
@@ -257,17 +240,15 @@ def trimestral():
             extract("month", PagoDoctor.fecha) == month,
         ).scalar()
 
-        total_imp_mes = _sum_impuestos(g.tenant_id, year, month)
-
         # utilidad_neta con la MISMA definición que el resumen y la distribución.
         # Aquí los gastos operativos van lumpeados (el trimestral no separa
-        # fijo/variable); el resultado de utilidad_neta es idéntico.
-        # Se excluyen los impuestos para preservar el invariante de utilidad_neta.
+        # fijo/variable) e INCLUYEN el impuesto como un gasto más, así que
+        # utilidad_neta queda después de impuestos igual que en el resumen.
         er = estado_resultados(
             ventas=float(total_ing),
             comisiones_bancarias=float(total_comisiones),
             comisiones_especialistas=0,
-            gastos_variables=float(total_gas) - total_imp_mes,
+            gastos_variables=float(total_gas),
             gastos_fijos=0,
             pagos_doctores=float(total_pagos_doc),
         )
@@ -338,21 +319,11 @@ def distribucion():
         extract("month", Ingreso.fecha) == month,
     ).scalar()
 
-    # Los gastos de impuesto se EXCLUYEN de las sumas (van fuera del cálculo de
-    # ingreso_neto, igual que en el resumen) sin importar su tipo.
-    _no_impuesto = or_(
-        GastoConcepto.es_impuesto.is_(False),
-        GastoConcepto.es_impuesto.is_(None),  # gasto sin concepto (outer join)
-    )
-
     total_gastos_var = db.session.query(
         func.coalesce(func.sum(GastoOperativo.monto), 0)
-    ).outerjoin(
-        GastoConcepto, GastoOperativo.concepto_id == GastoConcepto.id
     ).filter(
         GastoOperativo.tenant_id == g.tenant_id,
         GastoOperativo.tipo == "variable",
-        _no_impuesto,
         extract("year", GastoOperativo.fecha) == year,
         extract("month", GastoOperativo.fecha) == month,
     ).scalar()
@@ -369,12 +340,9 @@ def distribucion():
 
     total_gastos_fijos = db.session.query(
         func.coalesce(func.sum(GastoOperativo.monto), 0)
-    ).outerjoin(
-        GastoConcepto, GastoOperativo.concepto_id == GastoConcepto.id
     ).filter(
         GastoOperativo.tenant_id == g.tenant_id,
         GastoOperativo.tipo == "fijo",
-        _no_impuesto,
         extract("year", GastoOperativo.fecha) == year,
         extract("month", GastoOperativo.fecha) == month,
     ).scalar()
@@ -387,9 +355,9 @@ def distribucion():
         extract("month", PagoDoctor.fecha) == month,
     ).scalar()
 
-    # ingreso_neto = utilidad_neta canónica (misma función que el resumen).
-    # Los impuestos ya están excluidos de gastos_var/gastos_fijos, así que el
-    # invariante utilidad_neta ≡ ingreso_neto se preserva.
+    # ingreso_neto = utilidad_neta canónica (misma función que el resumen). Los
+    # gastos INCLUYEN el impuesto (un gasto más), así que ingreso_neto queda
+    # después de impuestos, igual que el resumen ⇒ invariante preservada.
     er = estado_resultados(
         ventas=float(total_ingresos),
         comisiones_bancarias=float(total_comisiones),

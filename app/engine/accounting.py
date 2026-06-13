@@ -17,17 +17,21 @@ Glosario de nombres canónicos (usar SIEMPRE estos):
   pagos_doctores                 Suma de PagoDoctor.monto (salario + comisión)
   gastos_variables_totales       comisiones + gastos_variables + pagos_doctores
   utilidad_bruta                 ventas - gastos_variables_totales
-  utilidad_neta                  utilidad_bruta - gastos_fijos   (ANTES de impuestos)
+  gastos_fijos (parámetro)       Gastos fijos del periodo, INCLUYENDO el impuesto
+  utilidad_neta                  utilidad_bruta - gastos_fijos   (DESPUÉS de impuestos)
   impuestos                      Impuesto REAL pagado en el periodo (parámetro)
-  impuestos_estimados            SOLO informativo: utilidad_neta * tasa_impuesto
-  utilidad_despues_impuestos     utilidad_neta - impuestos (solo para presentación)
+  utilidad_antes_impuestos       utilidad_neta + impuestos   (solo para el reporte)
+  impuestos_estimados            SOLO informativo: utilidad_antes_impuestos * tasa
+  utilidad_despues_impuestos     == utilidad_neta (después de impuestos)
 ─────────────────────────────────────────────────────────────────────────────
 
-IMPORTANTE sobre impuestos: `utilidad_neta` es SIEMPRE antes de impuestos y
-es la base de la distribución de ingresos — no cambia. `impuestos` recibe el
-monto real pagado; `utilidad_despues_impuestos` = utilidad_neta - impuestos
-es SOLO para mostrar en pantalla. `impuestos_estimados` se conserva por
-compatibilidad como estimación informativa (utilidad_neta * tasa_impuesto_pct).
+IMPORTANTE sobre impuestos: el impuesto es un gasto fijo MÁS. `gastos_fijos`
+que se pasa a la función YA lo incluye, de modo que `utilidad_neta` (ganancia
+neta y base de la distribución) queda DESPUÉS de impuestos — el impuesto reduce
+la utilidad como cualquier otro gasto. `impuestos` recibe el monto real solo
+para el REPORTE: permite mostrar `utilidad_antes_impuestos` y la línea
+"Impuestos" (informativa; el monto ya está descontado en utilidad_neta).
+`impuestos_estimados` se conserva por compatibilidad como estimación.
 """
 from datetime import date
 
@@ -108,19 +112,22 @@ def estado_resultados(*, ventas, comisiones_bancarias, comisiones_especialistas,
     utilidad_bruta = ventas - gastos_variables_totales
     pct_utilidad_bruta = utilidad_bruta / ventas if ventas > 0 else 0
 
-    # utilidad neta canónica (ANTES de impuestos) — base de la distribución
+    # El impuesto es un gasto fijo MÁS: `gastos_fijos` que entra ya lo incluye.
+    # Por eso utilidad_neta canónica = ganancia neta DESPUÉS de impuestos (es la
+    # base de la distribución; el impuesto reduce la utilidad como cualquier gasto).
+    impuestos_pagados = round(impuestos, 2)
     utilidad_neta = utilidad_bruta - gastos_fijos
     pct_utilidad = utilidad_neta / ventas if ventas > 0 else 0
 
-    # Impuestos REALES pagados (registrados como gasto). Reemplazan la
-    # estimación por porcentaje para la línea del Estado de Resultados.
-    impuestos_pagados = round(impuestos, 2)
-    utilidad_despues_impuestos = utilidad_neta - impuestos_pagados
+    # Solo para el REPORTE: utilidad antes de restar el impuesto, y el monto del
+    # impuesto aparte (la línea "Impuestos" es informativa; ya está descontado).
+    utilidad_antes_impuestos = utilidad_neta + impuestos_pagados
+    utilidad_despues_impuestos = utilidad_neta
 
     # Estimación legacy (informativa) — conservada por compatibilidad.
     impuestos_estimados = (
-        round(utilidad_neta * tasa_impuesto_pct / 100, 2)
-        if utilidad_neta > 0 and tasa_impuesto_pct > 0 else 0
+        round(utilidad_antes_impuestos * tasa_impuesto_pct / 100, 2)
+        if utilidad_antes_impuestos > 0 and tasa_impuesto_pct > 0 else 0
     )
 
     # Punto de equilibrio (Excel: -GASTOS_FIJOS / %UTILIDAD_BRUTA)
@@ -140,6 +147,7 @@ def estado_resultados(*, ventas, comisiones_bancarias, comisiones_especialistas,
         "pct_utilidad_bruta": pct_utilidad_bruta,
         "utilidad_neta": utilidad_neta,
         "pct_utilidad": pct_utilidad,
+        "utilidad_antes_impuestos": utilidad_antes_impuestos,
         "tasa_impuesto_pct": tasa_impuesto_pct,
         "impuestos": impuestos_pagados,
         "impuestos_estimados": impuestos_estimados,
