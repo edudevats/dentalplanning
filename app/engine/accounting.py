@@ -60,6 +60,33 @@ def parse_mes(mes_str):
         return today.year, today.month
 
 
+def rango_mes(year, month):
+    """(inicio, fin_exclusivo) del mes.
+
+    Se usa para filtrar por fecha con un rango ``fecha >= inicio AND fecha < fin``,
+    que SÍ aprovecha el índice (tenant_id, fecha). En cambio
+    ``extract('year', fecha) == y AND extract('month', fecha) == m`` aplica una
+    función a la columna y obliga a la base a recorrer la tabla entera.
+    """
+    inicio = date(year, month, 1)
+    fin = date(year + 1, 1, 1) if month == 12 else date(year, month + 1, 1)
+    return inicio, fin
+
+
+def filtro_mes(columna_fecha, year, month):
+    """Condiciones SQLAlchemy para 'fecha dentro de este mes', sargables.
+
+    Uso:
+        query.filter(Model.tenant_id == tid, *filtro_mes(Model.fecha, y, m))
+
+    Para columnas Date equivale EXACTAMENTE a
+    ``extract('year', fecha) == y AND extract('month', fecha) == m``, pero
+    permite a la base usar el índice en lugar de un full table scan.
+    """
+    inicio, fin = rango_mes(year, month)
+    return (columna_fecha >= inicio, columna_fecha < fin)
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Cálculo por tratamiento (compartido entre el motor de precios y el EDR)
 # ─────────────────────────────────────────────────────────────────────────────

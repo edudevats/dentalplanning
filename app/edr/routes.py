@@ -1,5 +1,4 @@
 from flask import Blueprint, request, jsonify, g
-from sqlalchemy import extract
 from app.extensions import db
 from app.middleware.tenant import require_auth, require_role
 from app.edr.models import Ingreso, GastoOperativo, PagoDoctor, PagoComisionIngreso
@@ -13,7 +12,7 @@ from app.ajustes.models import Especialista
 from app.configuracion.models import ConfigConsultorio
 from app.tratamientos.models import Tratamiento
 # parse_mes y ganancia_tratamiento viven en el núcleo contable unificado
-from app.engine.accounting import parse_mes as _parse_mes, ganancia_tratamiento
+from app.engine.accounting import parse_mes as _parse_mes, ganancia_tratamiento, filtro_mes
 
 edr_bp = Blueprint("edr", __name__, url_prefix="/api/v1/edr")
 
@@ -34,8 +33,7 @@ def listar_ingresos():
     year, month = _parse_mes(request.args.get("mes"))
     ingresos = Ingreso.query.filter(
         Ingreso.tenant_id == g.tenant_id,
-        extract("year", Ingreso.fecha) == year,
-        extract("month", Ingreso.fecha) == month,
+        *filtro_mes(Ingreso.fecha, year, month),
     ).order_by(Ingreso.fecha).all()
 
     return jsonify([_enrich_ingreso(i) for i in ingresos])
@@ -98,8 +96,7 @@ def listar_gastos():
     year, month = _parse_mes(request.args.get("mes"))
     gastos = GastoOperativo.query.filter(
         GastoOperativo.tenant_id == g.tenant_id,
-        extract("year", GastoOperativo.fecha) == year,
-        extract("month", GastoOperativo.fecha) == month,
+        *filtro_mes(GastoOperativo.fecha, year, month),
     ).order_by(GastoOperativo.fecha).all()
 
     return jsonify(GastoOperativoSchema(many=True).dump(gastos))
@@ -152,8 +149,7 @@ def listar_pagos():
     year, month = _parse_mes(request.args.get("mes"))
     pagos = PagoDoctor.query.filter(
         PagoDoctor.tenant_id == g.tenant_id,
-        extract("year", PagoDoctor.fecha) == year,
-        extract("month", PagoDoctor.fecha) == month,
+        *filtro_mes(PagoDoctor.fecha, year, month),
     ).order_by(PagoDoctor.fecha).all()
 
     result = []
@@ -350,15 +346,13 @@ def resumen_pagos_doctores():
     # 3. Ingresos (Tratamientos realizados) del mes
     ingresos = Ingreso.query.filter(
         Ingreso.tenant_id == g.tenant_id,
-        extract("year", Ingreso.fecha) == year,
-        extract("month", Ingreso.fecha) == month,
+        *filtro_mes(Ingreso.fecha, year, month),
     ).all()
 
     # 4. Pagos a doctores del mes
     pagos = PagoDoctor.query.filter(
         PagoDoctor.tenant_id == g.tenant_id,
-        extract("year", PagoDoctor.fecha) == year,
-        extract("month", PagoDoctor.fecha) == month,
+        *filtro_mes(PagoDoctor.fecha, year, month),
     ).all()
 
     # Ingresos ya liquidados (su comisión ya se pagó, cualquier mes).

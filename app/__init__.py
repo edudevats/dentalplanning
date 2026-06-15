@@ -55,6 +55,10 @@ def create_app(config_name=None):
     from app.middleware.error_handlers import register_error_handlers
     register_error_handlers(app)
 
+    # Instrumentación opt-in de tiempos de respuesta (PROFILE_REQUESTS=1)
+    from app.middleware.profiling import init_profiling
+    init_profiling(app)
+
     # Import all models so they're registered with SQLAlchemy
     with app.app_context():
         from app.auth import models as auth_models  # noqa: F401

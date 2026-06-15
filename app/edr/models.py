@@ -36,6 +36,11 @@ class Ingreso(db.Model):
     metodo_pago = db.relationship("MetodoPago", backref="ingresos")
     estrategia = db.relationship("EstrategiaMarketing", backref="ingresos")
 
+    # Toda consulta del dashboard/EDR filtra por (tenant_id, fecha-en-un-mes).
+    __table_args__ = (
+        db.Index("ix_ingresos_tenant_fecha", "tenant_id", "fecha"),
+    )
+
 
 class GastoOperativo(db.Model):
     __tablename__ = "gastos_operativos"
@@ -53,6 +58,10 @@ class GastoOperativo(db.Model):
 
     concepto = db.relationship("GastoConcepto", backref="gastos")
 
+    __table_args__ = (
+        db.Index("ix_gastos_operativos_tenant_fecha", "tenant_id", "fecha"),
+    )
+
 
 class PagoDoctor(db.Model):
     __tablename__ = "pagos_doctores"
@@ -69,6 +78,10 @@ class PagoDoctor(db.Model):
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
 
     especialista = db.relationship("Especialista", backref="pagos")
+
+    __table_args__ = (
+        db.Index("ix_pagos_doctores_tenant_fecha", "tenant_id", "fecha"),
+    )
 
 
 class PagoComisionIngreso(db.Model):
@@ -97,3 +110,8 @@ class PagoComisionIngreso(db.Model):
 
     pago = db.relationship("PagoDoctor", backref="comisiones_liquidadas")
     ingreso = db.relationship("Ingreso", backref="comision_liquidacion")
+
+    # _ingresos_liquidados_ids carga todas las filas del tenant; índice cubridor.
+    __table_args__ = (
+        db.Index("ix_pago_comision_ingreso_tenant", "tenant_id", "ingreso_id"),
+    )

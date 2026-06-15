@@ -1,6 +1,6 @@
 from datetime import date
 from flask import Blueprint, request, jsonify, g
-from sqlalchemy import extract, func
+from sqlalchemy import func
 from app.extensions import db
 from app.middleware.tenant import require_auth
 from app.edr.models import Ingreso, GastoOperativo, PagoDoctor
@@ -9,7 +9,7 @@ from app.configuracion.models import ConfigConsultorio
 from app.ajustes.models import DistribucionConfig, DistribucionCategoria, DIST_CATEGORIAS_DEFAULT
 from app.engine.pricing_engine import generar_dashboard_ganancias
 # parse_mes y el Estado de Resultados canónico viven en el núcleo contable
-from app.engine.accounting import parse_mes as _parse_mes, estado_resultados
+from app.engine.accounting import parse_mes as _parse_mes, estado_resultados, filtro_mes
 
 dashboard_bp = Blueprint("dashboard", __name__, url_prefix="/api/v1")
 
@@ -42,8 +42,7 @@ def resumen_mensual():
     # Ingresos
     ingresos = Ingreso.query.filter(
         Ingreso.tenant_id == g.tenant_id,
-        extract("year", Ingreso.fecha) == year,
-        extract("month", Ingreso.fecha) == month,
+        *filtro_mes(Ingreso.fecha, year, month),
     ).all()
 
     total_ingresos = sum(i.monto for i in ingresos)
@@ -60,8 +59,7 @@ def resumen_mensual():
     # Gastos operativos
     gastos = GastoOperativo.query.filter(
         GastoOperativo.tenant_id == g.tenant_id,
-        extract("year", GastoOperativo.fecha) == year,
-        extract("month", GastoOperativo.fecha) == month,
+        *filtro_mes(GastoOperativo.fecha, year, month),
     ).all()
     def _es_impuesto(g_):
         return bool(g_.concepto and g_.concepto.es_impuesto)
@@ -81,8 +79,7 @@ def resumen_mensual():
     # Pagos a doctores (unificados: salario + comision)
     pagos = PagoDoctor.query.filter(
         PagoDoctor.tenant_id == g.tenant_id,
-        extract("year", PagoDoctor.fecha) == year,
-        extract("month", PagoDoctor.fecha) == month,
+        *filtro_mes(PagoDoctor.fecha, year, month),
     ).all()
     total_pagos_doctores   = sum(p.monto for p in pagos)
     pagos_doctores_salarios  = sum(p.monto for p in pagos if p.tipo == "salario")
@@ -215,13 +212,11 @@ def trimestral():
     for month in range(1, 13):
         total_ing = db.session.query(func.coalesce(func.sum(Ingreso.monto), 0)).filter(
             Ingreso.tenant_id == g.tenant_id,
-            extract("year", Ingreso.fecha) == year,
-            extract("month", Ingreso.fecha) == month,
+            *filtro_mes(Ingreso.fecha, year, month),
         ).scalar()
         total_gas = db.session.query(func.coalesce(func.sum(GastoOperativo.monto), 0)).filter(
             GastoOperativo.tenant_id == g.tenant_id,
-            extract("year", GastoOperativo.fecha) == year,
-            extract("month", GastoOperativo.fecha) == month,
+            *filtro_mes(GastoOperativo.fecha, year, month),
         ).scalar()
         # Base de caja: solo la comisión bancaria es gasto al crear el ingreso.
         # La comisión del doctor se cuenta cuando se paga (vía PagoDoctor).
@@ -229,15 +224,13 @@ def trimestral():
             func.coalesce(func.sum(Ingreso.comision_bancaria), 0)
         ).filter(
             Ingreso.tenant_id == g.tenant_id,
-            extract("year", Ingreso.fecha) == year,
-            extract("month", Ingreso.fecha) == month,
+            *filtro_mes(Ingreso.fecha, year, month),
         ).scalar()
         total_pagos_doc = db.session.query(
             func.coalesce(func.sum(PagoDoctor.monto), 0)
         ).filter(
             PagoDoctor.tenant_id == g.tenant_id,
-            extract("year", PagoDoctor.fecha) == year,
-            extract("month", PagoDoctor.fecha) == month,
+            *filtro_mes(PagoDoctor.fecha, year, month),
         ).scalar()
 
         # utilidad_neta con la MISMA definición que el resumen y la distribución.
@@ -315,8 +308,7 @@ def distribucion():
         func.coalesce(func.sum(Ingreso.monto), 0)
     ).filter(
         Ingreso.tenant_id == g.tenant_id,
-        extract("year", Ingreso.fecha) == year,
-        extract("month", Ingreso.fecha) == month,
+        *filtro_mes(Ingreso.fecha, year, month),
     ).scalar()
 
     total_gastos_var = db.session.query(
@@ -324,8 +316,7 @@ def distribucion():
     ).filter(
         GastoOperativo.tenant_id == g.tenant_id,
         GastoOperativo.tipo == "variable",
-        extract("year", GastoOperativo.fecha) == year,
-        extract("month", GastoOperativo.fecha) == month,
+        *filtro_mes(GastoOperativo.fecha, year, month),
     ).scalar()
 
     # Base de caja: solo la comisión bancaria es gasto al crear el ingreso.
@@ -334,8 +325,7 @@ def distribucion():
         func.coalesce(func.sum(Ingreso.comision_bancaria), 0)
     ).filter(
         Ingreso.tenant_id == g.tenant_id,
-        extract("year", Ingreso.fecha) == year,
-        extract("month", Ingreso.fecha) == month,
+        *filtro_mes(Ingreso.fecha, year, month),
     ).scalar()
 
     total_gastos_fijos = db.session.query(
@@ -343,16 +333,14 @@ def distribucion():
     ).filter(
         GastoOperativo.tenant_id == g.tenant_id,
         GastoOperativo.tipo == "fijo",
-        extract("year", GastoOperativo.fecha) == year,
-        extract("month", GastoOperativo.fecha) == month,
+        *filtro_mes(GastoOperativo.fecha, year, month),
     ).scalar()
 
     total_pagos_doc = db.session.query(
         func.coalesce(func.sum(PagoDoctor.monto), 0)
     ).filter(
         PagoDoctor.tenant_id == g.tenant_id,
-        extract("year", PagoDoctor.fecha) == year,
-        extract("month", PagoDoctor.fecha) == month,
+        *filtro_mes(PagoDoctor.fecha, year, month),
     ).scalar()
 
     # ingreso_neto = utilidad_neta canónica (misma función que el resumen). Los
@@ -422,8 +410,7 @@ def marketing():
 
     ingresos = Ingreso.query.filter(
         Ingreso.tenant_id == g.tenant_id,
-        extract("year", Ingreso.fecha) == year,
-        extract("month", Ingreso.fecha) == month,
+        *filtro_mes(Ingreso.fecha, year, month),
     ).all()
 
     por_estrategia = {}
@@ -451,8 +438,7 @@ def tratamientos_realizados():
 
     ingresos = Ingreso.query.filter(
         Ingreso.tenant_id == g.tenant_id,
-        extract("year", Ingreso.fecha) == year,
-        extract("month", Ingreso.fecha) == month,
+        *filtro_mes(Ingreso.fecha, year, month),
     ).all()
 
     por_tx = {}
