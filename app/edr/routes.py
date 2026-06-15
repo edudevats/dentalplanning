@@ -1,4 +1,5 @@
 from flask import Blueprint, request, jsonify, g
+from sqlalchemy.orm import joinedload, selectinload
 from app.extensions import db
 from app.middleware.tenant import require_auth, require_role
 from app.edr.models import Ingreso, GastoOperativo, PagoDoctor, PagoComisionIngreso
@@ -31,7 +32,12 @@ def _enrich_ingreso(ingreso):
 @require_auth
 def listar_ingresos():
     year, month = _parse_mes(request.args.get("mes"))
-    ingresos = Ingreso.query.filter(
+    # eager-load las relaciones que _enrich_ingreso lee por fila
+    ingresos = Ingreso.query.options(
+        joinedload(Ingreso.especialista),
+        joinedload(Ingreso.metodo_pago),
+        joinedload(Ingreso.estrategia),
+    ).filter(
         Ingreso.tenant_id == g.tenant_id,
         *filtro_mes(Ingreso.fecha, year, month),
     ).order_by(Ingreso.fecha).all()
@@ -147,7 +153,9 @@ def eliminar_gasto(gasto_id):
 @require_auth
 def listar_pagos():
     year, month = _parse_mes(request.args.get("mes"))
-    pagos = PagoDoctor.query.filter(
+    pagos = PagoDoctor.query.options(
+        joinedload(PagoDoctor.especialista)
+    ).filter(
         PagoDoctor.tenant_id == g.tenant_id,
         *filtro_mes(PagoDoctor.fecha, year, month),
     ).order_by(PagoDoctor.fecha).all()
@@ -224,7 +232,10 @@ def comisiones_pendientes():
 
     liquidados = _ingresos_liquidados_ids(g.tenant_id)
 
-    q = Ingreso.query.filter(
+    q = Ingreso.query.options(
+        joinedload(Ingreso.especialista),
+        selectinload(Ingreso.tratamiento),
+    ).filter(
         Ingreso.tenant_id == g.tenant_id,
         Ingreso.comision_doctor > 0,
         Ingreso.especialista_id.isnot(None),
@@ -344,7 +355,11 @@ def resumen_pagos_doctores():
     especialistas = Especialista.query.filter_by(tenant_id=g.tenant_id).all()
 
     # 3. Ingresos (Tratamientos realizados) del mes
-    ingresos = Ingreso.query.filter(
+    # selectinload del tratamiento (sus materiales ya cargan joined) para evitar
+    # el N+1 al calcular costo/ganancia por cada ingreso.
+    ingresos = Ingreso.query.options(
+        selectinload(Ingreso.tratamiento)
+    ).filter(
         Ingreso.tenant_id == g.tenant_id,
         *filtro_mes(Ingreso.fecha, year, month),
     ).all()

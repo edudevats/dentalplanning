@@ -1,6 +1,7 @@
 from datetime import date
 from flask import Blueprint, request, jsonify, g
 from sqlalchemy import extract, func
+from sqlalchemy.orm import joinedload
 from app.extensions import db
 from app.middleware.tenant import require_auth
 from app.edr.models import Ingreso, GastoOperativo, PagoDoctor
@@ -40,7 +41,10 @@ def resumen_mensual():
     year, month = _parse_mes(request.args.get("mes"))
 
     # Ingresos
-    ingresos = Ingreso.query.filter(
+    # eager-load metodo_pago: se accede por fila al separar efectivo vs banco
+    ingresos = Ingreso.query.options(
+        joinedload(Ingreso.metodo_pago)
+    ).filter(
         Ingreso.tenant_id == g.tenant_id,
         *filtro_mes(Ingreso.fecha, year, month),
     ).all()
@@ -427,7 +431,10 @@ def distribucion():
 def marketing():
     year, month = _parse_mes(request.args.get("mes"))
 
-    ingresos = Ingreso.query.filter(
+    # eager-load estrategia: se accede por fila al agrupar
+    ingresos = Ingreso.query.options(
+        joinedload(Ingreso.estrategia)
+    ).filter(
         Ingreso.tenant_id == g.tenant_id,
         *filtro_mes(Ingreso.fecha, year, month),
     ).all()
