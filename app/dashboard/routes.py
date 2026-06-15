@@ -1,6 +1,6 @@
 from datetime import date
 from flask import Blueprint, request, jsonify, g
-from sqlalchemy import func
+from sqlalchemy import extract, func
 from app.extensions import db
 from app.middleware.tenant import require_auth
 from app.edr.models import Ingreso, GastoOperativo, PagoDoctor
@@ -208,48 +208,67 @@ def resumen_mensual():
 def trimestral():
     year = request.args.get("year", date.today().year, type=int)
 
+    # Una consulta agregada por tabla con GROUP BY mes (antes: 48 = 4 × 12).
+    # El WHERE filtra por rango de TODO el año (sargable, usa el índice
+    # (tenant_id, fecha)); extract() se usa SOLO en GROUP BY/SELECT sobre las
+    # filas ya seleccionadas, así que NO impide el uso del índice.
+    ini = date(year, 1, 1)
+    fin = date(year + 1, 1, 1)
+
+    # Ingresos: monto y comisión bancaria en una sola pasada.
+    ing_rows = db.session.query(
+        extract("month", Ingreso.fecha).label("mes"),
+        func.coalesce(func.sum(Ingreso.monto), 0).label("total"),
+        func.coalesce(func.sum(Ingreso.comision_bancaria), 0).label("comis"),
+    ).filter(
+        Ingreso.tenant_id == g.tenant_id,
+        Ingreso.fecha >= ini, Ingreso.fecha < fin,
+    ).group_by(extract("month", Ingreso.fecha)).all()
+    ing_por_mes = {int(r.mes): (float(r.total), float(r.comis)) for r in ing_rows}
+
+    gas_rows = db.session.query(
+        extract("month", GastoOperativo.fecha).label("mes"),
+        func.coalesce(func.sum(GastoOperativo.monto), 0).label("total"),
+    ).filter(
+        GastoOperativo.tenant_id == g.tenant_id,
+        GastoOperativo.fecha >= ini, GastoOperativo.fecha < fin,
+    ).group_by(extract("month", GastoOperativo.fecha)).all()
+    gas_por_mes = {int(r.mes): float(r.total) for r in gas_rows}
+
+    pag_rows = db.session.query(
+        extract("month", PagoDoctor.fecha).label("mes"),
+        func.coalesce(func.sum(PagoDoctor.monto), 0).label("total"),
+    ).filter(
+        PagoDoctor.tenant_id == g.tenant_id,
+        PagoDoctor.fecha >= ini, PagoDoctor.fecha < fin,
+    ).group_by(extract("month", PagoDoctor.fecha)).all()
+    pag_por_mes = {int(r.mes): float(r.total) for r in pag_rows}
+
     meses = []
     for month in range(1, 13):
-        total_ing = db.session.query(func.coalesce(func.sum(Ingreso.monto), 0)).filter(
-            Ingreso.tenant_id == g.tenant_id,
-            *filtro_mes(Ingreso.fecha, year, month),
-        ).scalar()
-        total_gas = db.session.query(func.coalesce(func.sum(GastoOperativo.monto), 0)).filter(
-            GastoOperativo.tenant_id == g.tenant_id,
-            *filtro_mes(GastoOperativo.fecha, year, month),
-        ).scalar()
         # Base de caja: solo la comisión bancaria es gasto al crear el ingreso.
         # La comisión del doctor se cuenta cuando se paga (vía PagoDoctor).
-        total_comisiones = db.session.query(
-            func.coalesce(func.sum(Ingreso.comision_bancaria), 0)
-        ).filter(
-            Ingreso.tenant_id == g.tenant_id,
-            *filtro_mes(Ingreso.fecha, year, month),
-        ).scalar()
-        total_pagos_doc = db.session.query(
-            func.coalesce(func.sum(PagoDoctor.monto), 0)
-        ).filter(
-            PagoDoctor.tenant_id == g.tenant_id,
-            *filtro_mes(PagoDoctor.fecha, year, month),
-        ).scalar()
+        total_ing, total_comisiones = ing_por_mes.get(month, (0.0, 0.0))
+        total_gas = gas_por_mes.get(month, 0.0)
+        total_pagos_doc = pag_por_mes.get(month, 0.0)
 
         # utilidad_neta con la MISMA definición que el resumen y la distribución.
         # Aquí los gastos operativos van lumpeados (el trimestral no separa
         # fijo/variable) e INCLUYEN el impuesto como un gasto más, así que
         # utilidad_neta queda después de impuestos igual que en el resumen.
         er = estado_resultados(
-            ventas=float(total_ing),
-            comisiones_bancarias=float(total_comisiones),
+            ventas=total_ing,
+            comisiones_bancarias=total_comisiones,
             comisiones_especialistas=0,
-            gastos_variables=float(total_gas),
+            gastos_variables=total_gas,
             gastos_fijos=0,
-            pagos_doctores=float(total_pagos_doc),
+            pagos_doctores=total_pagos_doc,
         )
 
         meses.append({
             "mes": month,
-            "total": round(float(total_ing), 2),
-            "gastos": round(float(total_gas), 2),
+            "total": round(total_ing, 2),
+            "gastos": round(total_gas, 2),
             "utilidad_neta": round(er["utilidad_neta"], 2),
         })
 
