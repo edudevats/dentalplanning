@@ -322,36 +322,37 @@ def ajustar(
     return mov
 
 
-def _ubicacion_nombre(tenant_id, operatorio_id):
-    if operatorio_id is None:
-        return "Almacén"
-    op = Operatorio.query.filter_by(id=operatorio_id, tenant_id=tenant_id).first()
-    return op.nombre if op else "Desconocida"
-
-
-def _stock_total_lote(lote_id):
-    total = (
-        db.session.query(db.func.coalesce(db.func.sum(LoteUbicacion.cantidad_restante), 0))
-        .filter(LoteUbicacion.lote_id == lote_id)
-        .scalar()
-    )
-    return total or 0
-
-
 def calcular_alertas(*, tenant_id):
     cfg = ConfigConsultorio.query.filter_by(tenant_id=tenant_id).first()
     dias = cfg.dias_alerta_caducidad if cfg else 30
     limite = date.today() + timedelta(days=dias)
 
     stocks = StockUbicacion.query.filter_by(tenant_id=tenant_id).all()
+
+    # Pre-cargar materiales y operatorios del tenant en diccionarios para evitar
+    # el N+1 (antes: un Material.query.get y una consulta de operatorio por
+    # cada fila de stock). Una consulta cada uno en vez de dos por fila.
+    materiales = {
+        m.id: m for m in Material.query.filter_by(tenant_id=tenant_id).all()
+    }
+    operatorios = {
+        o.id: o.nombre
+        for o in Operatorio.query.filter_by(tenant_id=tenant_id).all()
+    }
+
+    def _ubic(operatorio_id):
+        if operatorio_id is None:
+            return "Almacén"
+        return operatorios.get(operatorio_id, "Desconocida")
+
     bajo, alto = [], []
     for su in stocks:
-        material = Material.query.get(su.material_id)
+        material = materiales.get(su.material_id)
         base = {
             "material_id": su.material_id,
-            "material_nombre": material.nombre,
+            "material_nombre": material.nombre if material else None,
             "operatorio_id": su.operatorio_id,
-            "ubicacion": _ubicacion_nombre(tenant_id, su.operatorio_id),
+            "ubicacion": _ubic(su.operatorio_id),
             "cantidad": su.cantidad,
         }
         if su.minimo is not None and su.cantidad <= su.minimo:
@@ -371,13 +372,29 @@ def calcular_alertas(*, tenant_id):
             Material.expira == True,  # noqa: E712
         ).all()
     )
+    # Totales de stock por lote en UNA consulta agrupada (antes: una consulta
+    # de suma por cada lote).
+    lote_ids = [lote.id for lote, _ in lotes]
+    totales_por_lote = {}
+    if lote_ids:
+        filas = (
+            db.session.query(
+                LoteUbicacion.lote_id,
+                db.func.coalesce(db.func.sum(LoteUbicacion.cantidad_restante), 0),
+            )
+            .filter(LoteUbicacion.lote_id.in_(lote_ids))
+            .group_by(LoteUbicacion.lote_id)
+            .all()
+        )
+        totales_por_lote = {lid: total for lid, total in filas}
+
     for lote, material in lotes:
         caducidad.append({
             "lote_id": lote.id,
             "material_id": material.id,
             "material_nombre": material.nombre,
             "fecha_caducidad": lote.fecha_caducidad.isoformat(),
-            "cantidad_restante": _stock_total_lote(lote.id),
+            "cantidad_restante": totales_por_lote.get(lote.id, 0) or 0,
         })
 
     return {"bajo": bajo, "alto": alto, "caducidad": caducidad}

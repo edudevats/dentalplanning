@@ -1,5 +1,6 @@
 from flask import Blueprint, request, jsonify, g
 from marshmallow import ValidationError
+from sqlalchemy.orm import selectinload
 from app.extensions import db
 from app.middleware.tenant import require_auth, require_role
 from app.catalogo.models import Material, MaterialMaster
@@ -268,17 +269,12 @@ def alertas_resumen():
     })
 
 
-def _serializar_lista(m):
-    total = (
-        db.session.query(db.func.coalesce(db.func.sum(StockUbicacion.cantidad), 0))
-        .filter_by(tenant_id=m.tenant_id, material_id=m.id)
-        .scalar()
-    ) or 0
+def _serializar_lista(m, total_global):
     return {
         "id": m.id, "nombre": m.nombre,
         "expira": m.expira, "unidad_inventario": m.unidad_inventario,
         "categorias": [c.nombre for c in m.categorias],
-        "total_global": int(total),
+        "total_global": int(total_global),
     }
 
 
@@ -289,13 +285,30 @@ def listar_materiales_inv():
     # todo material listado en /materiales debe aparecer aqui con su stock.
     categoria = request.args.get("categoria")
     busqueda = request.args.get("busqueda")
-    q = Material.query.filter_by(tenant_id=g.tenant_id)
+    # selectinload de categorias: se leen por cada material al serializar.
+    q = Material.query.options(
+        selectinload(Material.categorias)
+    ).filter_by(tenant_id=g.tenant_id)
     if categoria:
         q = q.join(Material.categorias).filter(Categoria.nombre == categoria)
     if busqueda:
         q = q.filter(Material.nombre.ilike(f"%{busqueda}%"))
     materiales = q.order_by(Material.nombre).all()
-    return jsonify([_serializar_lista(m) for m in materiales])
+
+    # Total de stock por material en UNA consulta agrupada (antes: un SUM por
+    # cada material -> N+1).
+    totales = dict(
+        db.session.query(
+            StockUbicacion.material_id,
+            db.func.coalesce(db.func.sum(StockUbicacion.cantidad), 0),
+        )
+        .filter(StockUbicacion.tenant_id == g.tenant_id)
+        .group_by(StockUbicacion.material_id)
+        .all()
+    )
+    return jsonify([
+        _serializar_lista(m, totales.get(m.id, 0)) for m in materiales
+    ])
 
 
 @inventario_bp.route("/materiales/<int:material_id>", methods=["GET"])
@@ -310,9 +323,17 @@ def inspeccionar_material(material_id):
     lotes = Lote.query.filter_by(
         tenant_id=g.tenant_id, material_id=m.id, agotado=False
     ).all()
+    # Ubicaciones de TODOS los lotes en una sola consulta (antes: una por lote).
+    lus_por_lote = {}
+    lote_ids = [lote.id for lote in lotes]
+    if lote_ids:
+        for lu in LoteUbicacion.query.filter(
+            LoteUbicacion.lote_id.in_(lote_ids)
+        ).all():
+            lus_por_lote.setdefault(lu.lote_id, []).append(lu)
     lote_data = []
     for lote in lotes:
-        lus = LoteUbicacion.query.filter_by(lote_id=lote.id).all()
+        lus = lus_por_lote.get(lote.id, [])
         lote_data.append({
             "id": lote.id,
             "fecha_surtido": lote.fecha_surtido.isoformat(),
@@ -406,7 +427,10 @@ def master_disponibles():
         Material.tenant_id == g.tenant_id,
         Material.master_id.isnot(None),
     )
-    q = MaterialMaster.query.filter(~MaterialMaster.id.in_(subq))
+    # selectinload de categorias: se leen por cada master al serializar.
+    q = MaterialMaster.query.options(
+        selectinload(MaterialMaster.categorias)
+    ).filter(~MaterialMaster.id.in_(subq))
     categoria = request.args.get("categoria")
     busqueda = request.args.get("busqueda")
     if categoria:

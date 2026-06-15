@@ -76,6 +76,10 @@ class Lote(db.Model):
     comentarios = db.Column(db.String(500), nullable=True)
     agotado = db.Column(db.Boolean, default=False, nullable=False)
 
+    __table_args__ = (
+        db.Index("ix_lotes_tenant_material", "tenant_id", "material_id"),
+    )
+
 
 class LoteUbicacion(db.Model):
     __tablename__ = "lote_ubicacion"
@@ -127,6 +131,10 @@ class Compra(db.Model):
     actualizo_costo_master = db.Column(db.Boolean, default=False, nullable=False)
     user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
 
+    __table_args__ = (
+        db.Index("ix_compras_tenant_fecha", "tenant_id", "fecha"),
+    )
+
 
 class MovimientoInventario(db.Model):
     __tablename__ = "movimientos_inventario"
@@ -146,3 +154,9 @@ class MovimientoInventario(db.Model):
     fecha = db.Column(db.DateTime, nullable=False)
     user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
     motivo = db.Column(db.String(500), nullable=True)
+
+    # listar_movimientos y movimientos_recientes filtran por tenant y ordenan por
+    # fecha desc (este último corre en cada carga del dashboard).
+    __table_args__ = (
+        db.Index("ix_movimientos_tenant_fecha", "tenant_id", "fecha"),
+    )
