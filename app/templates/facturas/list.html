@@ -1,0 +1,358 @@
+{% extends "layout.html" %}
+{% block page_title %}Facturas{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+  <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+    <h1 class="text-2xl font-bold font-heading text-text-primary">Facturas</h1>
+  </div>
+
+  <!-- Tickets / Facturas -->
+  <section class="bg-surface border border-border rounded-xl p-5 shadow-sm">
+    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+      <h2 class="text-sm font-semibold uppercase tracking-wide text-text-muted">Tickets del mes</h2>
+      <input type="month" id="tk-mes" class="border border-border rounded-lg px-3 py-2 text-sm font-body bg-surface" />
+    </div>
+    <div id="tk-chips" class="flex flex-wrap gap-2 mb-3 text-xs"></div>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm font-body">
+        <thead>
+          <tr class="text-left text-text-muted border-b border-border">
+            <th class="py-2 pr-4 font-semibold">Folio</th>
+            <th class="py-2 pr-4 font-semibold">Fecha</th>
+            <th class="py-2 pr-4 font-semibold">Cliente (RFC)</th>
+            <th class="py-2 pr-4 font-semibold text-right">Monto</th>
+            <th class="py-2 pr-4 font-semibold">UUID</th>
+            <th class="py-2 pr-4 font-semibold">Estado</th>
+            <th class="py-2 pr-4"></th>
+          </tr>
+        </thead>
+        <tbody id="tbody-tickets">
+          <tr id="tk-empty"><td colspan="7" class="py-6 text-center text-text-muted">Sin tickets este mes.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- Configuración fiscal -->
+  <section class="bg-surface border border-border rounded-xl p-5 shadow-sm">
+    <h2 class="text-sm font-semibold uppercase tracking-wide text-text-muted mb-4">Configuración fiscal (CSD)</h2>
+    <form id="form-config" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div class="flex flex-col gap-1">
+        <label class="text-xs font-semibold text-text-muted font-body">RFC emisor</label>
+        <input name="rfc" placeholder="p. ej. ABC123456DEF" class="border border-border rounded-lg px-3 py-2 text-sm font-body bg-surface focus:ring-2 focus:ring-primary-300 focus:border-primary-500 outline-none" />
+      </div>
+      <div class="flex flex-col gap-1">
+        <label class="text-xs font-semibold text-text-muted font-body">Razón social</label>
+        <input name="razon_social" placeholder="Nombre del emisor" class="border border-border rounded-lg px-3 py-2 text-sm font-body bg-surface focus:ring-2 focus:ring-primary-300 focus:border-primary-500 outline-none" />
+      </div>
+      <div class="flex flex-col gap-1">
+        <label class="text-xs font-semibold text-text-muted font-body">Régimen fiscal (clave SAT)</label>
+        <input name="regimen_fiscal" placeholder="p. ej. 626" class="border border-border rounded-lg px-3 py-2 text-sm font-body bg-surface focus:ring-2 focus:ring-primary-300 focus:border-primary-500 outline-none" />
+      </div>
+      <div class="flex flex-col gap-1">
+        <label class="text-xs font-semibold text-text-muted font-body">ClaveProdServ default</label>
+        <input name="clave_prod_serv_default" placeholder="85121800" class="border border-border rounded-lg px-3 py-2 text-sm font-body bg-surface focus:ring-2 focus:ring-primary-300 focus:border-primary-500 outline-none" />
+      </div>
+      <div class="flex flex-col gap-1">
+        <label class="text-xs font-semibold text-text-muted font-body">ClaveUnidad default</label>
+        <input name="clave_unidad_default" placeholder="E48" class="border border-border rounded-lg px-3 py-2 text-sm font-body bg-surface focus:ring-2 focus:ring-primary-300 focus:border-primary-500 outline-none" />
+      </div>
+      <div class="md:col-span-2">
+        <button type="submit" class="inline-flex items-center justify-center gap-2 rounded-lg font-medium font-body cursor-pointer bg-primary-500 hover:bg-primary-600 text-white px-4 py-2 text-sm min-h-[38px]">
+          Guardar datos fiscales
+        </button>
+      </div>
+    </form>
+
+    <p id="csd-estado" class="mt-4 text-sm text-text-muted font-body"></p>
+
+    <div class="mt-4 border-t border-border pt-4">
+      <h3 class="text-xs font-semibold text-text-muted uppercase tracking-wide mb-3 font-body">Subir CSD</h3>
+      <form id="form-csd" class="flex flex-wrap items-end gap-3">
+        <div class="flex flex-col gap-1">
+          <label class="text-xs font-semibold text-text-muted font-body">Archivo .cer</label>
+          <input type="file" name="cer" accept=".cer" required class="text-sm font-body" />
+        </div>
+        <div class="flex flex-col gap-1">
+          <label class="text-xs font-semibold text-text-muted font-body">Archivo .key</label>
+          <input type="file" name="key" accept=".key" required class="text-sm font-body" />
+        </div>
+        <div class="flex flex-col gap-1">
+          <label class="text-xs font-semibold text-text-muted font-body">Contraseña del CSD</label>
+          <input type="password" name="password" placeholder="Contraseña" required class="border border-border rounded-lg px-3 py-2 text-sm font-body bg-surface focus:ring-2 focus:ring-primary-300 focus:border-primary-500 outline-none min-h-[38px]" />
+        </div>
+        <button type="submit" class="inline-flex items-center justify-center gap-2 rounded-lg font-medium font-body cursor-pointer bg-primary-500 hover:bg-primary-600 text-white px-4 py-2 text-sm min-h-[38px]">
+          Subir CSD
+        </button>
+      </form>
+    </div>
+
+    <div class="mt-4 border-t border-border pt-4">
+      <h3 class="text-xs font-semibold text-text-muted uppercase tracking-wide mb-3 font-body">Logo de la clínica</h3>
+      <form id="form-logo" class="flex items-end gap-3">
+        <div class="flex flex-col gap-1">
+          <label class="text-xs font-semibold text-text-muted font-body">Imagen (PNG/JPG)</label>
+          <input type="file" name="logo" accept="image/*" required class="text-sm font-body" />
+        </div>
+        <button type="submit" class="inline-flex items-center justify-center gap-2 rounded-lg font-medium font-body cursor-pointer border border-border bg-surface hover:bg-surface-hover text-text-primary px-4 py-2 text-sm min-h-[38px]">
+          Subir logo
+        </button>
+      </form>
+    </div>
+  </section>
+
+  <!-- Sucursales -->
+  <section class="bg-surface border border-border rounded-xl p-5 shadow-sm">
+    <h2 class="text-sm font-semibold uppercase tracking-wide text-text-muted mb-4">Sucursales</h2>
+    <form id="form-sucursal" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3 mb-5">
+      <input name="nombre" placeholder="Nombre" required class="border border-border rounded-lg px-3 py-2 text-sm font-body bg-surface focus:ring-2 focus:ring-primary-300 focus:border-primary-500 outline-none min-h-[38px]" />
+      <input name="direccion" placeholder="Dirección" class="border border-border rounded-lg px-3 py-2 text-sm font-body bg-surface focus:ring-2 focus:ring-primary-300 focus:border-primary-500 outline-none min-h-[38px]" />
+      <input name="codigo_postal" placeholder="C.P." maxlength="5" class="border border-border rounded-lg px-3 py-2 text-sm font-body bg-surface focus:ring-2 focus:ring-primary-300 focus:border-primary-500 outline-none min-h-[38px]" />
+      <input name="serie" placeholder="Serie (p. ej. MTY)" maxlength="10" class="border border-border rounded-lg px-3 py-2 text-sm font-body bg-surface focus:ring-2 focus:ring-primary-300 focus:border-primary-500 outline-none min-h-[38px]" />
+      <button type="submit" class="inline-flex items-center justify-center gap-2 rounded-lg font-medium font-body cursor-pointer bg-primary-500 hover:bg-primary-600 text-white px-4 py-2 text-sm min-h-[38px]">
+        <i data-lucide="plus" class="h-4 w-4"></i> Agregar
+      </button>
+    </form>
+
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm font-body">
+        <thead>
+          <tr class="text-left text-text-muted border-b border-border">
+            <th class="py-2 pr-4 font-semibold">Nombre</th>
+            <th class="py-2 pr-4 font-semibold">Dirección</th>
+            <th class="py-2 pr-4 font-semibold">C.P.</th>
+            <th class="py-2 pr-4 font-semibold">Serie</th>
+            <th class="py-2"></th>
+          </tr>
+        </thead>
+        <tbody id="tbody-sucursales">
+          <tr id="row-empty">
+            <td colspan="5" class="py-6 text-center text-text-muted">Aún no hay sucursales registradas.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+</div>
+
+<script>
+// Uses the global API client (app.js) and esc() helper already defined in app.js.
+// Auth token is managed by Auth.getToken() → localStorage 'token'.
+
+const PRINT_AGENT_URL = localStorage.getItem('print_agent_url') || 'http://localhost:9099';
+
+async function reimprimirTicket(ticketId) {
+  try {
+    const payload = await API.get('/facturacion/tickets/' + ticketId + '/impresion');
+    const resp = await fetch(PRINT_AGENT_URL + '/imprimir-ticket', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!resp.ok) throw new Error(resp.status);
+    Toast.success('Ticket enviado a impresión');
+  } catch (e) {
+    Toast.warning('No se pudo imprimir (¿agente encendido?)');
+  }
+}
+
+const ESTADO_BADGE = {
+  sin_timbrar: ['Sin timbrar', 'bg-surface-hover text-text-secondary'],
+  timbrada: ['Timbrada', 'bg-accent-50 text-accent-700'],
+  en_proceso_cancelacion: ['En proceso de cancelación', 'bg-warning-50 text-warning-700'],
+  cancelada: ['Cancelada', 'bg-danger-50 text-danger-700'],
+  error: ['Error de timbrado', 'bg-warning-50 text-warning-700'],
+};
+
+function mesActualInput() {
+  const n = new Date();
+  return n.getFullYear() + '-' + String(n.getMonth() + 1).padStart(2, '0');
+}
+
+async function cargarTickets() {
+  const mes = document.getElementById('tk-mes').value || mesActualInput();
+  let tickets = [];
+  try {
+    tickets = await API.get('/facturacion/tickets?mes=' + mes);
+  } catch (e) { console.error(e); }
+
+  // chips de conteo
+  const counts = {};
+  for (const t of tickets) counts[t.estado] = (counts[t.estado] || 0) + 1;
+  const chips = document.getElementById('tk-chips');
+  chips.replaceChildren();
+  for (const [estado, [label, cls]] of Object.entries(ESTADO_BADGE)) {
+    if (!counts[estado]) continue;
+    const span = document.createElement('span');
+    span.className = 'px-2.5 py-1 rounded-full font-semibold ' + cls;
+    span.textContent = counts[estado] + ' ' + label.toLowerCase();
+    chips.appendChild(span);
+  }
+
+  const tb = document.getElementById('tbody-tickets');
+  const empty = document.getElementById('tk-empty');
+  tb.querySelectorAll('tr[data-tk]').forEach(r => r.remove());
+  if (!tickets.length) { if (empty) empty.style.display = ''; return; }
+  if (empty) empty.style.display = 'none';
+
+  for (const t of tickets) {
+    const [label, cls] = ESTADO_BADGE[t.estado] || [t.estado, 'bg-surface-hover text-text-secondary'];
+    const cliente = t.receptor_rfc ? `${esc(t.receptor_nombre || '')} · ${esc(t.receptor_rfc)}` : '—';
+    const uuid = t.uuid ? esc(t.uuid.slice(-9)) : '—';
+    const monto = (Number(t.total) || 0).toLocaleString('es-MX', { style: 'currency', currency: 'MXN' });
+    const tr = document.createElement('tr');
+    tr.setAttribute('data-tk', t.id);
+    tr.className = 'border-t border-border';
+    tr.innerHTML =
+      `<td class="py-2 pr-4 font-medium">${esc(t.folio_display)}</td>` +
+      `<td class="py-2 pr-4">${esc((t.fecha || '').slice(0, 10))}</td>` +
+      `<td class="py-2 pr-4">${cliente}</td>` +
+      `<td class="py-2 pr-4 text-right tabular-nums">${monto}</td>` +
+      `<td class="py-2 pr-4 text-text-muted">${uuid}</td>` +
+      `<td class="py-2 pr-4"><span class="px-2.5 py-1 rounded-full text-xs font-semibold ${cls}">${label}</span></td>` +
+      `<td class="py-2 pr-4 text-right"><button data-reprint="${t.id}" class="text-primary-600 hover:text-primary-700 font-semibold text-sm cursor-pointer">Reimprimir</button></td>`;
+    tb.appendChild(tr);
+    tr.querySelector('button[data-reprint]').addEventListener('click', () => reimprimirTicket(t.id));
+  }
+}
+
+document.getElementById('tk-mes').value = mesActualInput();
+document.getElementById('tk-mes').addEventListener('change', cargarTickets);
+
+async function cargarConfig() {
+  try {
+    const cfg = await API.get('/facturacion/configuracion');
+    const form = document.getElementById('form-config');
+    for (const k of ['rfc', 'razon_social', 'regimen_fiscal', 'clave_prod_serv_default', 'clave_unidad_default']) {
+      const el = form.querySelector(`[name=${k}]`);
+      if (el && cfg[k] != null) el.value = cfg[k];
+    }
+    const estado = document.getElementById('csd-estado');
+    if (cfg.csd_configurado) {
+      const hasta = cfg.csd_valido_hasta ? cfg.csd_valido_hasta.slice(0, 10) : '—';
+      estado.textContent = `CSD vigente hasta ${hasta} (no. ${esc(cfg.csd_no_certificado || '')})`;
+      estado.className = 'mt-4 text-sm font-body text-success-600';
+    } else {
+      estado.textContent = 'Aún no has subido tu CSD.';
+      estado.className = 'mt-4 text-sm font-body text-text-muted';
+    }
+  } catch (e) {
+    console.error('Error al cargar configuración', e);
+  }
+}
+
+document.getElementById('form-config').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  try {
+    const body = Object.fromEntries(new FormData(e.target).entries());
+    await API.put('/facturacion/configuracion', body);
+    await cargarConfig();
+    Toast.success('Datos fiscales guardados');
+  } catch (err) {
+    Toast.error(err.message || 'Error al guardar');
+  }
+});
+
+document.getElementById('form-csd').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  try {
+    const token = Auth.getToken();
+    const resp = await fetch('/api/v1/facturacion/configuracion/csd', {
+      method: 'POST',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: new FormData(e.target),
+    });
+    const data = await resp.json();
+    if (!resp.ok) {
+      Toast.error(data.error || 'Error al subir CSD');
+      return;
+    }
+    await cargarConfig();
+    Toast.success('CSD subido correctamente');
+  } catch (err) {
+    Toast.error(err.message || 'Error al subir CSD');
+  }
+});
+
+document.getElementById('form-logo').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  try {
+    const token = Auth.getToken();
+    const resp = await fetch('/api/v1/facturacion/configuracion/logo', {
+      method: 'POST',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: new FormData(e.target),
+    });
+    if (resp.ok) {
+      Toast.success('Logo actualizado');
+    } else {
+      const data = await resp.json().catch(() => ({}));
+      Toast.error(data.error || 'Error al subir logo');
+    }
+  } catch (err) {
+    Toast.error(err.message || 'Error al subir logo');
+  }
+});
+
+async function cargarSucursales() {
+  try {
+    const sucs = await API.get('/facturacion/sucursales');
+    const tb = document.getElementById('tbody-sucursales');
+    const rowEmpty = document.getElementById('row-empty');
+    // Remove old dynamic rows
+    tb.querySelectorAll('tr[data-suc-id]').forEach(r => r.remove());
+
+    if (!sucs.length) {
+      if (rowEmpty) rowEmpty.style.display = '';
+      return;
+    }
+    if (rowEmpty) rowEmpty.style.display = 'none';
+
+    for (const s of sucs) {
+      const tr = document.createElement('tr');
+      tr.setAttribute('data-suc-id', s.id);
+      tr.className = 'border-t border-border';
+      tr.innerHTML =
+        `<td class="py-2 pr-4">${esc(s.nombre)}</td>` +
+        `<td class="py-2 pr-4">${esc(s.direccion)}</td>` +
+        `<td class="py-2 pr-4">${esc(s.codigo_postal)}</td>` +
+        `<td class="py-2 pr-4">${esc(s.serie)}</td>` +
+        `<td class="py-2 text-right">
+          <button data-id="${s.id}" class="text-danger-600 hover:text-danger-700 font-semibold text-sm cursor-pointer">Eliminar</button>
+        </td>`;
+      tr.querySelector('button').addEventListener('click', async () => {
+        if (!confirm('¿Eliminar la sucursal "' + esc(s.nombre) + '"?')) return;
+        try {
+          await API.delete(`/facturacion/sucursales/${s.id}`);
+          cargarSucursales();
+        } catch (err) {
+          Toast.error(err.message || 'Error al eliminar');
+        }
+      });
+      tb.appendChild(tr);
+    }
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+  } catch (e) {
+    console.error('Error al cargar sucursales', e);
+  }
+}
+
+document.getElementById('form-sucursal').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  try {
+    const body = Object.fromEntries(new FormData(e.target).entries());
+    await API.post('/facturacion/sucursales', body);
+    e.target.reset();
+    cargarSucursales();
+  } catch (err) {
+    Toast.error(err.message || 'Error al crear sucursal');
+  }
+});
+
+// Initial load
+cargarConfig();
+cargarSucursales();
+cargarTickets();
+</script>
+{% endblock %}

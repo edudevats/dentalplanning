@@ -9,6 +9,8 @@ from app.edr.schemas import (
     PagoDoctorSchema,
     ComisionPagoSchema,
 )
+from app.facturacion.services import asignar_ticket, recalcular_total, FacturacionError
+from app.facturacion.models import TICKET_SIN_TIMBRAR
 from app.ajustes.models import Especialista
 from app.configuracion.models import ConfigConsultorio
 from app.tratamientos.models import Tratamiento
@@ -23,6 +25,10 @@ def _enrich_ingreso(ingreso):
     data["especialista_nombre"] = ingreso.especialista.nombre if ingreso.especialista else None
     data["metodo_pago_nombre"] = ingreso.metodo_pago.nombre if ingreso.metodo_pago else None
     data["estrategia_nombre"] = ingreso.estrategia.nombre if ingreso.estrategia else None
+    tk = ingreso.ticket
+    data["ticket_id"] = tk.id if tk else None
+    data["ticket_folio"] = tk.folio if tk else None
+    data["ticket_folio_display"] = tk.folio_display if tk else None
     return data
 
 
@@ -49,14 +55,22 @@ def listar_ingresos():
 @require_auth
 @require_role("admin", "editor")
 def crear_ingreso():
+    body = request.get_json() or {}
+    ticket_folio = body.get("ticket_folio")
     schema = IngresoSchema()
-    data = schema.load(request.get_json() or {})
+    data = schema.load(body)
 
-    # Las comisiones las define el usuario. El frontend las pre-llena con los
-    # datos del tratamiento al seleccionarlo, pero quedan editables: el backend
-    # respeta lo que llega y NO las sobrescribe.
     ingreso = Ingreso(tenant_id=g.tenant_id, **data)
     db.session.add(ingreso)
+    db.session.flush()
+
+    if ingreso.factura and data.get("sucursal_id"):
+        try:
+            asignar_ticket(ingreso, data["sucursal_id"], ticket_folio)
+        except FacturacionError as e:
+            db.session.rollback()
+            return jsonify({"error": str(e)}), 400
+
     db.session.commit()
     return jsonify(_enrich_ingreso(ingreso)), 201
 
@@ -69,11 +83,17 @@ def actualizar_ingreso(ingreso_id):
         id=ingreso_id, tenant_id=g.tenant_id
     ).first_or_404()
 
+    if ingreso.ticket and ingreso.ticket.estado != TICKET_SIN_TIMBRAR:
+        return jsonify({
+            "error": "Este ingreso ya fue facturado (timbrado); no se puede modificar."
+        }), 400
+
     schema = IngresoSchema(partial=True)
     data = schema.load(request.get_json() or {})
-    # Passthrough: se respetan las comisiones que captura el usuario
     for key, value in data.items():
         setattr(ingreso, key, value)
+    if ingreso.ticket:
+        recalcular_total(ingreso.ticket)
     db.session.commit()
     return jsonify(_enrich_ingreso(ingreso))
 
@@ -85,11 +105,26 @@ def eliminar_ingreso(ingreso_id):
     ingreso = Ingreso.query.filter_by(
         id=ingreso_id, tenant_id=g.tenant_id
     ).first_or_404()
-    # Limpiar ligas de comisión (la FK bloquearía el borrado en MySQL).
+
+    ticket = ingreso.ticket
+    if ticket and ticket.estado != TICKET_SIN_TIMBRAR:
+        return jsonify({
+            "error": "Este ingreso ya fue facturado; no se puede eliminar."
+        }), 400
+
     PagoComisionIngreso.query.filter_by(
         ingreso_id=ingreso.id, tenant_id=g.tenant_id
     ).delete()
     db.session.delete(ingreso)
+    db.session.flush()
+
+    if ticket:
+        restantes = Ingreso.query.filter_by(ticket_id=ticket.id).count()
+        if restantes == 0:
+            db.session.delete(ticket)
+        else:
+            recalcular_total(ticket)
+
     db.session.commit()
     return jsonify({"message": "Ingreso eliminado"})
 

@@ -17,6 +17,11 @@ class IngresoSchema(Schema):
     comision_doctor = fields.Float(load_default=0)
     descuento_pct = fields.Float(load_default=0)
     factura = fields.Bool(load_default=False)
+    sucursal_id = fields.Int(allow_none=True)
+    # Enriquecidos (solo lectura)
+    ticket_id = fields.Int(dump_only=True)
+    ticket_folio = fields.Int(dump_only=True)
+    ticket_folio_display = fields.Str(dump_only=True)
     estrategia_id = fields.Int(allow_none=True)
     comentarios = fields.Str(allow_none=True)
     # Read-only enriched fields

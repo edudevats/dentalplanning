@@ -30,6 +30,13 @@ class Config:
     SMTP_FROM = os.getenv("SMTP_FROM", "no-reply@dentalplanning.mx")
     SMTP_USE_TLS = os.getenv("SMTP_USE_TLS", "true").lower() in ("true", "1", "yes")
     BILLING_GRACE_DAYS = int(os.getenv("BILLING_GRACE_DAYS", "3"))
+    # Llave maestra (Fernet) para cifrar secretos del CSD. NUNCA en el repo ni en la BD.
+    FACTURACION_FERNET_KEY = os.getenv("FACTURACION_FERNET_KEY", "")
+    # Finkok (PAC para timbrado de CFDI). FINKOK_PASSWORD es el token/contraseña.
+    # FINKOK_ENVIRONMENT: "test" (sandbox de pruebas) o "production".
+    FINKOK_USERNAME = os.getenv("FINKOK_USERNAME", "")
+    FINKOK_PASSWORD = os.getenv("FINKOK_PASSWORD", "")
+    FINKOK_ENVIRONMENT = os.getenv("FINKOK_ENVIRONMENT", "test")
 
 
 class DevelopmentConfig(Config):
@@ -44,6 +51,7 @@ class TestingConfig(Config):
     SQLALCHEMY_DATABASE_URI = "sqlite:///:memory:"
     JWT_ACCESS_TOKEN_EXPIRES = timedelta(seconds=300)
     RATELIMIT_ENABLED = False
+    FACTURACION_FERNET_KEY = "8-ANfoQdltt99PyJ-wSEMA_n6fVz7QT0QtKNoGt1liE="
 
 
 class ProductionConfig(Config):
@@ -57,7 +65,7 @@ class ProductionConfig(Config):
     @classmethod
     def init_app(cls, app):
         """Validate required secrets at boot time."""
-        for key in ("SECRET_KEY", "JWT_SECRET_KEY"):
+        for key in ("SECRET_KEY", "JWT_SECRET_KEY", "FACTURACION_FERNET_KEY"):
             if not os.environ.get(key):
                 raise RuntimeError(
                     f"CRITICAL: {key} environment variable is required "
@@ -65,6 +73,7 @@ class ProductionConfig(Config):
                 )
         app.config["SECRET_KEY"] = os.environ["SECRET_KEY"]
         app.config["JWT_SECRET_KEY"] = os.environ["JWT_SECRET_KEY"]
+        app.config["FACTURACION_FERNET_KEY"] = os.environ["FACTURACION_FERNET_KEY"]
 
 
 config_by_name = {
