@@ -50,6 +50,14 @@ def _compute_proximo_cobro(plan, inicio):
     return _add_one_month(inicio)
 
 
+def _grace_after(proximo):
+    """Fecha límite de gracia: proximo_cobro + BILLING_GRACE_DAYS (default 3)."""
+    if not proximo:
+        return None
+    dias = current_app.config.get("BILLING_GRACE_DAYS", 3)
+    return proximo + timedelta(days=dias)
+
+
 def _serialize_tenant(t, *, with_counts=False):
     out = {
         "id": t.id,
@@ -212,11 +220,13 @@ def approve_tenant(tenant_id):
         sub.plan_id = plan.id
         sub.inicio = inicio
         sub.proximo_cobro = proximo
+        sub.grace_expires_at = _grace_after(proximo)
         sub.estado = SUBSCRIPTION_ACTIVA
     else:
         sub = Subscription(
             tenant_id=t.id, plan_id=plan.id, inicio=inicio,
-            proximo_cobro=proximo, estado=SUBSCRIPTION_ACTIVA,
+            proximo_cobro=proximo, grace_expires_at=_grace_after(proximo),
+            estado=SUBSCRIPTION_ACTIVA,
         )
         db.session.add(sub)
 
@@ -608,12 +618,14 @@ def assign_plan(tenant_id):
         sub.plan_id = plan.id
         sub.inicio = inicio
         sub.proximo_cobro = proximo
+        sub.grace_expires_at = _grace_after(proximo)
     else:
         sub = Subscription(
             tenant_id=t.id,
             plan_id=plan.id,
             inicio=inicio,
             proximo_cobro=proximo,
+            grace_expires_at=_grace_after(proximo),
             estado=SUBSCRIPTION_VENCIDA,
         )
         db.session.add(sub)
@@ -694,6 +706,7 @@ def create_payment():
 
     if sub and data.get("periodo_fin"):
         sub.proximo_cobro = data["periodo_fin"] + timedelta(days=1)
+        sub.grace_expires_at = _grace_after(sub.proximo_cobro)
         sub.estado = SUBSCRIPTION_ACTIVA
         # Activate the tenant so billing reminders and module access work
         if tenant.status != TENANT_STATUS_ACTIVE:
