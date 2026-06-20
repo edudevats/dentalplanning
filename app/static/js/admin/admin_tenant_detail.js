@@ -463,10 +463,19 @@
     if (typeof lucide !== 'undefined') lucide.createIcons();
   }
 
-  function openNewPayment() {
+  async function openNewPayment() {
+    const plans = (await loadPlans()).filter(p => p.activo);
+    const plansById = {};
+    plans.forEach(p => { plansById[p.id] = p; });
+
     const wrap = document.createElement('div');
     wrap.className = 'grid grid-cols-1 md:grid-cols-2 gap-4';
     const today = new Date().toISOString().slice(0, 10);
+
+    const planSel = selectEl('plan_id', plans.map(p => ({ value: p.id, label: `${p.nombre} — ${currency(p.precio_mensual)}/mes` })));
+    const currentPlanId = tenant.subscription && tenant.subscription.plan_id;
+    if (currentPlanId && plansById[currentPlanId]) planSel.value = String(currentPlanId);
+
     const fecha = inputEl('date', 'fecha', today);
     const monto = inputEl('number', 'monto', '');
     monto.step = '0.01'; monto.min = '0';
@@ -477,10 +486,31 @@
       { value: 'clip', label: 'Clip' },
       { value: 'otro', label: 'Otro' },
     ]);
-    const pIni = inputEl('date', 'periodo_inicio', '');
+    const pIni = inputEl('date', 'periodo_inicio', today);
     const pFin = inputEl('date', 'periodo_fin', '');
     const comen = textareaEl('comentarios', '', 2);
 
+    // Al elegir un plan se autollenan monto y periodo (editables).
+    let montoTouched = false;
+    let finTouched = false;
+    function selectedPlan() { return plansById[parseInt(planSel.value, 10)]; }
+    function refreshFromPlan() {
+      const plan = selectedPlan();
+      if (!plan) return;
+      if (!montoTouched) monto.value = plan.precio_mensual != null ? plan.precio_mensual : '';
+      if (!finTouched) pFin.value = computeProximo(plan, pIni.value);
+    }
+    planSel.addEventListener('change', () => { montoTouched = false; finTouched = false; refreshFromPlan(); });
+    pIni.addEventListener('change', () => { if (!finTouched) pFin.value = computeProximo(selectedPlan(), pIni.value); });
+    monto.addEventListener('input', () => { montoTouched = true; });
+    pFin.addEventListener('input', () => { finTouched = true; });
+
+    if (plans.length > 0) {
+      const planCol = document.createElement('div');
+      planCol.className = 'md:col-span-2';
+      planCol.appendChild(buildField('Plan', planSel));
+      wrap.appendChild(planCol);
+    }
     wrap.appendChild(buildField('Fecha del pago', fecha));
     wrap.appendChild(buildField('Monto (MXN)', monto));
     wrap.appendChild(buildField('Método', metodo));
@@ -490,6 +520,8 @@
     fullCol.className = 'md:col-span-2';
     fullCol.appendChild(buildField('Comentarios', comen));
     wrap.appendChild(fullCol);
+
+    if (plans.length > 0) refreshFromPlan();
 
     const note = document.createElement('div');
     note.className = 'md:col-span-2 flex items-start gap-2 p-3 rounded-md bg-cs-primary/10 text-cs-on-surface text-xs';

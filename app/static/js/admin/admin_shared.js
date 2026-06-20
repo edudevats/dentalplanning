@@ -43,16 +43,24 @@
     return new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(Number(v) || 0);
   }
 
+  // Parsea a hora local. Las cadenas "solo fecha" (YYYY-MM-DD) las parsea JS
+  // como UTC, lo que desfasa un día en zonas detrás de UTC (p. ej. México UTC-6);
+  // por eso se construyen por componentes. Las cadenas con hora usan Date normal.
+  function parseLocalDate(iso) {
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+    return m ? new Date(+m[1], +m[2] - 1, +m[3]) : new Date(iso);
+  }
+
   function formatDate(iso) {
     if (!iso) return '—';
-    const d = new Date(iso);
+    const d = parseLocalDate(iso);
     if (isNaN(d)) return '—';
     return d.toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric' });
   }
 
   function formatMonth(iso) {
     if (!iso) return '—';
-    const d = new Date(iso);
+    const d = parseLocalDate(iso);
     if (isNaN(d)) return '—';
     return d.toLocaleDateString('es-MX', { month: 'short', year: '2-digit' });
   }
