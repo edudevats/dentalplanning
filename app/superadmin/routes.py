@@ -554,7 +554,7 @@ def list_subscriptions():
     subs = (
         Subscription.query.join(Tenant)
         .filter(Tenant.slug != SYSTEM_TENANT_SLUG)
-        .order_by(Subscription.proximo_cobro.asc().nullslast())
+        .order_by(Subscription.proximo_cobro.is_(None), Subscription.proximo_cobro.asc())
         .all()
     )
     out = []
