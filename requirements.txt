@@ -9,11 +9,15 @@ Flask-CORS==5.0.*
 marshmallow==3.23.*
 marshmallow-sqlalchemy==1.1.*
 
-# Database (SQLite built-in, psycopg2 for prod)
+# Database (SQLite built-in, mysqlclient for MySQL/PythonAnywhere)
 SQLAlchemy==2.0.*
+mysqlclient>=2.2
 
 # Excel (for import)
 openpyxl==3.1.*
+
+# HTTP client (Clip API)
+requests==2.32.*
 
 # Utilities
 python-dotenv==1.0.*
@@ -21,3 +25,12 @@ python-dotenv==1.0.*
 # Testing
 pytest==8.3.*
 pytest-flask==1.3.*
+
+# Facturación CFDI
+satcfdi==4.9.*
+qrcode==8.*
+cryptography>=44
+defusedxml>=0.7
+# PDF de respaldo del CFDI (Finkok normalmente devuelve el PDF con accept=XML_PDF;
+# weasyprint es el fallback). Requiere libs del sistema (pango/cairo) en el servidor.
+weasyprint>=60

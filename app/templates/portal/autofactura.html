@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Autofacturación · {{ tenant_nombre }}</title>
+  <!-- Mismo CDN de Tailwind que usa app/templates/base.html (consistencia del proyecto) -->
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+</head>
+<body class="bg-gray-100 min-h-screen">
+  <div class="max-w-md mx-auto p-4">
+    <div class="bg-white rounded-2xl shadow-md p-6 mt-6">
+      <h1 class="text-xl font-bold text-gray-800 text-center">Facturación</h1>
+      <p class="text-sm text-gray-500 text-center mb-5">{{ tenant_nombre }}</p>
+
+      <!-- Paso 1: buscar -->
+      <div id="paso-buscar">
+        <p class="text-sm text-gray-600 mb-3">Captura los datos de tu ticket para facturar:</p>
+        <label class="block text-xs font-semibold text-gray-500">Folio del ticket</label>
+        <input id="i-folio" placeholder="Ej. MTY-1234" class="w-full border rounded-lg px-3 py-2 mb-2">
+        <label class="block text-xs font-semibold text-gray-500">Monto total</label>
+        <input id="i-monto" type="number" step="0.01" placeholder="0.00" class="w-full border rounded-lg px-3 py-2 mb-2">
+        <label class="block text-xs font-semibold text-gray-500">Fecha del ticket</label>
+        <input id="i-fecha" type="date" class="w-full border rounded-lg px-3 py-2 mb-4">
+        <button id="btn-buscar" class="w-full bg-blue-600 text-white font-semibold rounded-lg py-2.5">Buscar ticket</button>
+        <p id="buscar-error" class="text-sm text-red-600 mt-2 hidden"></p>
+      </div>
+
+      <!-- Paso 2: datos fiscales -->
+      <div id="paso-datos" class="hidden">
+        <div class="bg-gray-50 rounded-lg p-3 mb-4 text-sm">
+          <div class="flex justify-between font-semibold"><span>Ticket</span><span id="r-folio"></span></div>
+          <div id="r-conceptos" class="mt-2 text-gray-600"></div>
+          <div class="flex justify-between font-bold border-t mt-2 pt-2"><span>Total</span><span id="r-total"></span></div>
+          <div class="text-xs text-gray-400 mt-1">Servicio exento de IVA</div>
+        </div>
+        <label class="block text-xs font-semibold text-gray-500">RFC</label>
+        <input id="f-rfc" class="w-full border rounded-lg px-3 py-2 mb-2 uppercase">
+        <label class="block text-xs font-semibold text-gray-500">Nombre / Razón social</label>
+        <input id="f-nombre" class="w-full border rounded-lg px-3 py-2 mb-2">
+        <label class="block text-xs font-semibold text-gray-500">Código postal</label>
+        <input id="f-cp" maxlength="5" class="w-full border rounded-lg px-3 py-2 mb-2">
+        <label class="block text-xs font-semibold text-gray-500">Régimen fiscal</label>
+        <select id="f-regimen" class="w-full border rounded-lg px-3 py-2 mb-2">
+          <option value="612">612 - Personas Físicas con Actividades Empresariales y Profesionales</option>
+          <option value="626">626 - Régimen Simplificado de Confianza (RESICO)</option>
+          <option value="605">605 - Sueldos y Salarios</option>
+          <option value="621">621 - Incorporación Fiscal</option>
+          <option value="616">616 - Sin obligaciones fiscales</option>
+          <option value="601">601 - General de Ley Personas Morales</option>
+        </select>
+        <label class="block text-xs font-semibold text-gray-500">Uso del CFDI</label>
+        <select id="f-uso" class="w-full border rounded-lg px-3 py-2 mb-2">
+          <option value="D01">D01 - Honorarios médicos, dentales y gastos hospitalarios</option>
+          <option value="G03">G03 - Gastos en general</option>
+          <option value="S01">S01 - Sin efectos fiscales</option>
+        </select>
+        <label class="block text-xs font-semibold text-gray-500">Correo (recibirás tu factura)</label>
+        <input id="f-email" type="email" class="w-full border rounded-lg px-3 py-2 mb-4">
+        <button id="btn-facturar" class="w-full bg-blue-600 text-white font-semibold rounded-lg py-2.5">Generar factura</button>
+        <p id="facturar-error" class="text-sm text-red-600 mt-2 hidden"></p>
+      </div>
+
+      <!-- Paso 3: éxito -->
+      <div id="paso-exito" class="hidden text-center py-6">
+        <div class="text-5xl mb-3">✅</div>
+        <p class="font-semibold text-gray-800">¡Factura generada!</p>
+        <p class="text-sm text-gray-500 mt-1">Te la enviamos a tu correo (PDF y XML).</p>
+        <p id="r-uuid" class="text-xs text-gray-400 mt-3 break-all"></p>
+      </div>
+    </div>
+    <p class="text-center text-xs text-gray-400 mt-4">Powered by Dental Planning</p>
+  </div>
+
+<script>
+const SLUG = {{ slug|tojson }};
+const API = "/api/v1/portal/" + encodeURIComponent(SLUG);
+const params = new URLSearchParams(location.search);
+const TOKEN = params.get("t");
+let lookupPayload = null;  // {token} o {folio,monto,fecha}
+
+const $ = (id) => document.getElementById(id);
+const show = (id) => $(id).classList.remove("hidden");
+const hide = (id) => $(id).classList.add("hidden");
+const money = (n) => "$" + Number(n||0).toLocaleString("es-MX",{minimumFractionDigits:2});
+
+async function buscar(payload) {
+  const r = await fetch(API + "/buscar", {
+    method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify(payload),
+  });
+  const data = await r.json();
+  if (!r.ok) throw new Error(data.error || "No se encontró el ticket");
+  if (data.ya_facturado) throw new Error(data.mensaje || "Este ticket ya fue facturado");
+  lookupPayload = payload;
+  $("r-folio").textContent = data.folio;
+  $("r-total").textContent = money(data.total);
+  $("r-conceptos").innerHTML = data.conceptos.map(c =>
+    `<div class="flex justify-between"><span>${escapeHtml(c.nombre)}</span><span>${money(c.monto)}</span></div>`
+  ).join("");
+  hide("paso-buscar"); show("paso-datos");
+}
+
+function escapeHtml(s){return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
+
+$("btn-buscar").addEventListener("click", async () => {
+  $("buscar-error").classList.add("hidden");
+  const folio = $("i-folio").value.trim();
+  const monto = $("i-monto").value;
+  const fecha = $("i-fecha").value;
+  if (!folio || !monto || !fecha) { $("buscar-error").textContent = "Completa folio, monto y fecha."; show("buscar-error"); return; }
+  try { await buscar({folio, monto: Number(monto), fecha}); }
+  catch (e) { $("buscar-error").textContent = e.message; show("buscar-error"); }
+});
+
+$("btn-facturar").addEventListener("click", async () => {
+  $("facturar-error").classList.add("hidden");
+  const receptor = {
+    rfc: $("f-rfc").value.trim().toUpperCase(),
+    nombre: $("f-nombre").value.trim(),
+    cp: $("f-cp").value.trim(),
+    regimen_fiscal: $("f-regimen").value,
+    uso_cfdi: $("f-uso").value,
+    email: $("f-email").value.trim(),
+  };
+  $("btn-facturar").disabled = true; $("btn-facturar").textContent = "Generando...";
+  try {
+    const r = await fetch(API + "/facturar", {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({...lookupPayload, receptor}),
+    });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.error || "No se pudo generar la factura");
+    $("r-uuid").textContent = "UUID: " + (data.uuid || "");
+    hide("paso-datos"); show("paso-exito");
+  } catch (e) {
+    $("facturar-error").textContent = e.message; show("facturar-error");
+    $("btn-facturar").disabled = false; $("btn-facturar").textContent = "Generar factura";
+  }
+});
+
+// Si vino el token del QR, busca automáticamente
+if (TOKEN) {
+  buscar({token: TOKEN}).catch(e => {
+    // Si el token falla, deja la entrada manual con el aviso
+    $("buscar-error").textContent = e.message; show("buscar-error");
+  });
+}
+</script>
+</body>
+</html>

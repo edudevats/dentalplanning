@@ -38,6 +38,7 @@ def create_app(config_name=None):
     from app.clip.routes import clip_bp
     from app.frontend.routes import frontend_bp
     from app.facturacion.routes import facturacion_bp
+    from app.portal.routes import portal_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(catalogo_bp)
@@ -52,6 +53,7 @@ def create_app(config_name=None):
     app.register_blueprint(clip_bp)
     app.register_blueprint(frontend_bp)
     app.register_blueprint(facturacion_bp)
+    app.register_blueprint(portal_bp)
 
     # Error handlers
     from app.middleware.error_handlers import register_error_handlers

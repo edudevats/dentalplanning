@@ -1,6 +1,7 @@
 import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from email.mime.application import MIMEApplication
 from flask import current_app
 
 
@@ -46,6 +47,83 @@ def send_email(to_address, subject, html_body, text_body=None):
         current_app.logger.error("Email send failed to=%s subject=%s err=%s",
                                  to_address, subject, e)
         raise EmailError(str(e))
+
+
+def send_email_with_attachments(to_address, subject, html_body, attachments,
+                                text_body=None):
+    """Envía un correo con adjuntos. `attachments` = lista de (filename, bytes, mimetype).
+    Retorna True si se envió, False si SMTP no está configurado; lanza EmailError si falla.
+    """
+    cfg = current_app.config
+    host = cfg.get("SMTP_HOST", "")
+    if not host:
+        current_app.logger.warning(
+            "Email (con adjuntos) omitido (SMTP_HOST no configurado): to=%s subject=%s",
+            to_address, subject)
+        return False
+
+    port = cfg.get("SMTP_PORT", 587)
+    user = cfg.get("SMTP_USER", "")
+    password = cfg.get("SMTP_PASS", "")
+    from_addr = cfg.get("SMTP_FROM", "no-reply@dentalplanning.mx")
+    use_tls = cfg.get("SMTP_USE_TLS", True)
+
+    msg = MIMEMultipart("mixed")
+    msg["Subject"] = subject
+    msg["From"] = from_addr
+    msg["To"] = to_address
+
+    alt = MIMEMultipart("alternative")
+    if text_body:
+        alt.attach(MIMEText(text_body, "plain", "utf-8"))
+    alt.attach(MIMEText(html_body, "html", "utf-8"))
+    msg.attach(alt)
+
+    for filename, content, mimetype in attachments:
+        subtype = mimetype.split("/", 1)[-1] if "/" in mimetype else mimetype
+        part = MIMEApplication(content, _subtype=subtype)
+        part.add_header("Content-Disposition", "attachment", filename=filename)
+        msg.attach(part)
+
+    try:
+        with smtplib.SMTP(host, port, timeout=20) as server:
+            server.ehlo()
+            if use_tls:
+                server.starttls()
+                server.ehlo()
+            if user and password:
+                server.login(user, password)
+            server.sendmail(from_addr, [to_address], msg.as_string())
+        current_app.logger.info("Email con adjuntos enviado to=%s subject=%s",
+                                to_address, subject)
+        return True
+    except Exception as e:
+        current_app.logger.error("Email con adjuntos falló to=%s err=%s", to_address, e)
+        raise EmailError(str(e))
+
+
+def render_factura_email(ticket):
+    """HTML + texto del correo de entrega de la factura."""
+    uuid = getattr(ticket, "uuid", "") or ""
+    folio = getattr(ticket, "folio_display", "") or ""
+    total = getattr(ticket, "total", 0) or 0
+    nombre = getattr(ticket, "receptor_nombre", "") or "Cliente"
+    html = f"""<!DOCTYPE html>
+<html><body style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px;">
+  <h2 style="color:#1a73e8;">Tu factura está lista</h2>
+  <p>Hola <strong>{nombre}</strong>,</p>
+  <p>Adjuntamos tu factura (CFDI) en PDF y XML.</p>
+  <p style="background:#f5f5f5;padding:15px;border-radius:6px;">
+    <strong>Folio:</strong> {folio}<br>
+    <strong>UUID:</strong> {uuid}<br>
+    <strong>Total:</strong> ${total:,.2f} MXN
+  </p>
+  <p style="color:#999;font-size:12px;">— Dental Planning</p>
+</body></html>"""
+    text = (f"Tu factura está lista\n\nHola {nombre},\n\n"
+            f"Folio: {folio}\nUUID: {uuid}\nTotal: ${total:,.2f} MXN\n\n"
+            "Adjuntamos PDF y XML.\n— Dental Planning")
+    return html, text
 
 
 def render_billing_reminder(tenant_name, plan_name, monto, fecha_cobro, payment_url, is_retry=False):

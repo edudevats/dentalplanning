@@ -6,8 +6,9 @@ from app.middleware.tenant import require_auth, require_role
 from app.auth.models import Tenant
 from app.facturacion.models import ConfiguracionFiscal, Sucursal, Ticket
 from app.facturacion.schemas import (
-    ConfiguracionFiscalSchema, SucursalSchema, TicketSchema,
+    ConfiguracionFiscalSchema, SucursalSchema, TicketSchema, ReceptorSchema,
 )
+from app.facturacion.cfdi import timbrar_ticket, TimbradoError
 from app.engine.accounting import parse_mes, filtro_mes
 from app.facturacion import crypto
 from app.facturacion.csd import validar_csd, CSDInvalido
@@ -204,3 +205,18 @@ def ticket_impresion(ticket_id):
         "qr_url": qr_url,
         "facturable_hasta": facturable_hasta.isoformat(),
     })
+
+
+@facturacion_bp.route("/tickets/<int:ticket_id>/timbrar", methods=["POST"])
+@require_auth
+@require_role("admin", "editor")
+def timbrar(ticket_id):
+    t = Ticket.query.filter_by(
+        id=ticket_id, tenant_id=g.tenant_id
+    ).first_or_404()
+    receptor = ReceptorSchema().load(request.get_json() or {})
+    try:
+        timbrar_ticket(t, receptor)
+    except TimbradoError as e:
+        return jsonify({"error": str(e)}), 400
+    return jsonify(TicketSchema().dump(t))

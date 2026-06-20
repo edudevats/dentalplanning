@@ -54,3 +54,15 @@ class ConfiguracionFiscalSchema(Schema):
     csd_valido_desde = fields.DateTime(dump_only=True)
     csd_valido_hasta = fields.DateTime(dump_only=True)
     csd_configurado = fields.Bool(dump_only=True)
+
+
+class ReceptorSchema(Schema):
+    class Meta:
+        unknown = EXCLUDE
+
+    rfc = fields.Str(required=True, validate=validate.Length(min=12, max=13))
+    nombre = fields.Str(required=True, validate=validate.Length(min=1))
+    cp = fields.Str(required=True, validate=validate.Length(equal=5))
+    regimen_fiscal = fields.Str(required=True)
+    uso_cfdi = fields.Str(required=True)
+    email = fields.Email(required=True)
