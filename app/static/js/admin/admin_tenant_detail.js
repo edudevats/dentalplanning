@@ -548,17 +548,46 @@
     }
   }
 
+  // ── Date helpers (espejo de _compute_proximo_cobro del backend) ─────────
+  function addDays(dateStr, days) {
+    const [y, m, d] = dateStr.split('-').map(Number);
+    const dt = new Date(y, m - 1, d);
+    dt.setDate(dt.getDate() + days);
+    const pad = n => String(n).padStart(2, '0');
+    return `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}`;
+  }
+
+  function addOneMonth(dateStr) {
+    const [y, m, d] = dateStr.split('-').map(Number);
+    let ny = y, nm = m + 1;
+    if (nm > 12) { nm = 1; ny += 1; }
+    const lastDay = new Date(ny, nm, 0).getDate(); // último día del mes destino
+    const pad = n => String(n).padStart(2, '0');
+    return `${ny}-${pad(nm)}-${pad(Math.min(d, lastDay))}`;
+  }
+
+  function computeProximo(plan, inicioStr) {
+    if (!inicioStr) return '';
+    if (plan && plan.dias_expiracion && plan.dias_expiracion > 0) {
+      return addDays(inicioStr, plan.dias_expiracion);
+    }
+    return addOneMonth(inicioStr);
+  }
+
   async function openAssignPlan(sub) {
     const plans = (await loadPlans()).filter(p => p.activo);
     if (plans.length === 0) { Toast.show('No hay planes activos', 'warning'); return; }
     const isNew = !sub;
+    const plansById = {};
+    plans.forEach(p => { plansById[p.id] = p; });
+
     const wrap = document.createElement('div');
     wrap.className = 'space-y-4';
 
     const info = document.createElement('p');
     info.className = 'text-sm text-cs-on-surface-var';
     info.textContent = isNew
-      ? 'Asigna un plan. La cuenta quedará inactiva hasta que registres un pago.'
+      ? 'Asigna un plan. La cuenta quedará inactiva hasta que registres un pago (salvo planes free/temporales).'
       : `Plan actual: ${sub.plan_nombre || '—'}. Selecciona el nuevo plan:`;
     wrap.appendChild(info);
 
@@ -566,33 +595,50 @@
     if (!isNew) planSel.value = String(sub.plan_id);
     wrap.appendChild(buildField(isNew ? 'Plan' : 'Nuevo plan', planSel));
 
-    if (isNew) {
-      const today = new Date().toISOString().slice(0, 10);
-      const inicio = inputEl('date', 'inicio', today);
-      wrap.appendChild(buildField('Fecha de inicio', inicio));
-      openModal({
-        title: `Asignar plan — ${tenant.name}`, content: wrap,
-        primary: { label: 'Asignar plan', onClick: async () => {
-          await adminApi.post(`/tenants/${tenantId}/assign-plan`, {
-            plan_id: parseInt(planSel.value, 10),
-            inicio: inicio.value || undefined,
-          });
-          Toast.show('Plan asignado. Registra un pago para activar la cuenta.', 'success');
-          await refreshAll();
-        } },
-      });
-    } else {
-      openModal({
-        title: `Cambiar plan — ${tenant.name}`, content: wrap,
-        primary: { label: 'Cambiar plan', onClick: async () => {
-          const newPlanId = parseInt(planSel.value, 10);
-          if (newPlanId === sub.plan_id) throw new Error('Selecciona un plan diferente.');
-          await adminApi.post(`/tenants/${tenantId}/assign-plan`, { plan_id: newPlanId });
-          Toast.show('Plan actualizado', 'success');
-          await refreshAll();
-        } },
-      });
+    // La fecha de inicio toma la fecha en la que se hace el cambio (hoy).
+    const today = new Date().toISOString().slice(0, 10);
+    const inicio = inputEl('date', 'inicio', today);
+    wrap.appendChild(buildField('Fecha de inicio', inicio));
+
+    const proximo = inputEl('date', 'proximo_cobro', '');
+    const proximoField = buildField('Próximo cobro', proximo);
+    const proximoLabel = proximoField.querySelector('span');
+    wrap.appendChild(proximoField);
+
+    let proximoTouched = false;
+    function selectedPlan() { return plansById[parseInt(planSel.value, 10)]; }
+    function refreshProximo() {
+      const plan = selectedPlan();
+      const hasVigencia = !!(plan && plan.dias_expiracion && plan.dias_expiracion > 0);
+      proximoLabel.textContent = hasVigencia ? 'Fin de vigencia' : 'Próximo cobro';
+      if (!proximoTouched) proximo.value = computeProximo(plan, inicio.value);
     }
+    // Cambiar plan o fecha de inicio reactiva el autocálculo.
+    planSel.addEventListener('change', () => { proximoTouched = false; refreshProximo(); });
+    inicio.addEventListener('change', () => { proximoTouched = false; refreshProximo(); });
+    proximo.addEventListener('input', () => { proximoTouched = true; });
+    refreshProximo();
+
+    openModal({
+      title: isNew ? `Asignar plan — ${tenant.name}` : `Cambiar plan — ${tenant.name}`,
+      content: wrap,
+      primary: {
+        label: isNew ? 'Asignar plan' : 'Cambiar plan',
+        onClick: async () => {
+          const newPlanId = parseInt(planSel.value, 10);
+          if (!isNew && newPlanId === sub.plan_id && inicio.value === sub.inicio && proximo.value === sub.proximo_cobro) {
+            throw new Error('Selecciona un plan diferente o cambia las fechas.');
+          }
+          await adminApi.post(`/tenants/${tenantId}/assign-plan`, {
+            plan_id: newPlanId,
+            inicio: inicio.value || undefined,
+            proximo_cobro: proximo.value || undefined,
+          });
+          Toast.show(isNew ? 'Plan asignado. Registra un pago para activar la cuenta.' : 'Plan actualizado', 'success');
+          await refreshAll();
+        },
+      },
+    });
   }
 
   // ── Tab: Notes ─────────────────────────────────────────────────────────

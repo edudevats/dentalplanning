@@ -1,3 +1,4 @@
+import calendar
 import secrets
 import string
 from datetime import date, datetime, timedelta, timezone
@@ -28,6 +29,26 @@ superadmin_bp = Blueprint("superadmin", __name__, url_prefix="/api/v1/superadmin
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
+
+def _add_one_month(d):
+    """Avanza ``d`` un mes calendario, ajustando al último día válido del mes
+    destino (p. ej. 2026-01-31 -> 2026-02-28)."""
+    year = d.year + (1 if d.month == 12 else 0)
+    month = 1 if d.month == 12 else d.month + 1
+    last_day = calendar.monthrange(year, month)[1]
+    return date(year, month, min(d.day, last_day))
+
+
+def _compute_proximo_cobro(plan, inicio):
+    """Fecha de próximo cobro / fin de vigencia para una suscripción.
+
+    Planes con ventana de vigencia (``dias_expiracion``) expiran a esos días.
+    Los planes sin ella se tratan como mensuales.
+    """
+    if plan.dias_expiracion and plan.dias_expiracion > 0:
+        return inicio + timedelta(days=plan.dias_expiracion)
+    return _add_one_month(inicio)
+
 
 def _serialize_tenant(t, *, with_counts=False):
     out = {
@@ -177,7 +198,7 @@ def approve_tenant(tenant_id):
         return jsonify({"error": "Plan inválido"}), 400
 
     inicio = data.get("inicio") or date.today()
-    proximo = data.get("proximo_cobro") or (inicio + timedelta(days=30))
+    proximo = data.get("proximo_cobro") or _compute_proximo_cobro(plan, inicio)
 
     t.status = TENANT_STATUS_ACTIVE
     t.is_active = True
@@ -580,16 +601,14 @@ def assign_plan(tenant_id):
         return jsonify({"error": "Plan inválido o inactivo"}), 400
 
     inicio = data.get("inicio") or date.today()
+    proximo = data.get("proximo_cobro") or _compute_proximo_cobro(plan, inicio)
 
     sub = Subscription.query.filter_by(tenant_id=t.id).first()
     if sub:
         sub.plan_id = plan.id
-        if data.get("inicio"):
-            sub.inicio = inicio
-        if data.get("proximo_cobro"):
-            sub.proximo_cobro = data["proximo_cobro"]
+        sub.inicio = inicio
+        sub.proximo_cobro = proximo
     else:
-        proximo = data.get("proximo_cobro") or (inicio + timedelta(days=30))
         sub = Subscription(
             tenant_id=t.id,
             plan_id=plan.id,
