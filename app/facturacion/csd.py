@@ -38,3 +38,33 @@ def validar_csd(cer_bytes: bytes, key_bytes: bytes, password: str) -> dict:
         "valido_desde": datetime.strptime(not_before, "%Y%m%d%H%M%SZ"),
         "valido_hasta": datetime.strptime(not_after, "%Y%m%d%H%M%SZ"),
     }
+
+
+def validar_fiel(cer_bytes: bytes, key_bytes: bytes, password: str) -> dict:
+    """Carga y valida una e.firma (FIEL). Devuelve metadatos.
+
+    Lanza CSDInvalido si la contraseña/archivos no cargan, o si NO es una FIEL
+    (p. ej. subieron el CSD por error).
+    """
+    try:
+        signer = Signer.load(
+            certificate=cer_bytes, key=key_bytes, password=password
+        )
+    except Exception as e:
+        raise CSDInvalido(
+            f"No se pudo cargar la e.firma (contraseña o archivos inválidos): {e}"
+        )
+    if signer.type != CertificateType.Fiel:
+        raise CSDInvalido(
+            "El archivo no es una e.firma (FIEL). "
+            "Si subiste tu CSD, usa la sección de CSD."
+        )
+    not_before = signer.certificate.get_notBefore().decode()
+    not_after = signer.certificate.get_notAfter().decode()
+    return {
+        "rfc": str(signer.rfc),
+        "razon_social": signer.legal_name,
+        "no_certificado": signer.certificate_number,
+        "valido_desde": datetime.strptime(not_before, "%Y%m%d%H%M%SZ"),
+        "valido_hasta": datetime.strptime(not_after, "%Y%m%d%H%M%SZ"),
+    }

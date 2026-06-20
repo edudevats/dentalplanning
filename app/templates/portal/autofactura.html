@@ -2,69 +2,112 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#2563eb">
   <title>Autofacturación · {{ tenant_nombre }}</title>
   <!-- Mismo CDN de Tailwind que usa app/templates/base.html (consistencia del proyecto) -->
   <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+  <style>
+    /* 16px en los campos evita el zoom automático de iOS al enfocar */
+    input, select { font-size: 16px; }
+    /* Respeta el área segura (notch) en móviles */
+    body { padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
+  </style>
 </head>
-<body class="bg-gray-100 min-h-screen">
-  <div class="max-w-md mx-auto p-4">
-    <div class="bg-white rounded-2xl shadow-md p-6 mt-6">
-      <h1 class="text-xl font-bold text-gray-800 text-center">Facturación</h1>
+<body class="bg-gray-100 min-h-screen text-gray-800">
+  <div class="w-full max-w-md mx-auto px-3 py-4 sm:py-8">
+    <div class="bg-white rounded-2xl shadow-md p-5 sm:p-6">
+
+      <!-- Logo del consultorio (se muestra solo si existe) -->
+      <img id="logo" alt="{{ tenant_nombre }}" class="hidden mx-auto max-h-24 max-w-[80%] object-contain mb-3">
+      <h1 class="text-lg sm:text-xl font-bold text-center">Facturación</h1>
       <p class="text-sm text-gray-500 text-center mb-5">{{ tenant_nombre }}</p>
 
       <!-- Paso 1: buscar -->
-      <div id="paso-buscar">
-        <p class="text-sm text-gray-600 mb-3">Captura los datos de tu ticket para facturar:</p>
-        <label class="block text-xs font-semibold text-gray-500">Folio del ticket</label>
-        <input id="i-folio" placeholder="Ej. MTY-1234" class="w-full border rounded-lg px-3 py-2 mb-2">
-        <label class="block text-xs font-semibold text-gray-500">Monto total</label>
-        <input id="i-monto" type="number" step="0.01" placeholder="0.00" class="w-full border rounded-lg px-3 py-2 mb-2">
-        <label class="block text-xs font-semibold text-gray-500">Fecha del ticket</label>
-        <input id="i-fecha" type="date" class="w-full border rounded-lg px-3 py-2 mb-4">
-        <button id="btn-buscar" class="w-full bg-blue-600 text-white font-semibold rounded-lg py-2.5">Buscar ticket</button>
-        <p id="buscar-error" class="text-sm text-red-600 mt-2 hidden"></p>
+      <div id="paso-buscar" class="space-y-3">
+        <p class="text-sm text-gray-600">Captura los datos de tu ticket para facturar:</p>
+        <div>
+          <label class="block text-sm font-medium text-gray-600 mb-1">Folio del ticket</label>
+          <input id="i-folio" autocomplete="off" placeholder="Ej. MTY-1234"
+            class="w-full border border-gray-300 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-600 mb-1">Monto total</label>
+          <input id="i-monto" type="number" step="0.01" inputmode="decimal" placeholder="0.00"
+            class="w-full border border-gray-300 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-600 mb-1">Fecha del ticket</label>
+          <input id="i-fecha" type="date"
+            class="w-full border border-gray-300 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+        </div>
+        <button id="btn-buscar"
+          class="w-full bg-blue-600 active:bg-blue-700 hover:bg-blue-700 text-white font-semibold rounded-xl py-3.5 text-base transition-colors">
+          Buscar ticket
+        </button>
+        <p id="buscar-error" class="text-sm text-red-600 hidden"></p>
       </div>
 
       <!-- Paso 2: datos fiscales -->
-      <div id="paso-datos" class="hidden">
-        <div class="bg-gray-50 rounded-lg p-3 mb-4 text-sm">
+      <div id="paso-datos" class="hidden space-y-3">
+        <div class="bg-gray-50 rounded-xl p-4 text-sm">
           <div class="flex justify-between font-semibold"><span>Ticket</span><span id="r-folio"></span></div>
-          <div id="r-conceptos" class="mt-2 text-gray-600"></div>
-          <div class="flex justify-between font-bold border-t mt-2 pt-2"><span>Total</span><span id="r-total"></span></div>
+          <div id="r-conceptos" class="mt-2 text-gray-600 space-y-0.5"></div>
+          <div class="flex justify-between font-bold border-t mt-2 pt-2 text-base"><span>Total</span><span id="r-total"></span></div>
           <div class="text-xs text-gray-400 mt-1">Servicio exento de IVA</div>
         </div>
-        <label class="block text-xs font-semibold text-gray-500">RFC</label>
-        <input id="f-rfc" class="w-full border rounded-lg px-3 py-2 mb-2 uppercase">
-        <label class="block text-xs font-semibold text-gray-500">Nombre / Razón social</label>
-        <input id="f-nombre" class="w-full border rounded-lg px-3 py-2 mb-2">
-        <label class="block text-xs font-semibold text-gray-500">Código postal</label>
-        <input id="f-cp" maxlength="5" class="w-full border rounded-lg px-3 py-2 mb-2">
-        <label class="block text-xs font-semibold text-gray-500">Régimen fiscal</label>
-        <select id="f-regimen" class="w-full border rounded-lg px-3 py-2 mb-2">
-          <option value="612">612 - Personas Físicas con Actividades Empresariales y Profesionales</option>
-          <option value="626">626 - Régimen Simplificado de Confianza (RESICO)</option>
-          <option value="605">605 - Sueldos y Salarios</option>
-          <option value="621">621 - Incorporación Fiscal</option>
-          <option value="616">616 - Sin obligaciones fiscales</option>
-          <option value="601">601 - General de Ley Personas Morales</option>
-        </select>
-        <label class="block text-xs font-semibold text-gray-500">Uso del CFDI</label>
-        <select id="f-uso" class="w-full border rounded-lg px-3 py-2 mb-2">
-          <option value="D01">D01 - Honorarios médicos, dentales y gastos hospitalarios</option>
-          <option value="G03">G03 - Gastos en general</option>
-          <option value="S01">S01 - Sin efectos fiscales</option>
-        </select>
-        <label class="block text-xs font-semibold text-gray-500">Correo (recibirás tu factura)</label>
-        <input id="f-email" type="email" class="w-full border rounded-lg px-3 py-2 mb-4">
-        <button id="btn-facturar" class="w-full bg-blue-600 text-white font-semibold rounded-lg py-2.5">Generar factura</button>
-        <p id="facturar-error" class="text-sm text-red-600 mt-2 hidden"></p>
+        <div>
+          <label class="block text-sm font-medium text-gray-600 mb-1">RFC</label>
+          <input id="f-rfc" autocomplete="off" autocapitalize="characters" spellcheck="false"
+            class="w-full border border-gray-300 rounded-xl px-4 py-3 uppercase outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-600 mb-1">Nombre / Razón social</label>
+          <input id="f-nombre"
+            class="w-full border border-gray-300 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-600 mb-1">Código postal</label>
+          <input id="f-cp" inputmode="numeric" maxlength="5"
+            class="w-full border border-gray-300 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-600 mb-1">Régimen fiscal</label>
+          <select id="f-regimen"
+            class="w-full border border-gray-300 rounded-xl px-4 py-3 bg-white outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+            <option value="612">612 - Personas Físicas con Actividades Empresariales y Profesionales</option>
+            <option value="626">626 - Régimen Simplificado de Confianza (RESICO)</option>
+            <option value="605">605 - Sueldos y Salarios</option>
+            <option value="621">621 - Incorporación Fiscal</option>
+            <option value="616">616 - Sin obligaciones fiscales</option>
+            <option value="601">601 - General de Ley Personas Morales</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-600 mb-1">Uso del CFDI</label>
+          <select id="f-uso"
+            class="w-full border border-gray-300 rounded-xl px-4 py-3 bg-white outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+            <option value="D01">D01 - Honorarios médicos, dentales y gastos hospitalarios</option>
+            <option value="G03">G03 - Gastos en general</option>
+            <option value="S01">S01 - Sin efectos fiscales</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-600 mb-1">Correo (recibirás tu factura)</label>
+          <input id="f-email" type="email" inputmode="email" autocapitalize="off" spellcheck="false"
+            class="w-full border border-gray-300 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+        </div>
+        <button id="btn-facturar"
+          class="w-full bg-blue-600 active:bg-blue-700 hover:bg-blue-700 text-white font-semibold rounded-xl py-3.5 text-base transition-colors disabled:opacity-60">
+          Generar factura
+        </button>
+        <p id="facturar-error" class="text-sm text-red-600 hidden"></p>
       </div>
 
       <!-- Paso 3: éxito -->
-      <div id="paso-exito" class="hidden text-center py-6">
-        <div class="text-5xl mb-3">✅</div>
-        <p class="font-semibold text-gray-800">¡Factura generada!</p>
+      <div id="paso-exito" class="hidden text-center py-8">
+        <div class="text-6xl mb-3">✅</div>
+        <p class="font-semibold text-lg">¡Factura generada!</p>
         <p class="text-sm text-gray-500 mt-1">Te la enviamos a tu correo (PDF y XML).</p>
         <p id="r-uuid" class="text-xs text-gray-400 mt-3 break-all"></p>
       </div>
@@ -84,6 +127,16 @@ const show = (id) => $(id).classList.remove("hidden");
 const hide = (id) => $(id).classList.add("hidden");
 const money = (n) => "$" + Number(n||0).toLocaleString("es-MX",{minimumFractionDigits:2});
 
+// Logo del consultorio: se muestra solo si carga; se quita si no hay (404).
+(function loadLogo(){
+  const logo = $("logo");
+  logo.addEventListener("load", () => logo.classList.remove("hidden"));
+  logo.addEventListener("error", () => logo.remove());
+  logo.src = API + "/logo";
+})();
+
+function escapeHtml(s){return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
+
 async function buscar(payload) {
   const r = await fetch(API + "/buscar", {
     method: "POST", headers: {"Content-Type": "application/json"},
@@ -96,12 +149,10 @@ async function buscar(payload) {
   $("r-folio").textContent = data.folio;
   $("r-total").textContent = money(data.total);
   $("r-conceptos").innerHTML = data.conceptos.map(c =>
-    `<div class="flex justify-between"><span>${escapeHtml(c.nombre)}</span><span>${money(c.monto)}</span></div>`
+    `<div class="flex justify-between gap-2"><span>${escapeHtml(c.nombre)}</span><span>${money(c.monto)}</span></div>`
   ).join("");
   hide("paso-buscar"); show("paso-datos");
 }
-
-function escapeHtml(s){return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
 
 $("btn-buscar").addEventListener("click", async () => {
   $("buscar-error").classList.add("hidden");
@@ -142,7 +193,6 @@ $("btn-facturar").addEventListener("click", async () => {
 // Si vino el token del QR, busca automáticamente
 if (TOKEN) {
   buscar({token: TOKEN}).catch(e => {
-    // Si el token falla, deja la entrada manual con el aviso
     $("buscar-error").textContent = e.message; show("buscar-error");
   });
 }

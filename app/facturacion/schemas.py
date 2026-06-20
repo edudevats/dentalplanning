@@ -54,6 +54,10 @@ class ConfiguracionFiscalSchema(Schema):
     csd_valido_desde = fields.DateTime(dump_only=True)
     csd_valido_hasta = fields.DateTime(dump_only=True)
     csd_configurado = fields.Bool(dump_only=True)
+    # Estado de la FIEL (solo lectura)
+    fiel_configurada = fields.Bool(dump_only=True)
+    fiel_no_certificado = fields.Str(dump_only=True)
+    fiel_valido_hasta = fields.DateTime(dump_only=True)
 
 
 class ReceptorSchema(Schema):
@@ -66,3 +70,11 @@ class ReceptorSchema(Schema):
     regimen_fiscal = fields.Str(required=True)
     uso_cfdi = fields.Str(required=True)
     email = fields.Email(required=True)
+
+
+class CancelacionSchema(Schema):
+    class Meta:
+        unknown = EXCLUDE
+
+    motivo = fields.Str(required=True, validate=validate.OneOf(["01", "02", "03", "04"]))
+    uuid_sustitucion = fields.Str(allow_none=True)

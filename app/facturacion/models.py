@@ -26,6 +26,13 @@ class ConfiguracionFiscal(db.Model):
     csd_no_certificado = db.Column(db.String(20))
     csd_valido_desde = db.Column(db.DateTime)
     csd_valido_hasta = db.Column(db.DateTime)
+    # FIEL (e.firma) — SOLO para cancelar CFDI (key y contraseña cifradas)
+    fiel_cer = db.Column(db.LargeBinary)
+    fiel_key_cifrada = db.Column(db.LargeBinary)
+    fiel_password_cifrada = db.Column(db.LargeBinary)
+    fiel_no_certificado = db.Column(db.String(20))
+    fiel_valido_desde = db.Column(db.DateTime)
+    fiel_valido_hasta = db.Column(db.DateTime)
     # Portal de autofacturación
     ventana_facturacion = db.Column(db.String(20), default="fin_de_mes")
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
@@ -38,6 +45,10 @@ class ConfiguracionFiscal(db.Model):
     @property
     def csd_configurado(self):
         return bool(self.csd_cer and self.csd_key_cifrada)
+
+    @property
+    def fiel_configurada(self):
+        return bool(self.fiel_cer and self.fiel_key_cifrada)
 
 
 class Sucursal(db.Model):

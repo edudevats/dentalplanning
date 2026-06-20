@@ -7,11 +7,12 @@ from app.auth.models import Tenant
 from app.facturacion.models import ConfiguracionFiscal, Sucursal, Ticket
 from app.facturacion.schemas import (
     ConfiguracionFiscalSchema, SucursalSchema, TicketSchema, ReceptorSchema,
+    CancelacionSchema,
 )
-from app.facturacion.cfdi import timbrar_ticket, TimbradoError
+from app.facturacion.cfdi import timbrar_ticket, cancelar_ticket, TimbradoError
 from app.engine.accounting import parse_mes, filtro_mes
 from app.facturacion import crypto
-from app.facturacion.csd import validar_csd, CSDInvalido
+from app.facturacion.csd import validar_csd, validar_fiel, CSDInvalido
 
 facturacion_bp = Blueprint("facturacion", __name__, url_prefix="/api/v1/facturacion")
 
@@ -74,6 +75,31 @@ def subir_csd():
         cfg.rfc = meta["rfc"]
     if not cfg.razon_social:
         cfg.razon_social = meta["razon_social"]
+    db.session.commit()
+    return jsonify(ConfiguracionFiscalSchema().dump(cfg))
+
+
+@facturacion_bp.route("/configuracion/fiel", methods=["POST"])
+@require_auth
+@require_role("admin")
+def subir_fiel():
+    cer = request.files.get("cer")
+    key = request.files.get("key")
+    password = request.form.get("password", "")
+    if not cer or not key or not password:
+        return jsonify({"error": "Se requieren los archivos .cer, .key y la contraseña"}), 400
+    cer_bytes, key_bytes = cer.read(), key.read()
+    try:
+        meta = validar_fiel(cer_bytes, key_bytes, password)
+    except CSDInvalido as e:
+        return jsonify({"error": str(e)}), 400
+    cfg = _get_or_create_config()
+    cfg.fiel_cer = cer_bytes
+    cfg.fiel_key_cifrada = crypto.encrypt(key_bytes)
+    cfg.fiel_password_cifrada = crypto.encrypt(password)
+    cfg.fiel_no_certificado = meta["no_certificado"]
+    cfg.fiel_valido_desde = meta["valido_desde"]
+    cfg.fiel_valido_hasta = meta["valido_hasta"]
     db.session.commit()
     return jsonify(ConfiguracionFiscalSchema().dump(cfg))
 
@@ -217,6 +243,21 @@ def timbrar(ticket_id):
     receptor = ReceptorSchema().load(request.get_json() or {})
     try:
         timbrar_ticket(t, receptor)
+    except TimbradoError as e:
+        return jsonify({"error": str(e)}), 400
+    return jsonify(TicketSchema().dump(t))
+
+
+@facturacion_bp.route("/tickets/<int:ticket_id>/cancelar", methods=["POST"])
+@require_auth
+@require_role("admin")
+def cancelar(ticket_id):
+    t = Ticket.query.filter_by(
+        id=ticket_id, tenant_id=g.tenant_id
+    ).first_or_404()
+    data = CancelacionSchema().load(request.get_json() or {})
+    try:
+        cancelar_ticket(t, data["motivo"], data.get("uuid_sustitucion"))
     except TimbradoError as e:
         return jsonify({"error": str(e)}), 400
     return jsonify(TicketSchema().dump(t))

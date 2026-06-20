@@ -13,7 +13,9 @@ from app.extensions import db
 from app.facturacion import crypto
 from app.facturacion.models import (
     ConfiguracionFiscal, TICKET_SIN_TIMBRAR, TICKET_TIMBRADA, TICKET_ERROR,
+    TICKET_CANCELADA, TICKET_EN_PROCESO_CANCELACION,
 )
+from app.facturacion.pac_service import FacturacionService
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +36,14 @@ def cargar_signer(cfg):
     key = crypto.decrypt(cfg.csd_key_cifrada)
     password = crypto.decrypt(cfg.csd_password_cifrada).decode()
     return Signer.load(certificate=cfg.csd_cer, key=key, password=password)
+
+
+def cargar_signer_fiel(cfg):
+    """Carga el Signer de la FIEL (e.firma) descifrando key y contraseña."""
+    from satcfdi.models import Signer
+    key = crypto.decrypt(cfg.fiel_key_cifrada)
+    password = crypto.decrypt(cfg.fiel_password_cifrada).decode()
+    return Signer.load(certificate=cfg.fiel_cer, key=key, password=password)
 
 
 def _conceptos_exentos(ticket, cfg):
@@ -164,4 +174,44 @@ def timbrar_ticket(ticket, receptor):
         ticket.email_enviado = False
         db.session.commit()
 
+    return ticket
+
+
+def cancelar_ticket(ticket, motivo, uuid_sustitucion=None):
+    """Cancela el CFDI timbrado ante Finkok con la FIEL del consultorio.
+
+    Lanza TimbradoError ante reglas de negocio o fallo del PAC.
+    """
+    if ticket.estado not in (TICKET_TIMBRADA, TICKET_EN_PROCESO_CANCELACION):
+        raise TimbradoError("Solo se puede cancelar una factura timbrada.")
+    if not (ticket.xml and ticket.uuid):
+        raise TimbradoError("La factura no tiene XML/UUID para cancelar.")
+    if motivo == "01" and not uuid_sustitucion:
+        raise TimbradoError("El motivo 01 requiere el UUID de la factura que sustituye.")
+
+    cfg = ConfiguracionFiscal.query.filter_by(tenant_id=ticket.tenant_id).first()
+    if not cfg or not cfg.fiel_configurada:
+        raise TimbradoError("Sube la e.firma (FIEL) del consultorio para poder cancelar.")
+
+    try:
+        fiel = cargar_signer_fiel(cfg)
+        svc = FacturacionService(
+            finkok_username=current_app.config.get("FINKOK_USERNAME", ""),
+            finkok_password=current_app.config.get("FINKOK_PASSWORD", ""),
+            environment=current_app.config.get("FINKOK_ENVIRONMENT", "TEST"),
+            signer=fiel,
+        )
+        result = svc.cancelar_factura(ticket.xml, motivo, uuid_sustitucion)
+    except Exception as e:  # noqa: BLE001
+        raise TimbradoError(f"Falló la cancelación: {e}")
+
+    if not result.get("success"):
+        raise TimbradoError(result.get("message") or "Error al cancelar")
+
+    ticket.estado = TICKET_CANCELADA
+    ticket.motivo_cancelacion = motivo
+    ticket.uuid_sustitucion = uuid_sustitucion
+    ticket.acuse_xml = result.get("acuse")
+    ticket.fecha_cancelacion = datetime.now(timezone.utc)
+    db.session.commit()
     return ticket
