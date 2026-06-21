@@ -24,15 +24,18 @@ def siguiente_folio(tenant_id, sucursal_id):
 
 
 def recalcular_total(ticket):
-    """Recalcula el total del ticket sumando el monto de sus ingresos (vía query,
-    robusto ante relaciones en caché)."""
-    from app.edr.models import Ingreso  # import diferido para evitar ciclos
-    total = (
-        db.session.query(db.func.coalesce(db.func.sum(Ingreso.monto), 0.0))
-        .filter(Ingreso.ticket_id == ticket.id)
-        .scalar()
-    )
-    ticket.total = round(float(total or 0.0), 2)
+    """Total del ticket = Σ (base + IVA por encima). IVA solo en facturables gravados."""
+    from app.edr.models import Ingreso
+    from app.facturacion.models import ConfiguracionFiscal
+    from app.facturacion.iva import iva_de
+    cfg = ConfiguracionFiscal.query.filter_by(tenant_id=ticket.tenant_id).first()
+    naturaleza = cfg.naturaleza_juridica if cfg else None
+    ingresos = Ingreso.query.filter_by(ticket_id=ticket.id).all()
+    total = 0.0
+    for i in ingresos:
+        base = i.monto or 0.0
+        total += base + iva_de(base, naturaleza, i.tipo_servicio, i.factura)
+    ticket.total = round(total, 2)
 
 
 def asignar_ticket(ingreso, sucursal_id, ticket_folio=None):

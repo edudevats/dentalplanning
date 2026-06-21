@@ -25,6 +25,7 @@ class Ingreso(db.Model):
     comision_doctor = db.Column(db.Float, default=0)
     descuento_pct = db.Column(db.Float, default=0.0)
     factura = db.Column(db.Boolean, default=False)
+    tipo_servicio = db.Column(db.String(20), default="clinico")  # snapshot: clinico | estetico
     ticket_id = db.Column(db.Integer, db.ForeignKey("tickets.id"), nullable=True)
     sucursal_id = db.Column(db.Integer, db.ForeignKey("sucursales.id"), nullable=True)
     estrategia_id = db.Column(

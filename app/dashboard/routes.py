@@ -10,7 +10,9 @@ from app.configuracion.models import ConfigConsultorio
 from app.ajustes.models import DistribucionConfig, DistribucionCategoria, DIST_CATEGORIAS_DEFAULT
 from app.engine.pricing_engine import generar_dashboard_ganancias
 # parse_mes y el Estado de Resultados canónico viven en el núcleo contable
-from app.engine.accounting import parse_mes as _parse_mes, estado_resultados, filtro_mes
+from app.engine.accounting import parse_mes as _parse_mes, estado_resultados, filtro_mes, reparto_iva
+from app.facturacion.models import ConfiguracionFiscal
+from app.facturacion.iva import iva_de
 
 dashboard_bp = Blueprint("dashboard", __name__, url_prefix="/api/v1")
 
@@ -41,21 +43,36 @@ def resumen_mensual():
     year, month = _parse_mes(request.args.get("mes"))
 
     # Ingresos
-    # eager-load metodo_pago: se accede por fila al separar efectivo vs banco
+    # eager-load metodo_pago (efectivo vs banco) y ticket (estado timbrado para el IVA)
     ingresos = Ingreso.query.options(
-        joinedload(Ingreso.metodo_pago)
+        joinedload(Ingreso.metodo_pago),
+        joinedload(Ingreso.ticket),
     ).filter(
         Ingreso.tenant_id == g.tenant_id,
         *filtro_mes(Ingreso.fecha, year, month),
     ).all()
 
-    total_ingresos = sum(i.monto for i in ingresos)
+    cfg_fiscal = ConfiguracionFiscal.query.filter_by(tenant_id=g.tenant_id).first()
+    naturaleza = cfg_fiscal.naturaleza_juridica if cfg_fiscal else None
+
+    # Venta ajustada por ingreso: el IVA de un facturable gravado NO timbrado se
+    # queda como ingreso; si está timbrado, el IVA se va al SAT (no es ingreso).
+    venta_por_ingreso = {}
+    iva_por_regresar_al_sat = 0.0
+    for i in ingresos:
+        iva = iva_de(i.monto or 0.0, naturaleza, i.tipo_servicio, i.factura)
+        timbrado = bool(i.ticket and i.ticket.estado == "timbrada")
+        venta, iva_sat = reparto_iva(i.monto or 0.0, iva, timbrado)
+        venta_por_ingreso[i.id] = venta
+        iva_por_regresar_al_sat += iva_sat
+
+    total_ingresos = sum(venta_por_ingreso.values())
     total_comisiones_bancarias = sum(i.comision_bancaria for i in ingresos)
     total_comisiones_doctores = sum(i.comision_doctor for i in ingresos)
 
-    # Desglose efectivo vs banco
+    # Desglose efectivo vs banco (sobre la venta ajustada, para que sumen el total)
     ingresos_efectivo = sum(
-        i.monto for i in ingresos
+        venta_por_ingreso[i.id] for i in ingresos
         if i.metodo_pago and i.metodo_pago.nombre.lower() == "efectivo"
     )
     ingresos_banco = total_ingresos - ingresos_efectivo
@@ -133,7 +150,7 @@ def resumen_mensual():
         day = i.fecha.isoformat()
         if day not in balance_diario:
             balance_diario[day] = {"ingresos": 0, "egresos": 0}
-        balance_diario[day]["ingresos"] += i.monto
+        balance_diario[day]["ingresos"] += venta_por_ingreso[i.id]
         # La comisión del doctor NO es egreso aquí (base de caja): se cuenta
         # como egreso cuando se paga, en el bucle de PagoDoctor de abajo.
         balance_diario[day]["egresos"] += i.comision_bancaria
@@ -168,6 +185,7 @@ def resumen_mensual():
         "total_comisiones_especialistas": round(total_comisiones_doctores, 2),
         "ingresos_efectivo": round(ingresos_efectivo, 2),
         "ingresos_banco": round(ingresos_banco, 2),
+        "iva_por_regresar_al_sat": round(iva_por_regresar_al_sat, 2),
         # ── Egresos ──
         "gastos_fijos": round(total_gastos_fijos, 2),
         "gastos_variables": round(total_gastos_variables, 2),

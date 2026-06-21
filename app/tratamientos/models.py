@@ -13,6 +13,7 @@ class Tratamiento(db.Model):
     comision_bancaria_pct = db.Column(db.Float, default=5.0)
     comision_especialista_tipo = db.Column(db.String(20), default="porcentaje")
     comision_especialista_valor = db.Column(db.Float, default=0)
+    tipo_servicio = db.Column(db.String(20), default="clinico")  # clinico | estetico
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = db.Column(
         db.DateTime,

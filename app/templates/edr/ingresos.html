@@ -161,6 +161,20 @@ async function imprimirTicket(ticketId) {
   }
 }
 
+async function imprimirSimple(ingresoId) {
+  try {
+    const payload = await API.get('/facturacion/ingresos/' + ingresoId + '/ticket-simple');
+    const resp = await fetch(PRINT_AGENT_URL + '/imprimir-ticket', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!resp.ok) throw new Error('agente respondió ' + resp.status);
+  } catch (e) {
+    Toast.warning('No se pudo imprimir el recibo (¿agente de impresión encendido?)');
+  }
+}
+
 // Build selects
 populateSelect(document.getElementById('sel-month'), buildMonthOptions(selMonth), selMonth);
 buildYearOptions(selYear).forEach(o => document.getElementById('sel-year').appendChild(o));
@@ -324,6 +338,7 @@ async function handleSave() {
         imprimirTicket(creado.ticket_id);  // impresión automática (no bloquea)
       } else {
         Toast.success('Ingreso creado');
+        if (creado && creado.id) imprimirSimple(creado.id);  // recibo simple (no facturable)
       }
     }
     Modal.close('modal-form'); fetchData();

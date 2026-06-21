@@ -20,6 +20,10 @@ class TratamientoSchema(Schema):
         validate=validate.OneOf(["porcentaje", "fijo"]),
     )
     comision_especialista_valor = fields.Float(load_default=0, validate=validate.Range(min=0))
+    tipo_servicio = fields.Str(
+        load_default="clinico",
+        validate=validate.OneOf(["clinico", "estetico"]),
+    )
     materiales = fields.List(fields.Nested(TratamientoMaterialInputSchema), load_default=[])
     created_at = fields.DateTime(dump_only=True)
     updated_at = fields.DateTime(dump_only=True)

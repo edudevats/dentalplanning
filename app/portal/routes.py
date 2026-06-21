@@ -6,7 +6,7 @@ from app.auth.models import Tenant
 from app.facturacion.models import Ticket, ConfiguracionFiscal, TICKET_SIN_TIMBRAR
 from app.facturacion.schemas import ReceptorSchema
 from app.facturacion.cfdi import (
-    _ventana_vencida, _conceptos_exentos, timbrar_ticket, TimbradoError,
+    _ventana_vencida, _conceptos_cfdi, timbrar_ticket, TimbradoError,
 )
 
 portal_bp = Blueprint("portal", __name__)
@@ -110,13 +110,16 @@ def portal_buscar(slug):
                         "mensaje": "Este ticket ya fue facturado."}), 200
     if _ventana_vencida(t):
         return jsonify({"error": "La fecha límite para facturar este ticket ya pasó."}), 400
+    from app.facturacion.cfdi import desglose_ticket
+    d = desglose_ticket(t)
     return jsonify({
         "estado": t.estado,
         "folio": t.folio_display,
         "fecha": t.fecha.isoformat(),
-        "total": round(t.total or 0.0, 2),
-        "conceptos": [{"nombre": i.nombre_tratamiento or "Tratamiento",
-                       "monto": round(i.monto or 0.0, 2)} for i in t.ingresos],
+        "subtotal": d["subtotal"],
+        "iva": d["iva"],
+        "total": d["total"],
+        "conceptos": [{"nombre": c["nombre"], "monto": c["importe"]} for c in d["conceptos"]],
     })
 
 
@@ -145,7 +148,7 @@ def portal_facturar(slug):
         receptor_regimen=receptor["regimen_fiscal"],
         receptor_uso_cfdi=receptor["uso_cfdi"],
         lugar_expedicion=(suc.codigo_postal if suc else ""),
-        conceptos=(_conceptos_exentos(t, cfg) if cfg else []),
+        conceptos=(_conceptos_cfdi(t, cfg) if cfg else []),
     )
     if not val["valido"]:
         return jsonify({"error": "; ".join(val["errores"])}), 400

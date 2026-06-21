@@ -22,6 +22,7 @@ def _serialize_tratamiento(tx, config):
             "tipo": tx.comision_especialista_tipo,
             "valor": tx.comision_especialista_valor,
         },
+        "tipo_servicio": tx.tipo_servicio or "clinico",
         "materiales": calculos["materiales"],
         "calculos": {k: v for k, v in calculos.items() if k != "materiales"},
         "created_at": tx.created_at.isoformat() if tx.created_at else None,

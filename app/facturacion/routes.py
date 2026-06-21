@@ -208,8 +208,11 @@ def ticket_impresion(ticket_id):
     slug = tenant.slug if tenant else ""
     qr_url = f"{base}/{slug}?t={t.token}" if t.token else f"{base}/{slug}"
 
+    from app.facturacion.cfdi import desglose_ticket
+    from datetime import timedelta
+    d = desglose_ticket(t)
     ultimo = calendar.monthrange(t.fecha.year, t.fecha.month)[1]
-    facturable_hasta = date(t.fecha.year, t.fecha.month, ultimo)
+    facturable_hasta = date(t.fecha.year, t.fecha.month, ultimo) + timedelta(days=3)
 
     return jsonify({
         "empresa": (cfg.razon_social if cfg and cfg.razon_social else (tenant.name if tenant else "")),
@@ -221,15 +224,43 @@ def ticket_impresion(ticket_id):
         "telefono": suc.telefono if suc else None,
         "folio": t.folio_display,
         "fecha": t.fecha.isoformat(),
-        "conceptos": [
-            {"nombre": i.nombre_tratamiento or "Tratamiento",
-             "monto": round(i.monto or 0.0, 2)}
-            for i in t.ingresos
-        ],
-        "total": round(t.total or 0.0, 2),
-        "exento_iva": True,
+        "conceptos": [{"nombre": c["nombre"], "base": c["base"],
+                       "iva": c["iva"], "monto": c["importe"]} for c in d["conceptos"]],
+        "subtotal": d["subtotal"],
+        "iva": d["iva"],
+        "total": d["total"],
+        "exento_iva": d["iva"] == 0,
         "qr_url": qr_url,
         "facturable_hasta": facturable_hasta.isoformat(),
+    })
+
+
+@facturacion_bp.route("/ingresos/<int:ingreso_id>/ticket-simple", methods=["GET"])
+@require_auth
+def ticket_simple(ingreso_id):
+    from app.edr.models import Ingreso
+    ing = Ingreso.query.filter_by(
+        id=ingreso_id, tenant_id=g.tenant_id
+    ).first_or_404()
+    cfg = ConfiguracionFiscal.query.filter_by(tenant_id=g.tenant_id).first()
+    tenant = db.session.get(Tenant, g.tenant_id)
+    empresa = (cfg.razon_social if cfg and cfg.razon_social
+               else (tenant.name if tenant else ""))
+    suc = None
+    if ing.sucursal_id:
+        suc = Sucursal.query.filter_by(
+            id=ing.sucursal_id, tenant_id=g.tenant_id
+        ).first()
+    return jsonify({
+        "facturable": False,
+        "empresa": empresa,
+        "sucursal": suc.nombre if suc else None,
+        "direccion": suc.direccion if suc else None,
+        "telefono": suc.telefono if suc else None,
+        "fecha": ing.fecha.isoformat(),
+        "conceptos": [{"nombre": ing.nombre_tratamiento or "Servicio",
+                       "monto": round(ing.monto or 0.0, 2)}],
+        "total": round(ing.monto or 0.0, 2),
     })
 
 

@@ -185,9 +185,13 @@
               <span class="text-sm font-body text-text-secondary">Ingresos en Efectivo</span>
               <span class="text-sm font-semibold tabular-nums text-text-primary" id="ic-efectivo">-</span>
             </div>
-            <div class="flex justify-between px-5 py-3 rounded-b-xl">
+            <div class="flex justify-between px-5 py-3">
               <span class="text-sm font-body text-text-secondary">Ingresos en Cuentas Bancarias</span>
               <span class="text-sm font-semibold tabular-nums text-text-primary" id="ic-banco">-</span>
+            </div>
+            <div class="flex justify-between px-5 py-3 rounded-b-xl">
+              <span class="text-sm font-body text-text-secondary">IVA por regresar al SAT</span>
+              <span class="text-sm font-semibold tabular-nums text-text-primary" id="ic-iva-sat">-</span>
             </div>
           </div>
         </div>
@@ -838,6 +842,7 @@ async function loadMensual() {
     document.getElementById('ic-com-esp').textContent  = fmt(resumen.total_comisiones_especialistas || 0);
     document.getElementById('ic-efectivo').textContent = fmt(resumen.ingresos_efectivo || 0);
     document.getElementById('ic-banco').textContent    = fmt(resumen.ingresos_banco || 0);
+    document.getElementById('ic-iva-sat').textContent  = fmt(resumen.iva_por_regresar_al_sat || 0);
 
     // Distribution
     renderDistribucion('m-dist-neto', 'm-dist-neto-card', 'm-dist-chart-card', 'm-pie-chart', 'm-dist-tbl',

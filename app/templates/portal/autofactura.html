@@ -53,7 +53,9 @@
         <div class="bg-gray-50 rounded-xl p-4 text-sm">
           <div class="flex justify-between font-semibold"><span>Ticket</span><span id="r-folio"></span></div>
           <div id="r-conceptos" class="mt-2 text-gray-600 space-y-0.5"></div>
-          <div class="flex justify-between font-bold border-t mt-2 pt-2 text-base"><span>Total</span><span id="r-total"></span></div>
+          <div class="flex justify-between text-gray-600 border-t mt-2 pt-2"><span>Subtotal</span><span id="r-subtotal"></span></div>
+          <div class="flex justify-between text-gray-600" id="row-iva" hidden><span>IVA (16%)</span><span id="r-iva"></span></div>
+          <div class="flex justify-between font-bold mt-2 pt-2 border-t text-base"><span>Total</span><span id="r-total"></span></div>
           <div class="text-xs text-gray-400 mt-1">Servicio exento de IVA</div>
         </div>
         <div>
@@ -148,6 +150,13 @@ async function buscar(payload) {
   lookupPayload = payload;
   $("r-folio").textContent = data.folio;
   $("r-total").textContent = money(data.total);
+  $("r-subtotal").textContent = money(data.subtotal ?? data.total);
+  if (data.iva && data.iva > 0) {
+    $("r-iva").textContent = money(data.iva);
+    document.getElementById("row-iva").hidden = false;
+  } else {
+    document.getElementById("row-iva").hidden = true;
+  }
   $("r-conceptos").innerHTML = data.conceptos.map(c =>
     `<div class="flex justify-between gap-2"><span>${escapeHtml(c.nombre)}</span><span>${money(c.monto)}</span></div>`
   ).join("");

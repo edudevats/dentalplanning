@@ -3,6 +3,24 @@
 
 {% block content %}
 <div class="space-y-6">
+
+<div id="modal-naturaleza" class="hidden fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+  <div class="bg-surface rounded-2xl shadow-xl w-full max-w-lg p-6">
+    <h3 class="text-lg font-semibold mb-1">Configura tu facturación</h3>
+    <p class="text-sm text-text-muted mb-4">¿Cuál es la naturaleza jurídica del consultorio? Define cómo se cobra el IVA.</p>
+    <div class="space-y-3">
+      <button data-nat="moral_mercantil" class="nat-opt w-full text-left border border-border rounded-xl p-4 hover:bg-surface-hover">
+        <div class="font-semibold">Persona Moral Mercantil</div>
+        <div class="text-sm text-text-muted">S.A. de C.V., S. de R.L., S.A.P.I. → grava 16% en todo.</div>
+      </button>
+      <button data-nat="fisica_o_civil" class="nat-opt w-full text-left border border-border rounded-xl p-4 hover:bg-surface-hover">
+        <div class="font-semibold">Persona Física o Persona Moral Civil (S.C.)</div>
+        <div class="text-sm text-text-muted">Exento en tratamientos clínicos; 16% solo en estéticos.</div>
+      </button>
+    </div>
+  </div>
+</div>
+
   <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
     <h1 class="text-2xl font-bold font-heading text-text-primary">Facturas</h1>
   </div>
@@ -302,6 +320,9 @@ async function cargarConfig() {
         ? `FIEL vigente hasta ${cfg.fiel_valido_hasta ? cfg.fiel_valido_hasta.slice(0,10) : '—'}`
         : 'Aún no has subido tu e.firma (necesaria para cancelar).';
     }
+    if (!cfg.naturaleza_juridica) {
+      document.getElementById('modal-naturaleza').classList.remove('hidden');
+    }
   } catch (e) {
     console.error('Error al cargar configuración', e);
   }
@@ -464,6 +485,15 @@ document.getElementById('cc-enviar').addEventListener('click', async () => {
     cargarTickets();
   } catch (e) { Toast.error(e.message || 'Error al cancelar'); }
 });
+
+document.querySelectorAll('.nat-opt').forEach(btn => btn.addEventListener('click', async () => {
+  try {
+    await API.put('/facturacion/configuracion', { naturaleza_juridica: btn.dataset.nat });
+    document.getElementById('modal-naturaleza').classList.add('hidden');
+    Toast.success('Configuración guardada');
+    cargarConfig();
+  } catch (e) { Toast.error(e.message || 'Error al guardar'); }
+}));
 
 // Initial load
 cargarConfig();

@@ -60,7 +60,15 @@ def crear_ingreso():
     schema = IngresoSchema()
     data = schema.load(body)
 
-    ingreso = Ingreso(tenant_id=g.tenant_id, **data)
+    tipo_servicio = "clinico"
+    if data.get("tratamiento_id"):
+        _tr = Tratamiento.query.filter_by(
+            id=data["tratamiento_id"], tenant_id=g.tenant_id
+        ).first()
+        if _tr and _tr.tipo_servicio:
+            tipo_servicio = _tr.tipo_servicio
+
+    ingreso = Ingreso(tenant_id=g.tenant_id, tipo_servicio=tipo_servicio, **data)
     db.session.add(ingreso)
     db.session.flush()
 

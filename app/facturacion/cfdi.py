@@ -25,9 +25,11 @@ class TimbradoError(Exception):
 
 
 def _ventana_vencida(ticket, hoy=None):
+    from datetime import timedelta
     hoy = hoy or date.today()
     ultimo = calendar.monthrange(ticket.fecha.year, ticket.fecha.month)[1]
-    return hoy > date(ticket.fecha.year, ticket.fecha.month, ultimo)
+    limite = date(ticket.fecha.year, ticket.fecha.month, ultimo) + timedelta(days=3)
+    return hoy > limite
 
 
 def cargar_signer(cfg):
@@ -46,21 +48,48 @@ def cargar_signer_fiel(cfg):
     return Signer.load(certificate=cfg.fiel_cer, key=key, password=password)
 
 
-def _conceptos_exentos(ticket, cfg):
-    """Construye la lista de conceptos (exentos) a partir de los ingresos del ticket."""
+def _conceptos_cfdi(ticket, cfg):
+    """Conceptos del CFDI: cada uno con valor_unitario = monto (base) y Tasa/Exento."""
+    from app.facturacion.iva import grava_iva, TASA_IVA
+    naturaleza = cfg.naturaleza_juridica if cfg else None
     conceptos = []
     for ing in ticket.ingresos:
-        conceptos.append({
+        c = {
             "clave_prod_serv": cfg.clave_prod_serv_default or "85121800",
             "clave_unidad": cfg.clave_unidad_default or "E48",
             "unidad": "Servicio",
             "cantidad": 1,
             "descripcion": ing.nombre_tratamiento or "Tratamiento dental",
             "valor_unitario": float(ing.monto or 0),
-            "objeto_imp": "02",       # Sí objeto de impuesto
-            "tipo_factor": "Exento",  # IVA exento (servicios médicos/dentales)
-        })
+            "objeto_imp": "02",
+        }
+        if grava_iva(naturaleza, ing.tipo_servicio, ing.factura):
+            c["tipo_factor"] = "Tasa"
+            c["tasa_iva"] = TASA_IVA
+        else:
+            c["tipo_factor"] = "Exento"
+        conceptos.append(c)
     return conceptos
+
+
+def desglose_ticket(ticket):
+    """Devuelve {subtotal, iva, total, conceptos:[{nombre, base, iva, importe}]}."""
+    from app.facturacion.models import ConfiguracionFiscal
+    from app.facturacion.iva import iva_de
+    cfg = ConfiguracionFiscal.query.filter_by(tenant_id=ticket.tenant_id).first()
+    naturaleza = cfg.naturaleza_juridica if cfg else None
+    conceptos, subtotal, iva_total = [], 0.0, 0.0
+    for i in ticket.ingresos:
+        base = round(i.monto or 0.0, 2)
+        iva = iva_de(base, naturaleza, i.tipo_servicio, i.factura)
+        subtotal += base
+        iva_total += iva
+        conceptos.append({
+            "nombre": i.nombre_tratamiento or "Tratamiento",
+            "base": base, "iva": round(iva, 2), "importe": round(base + iva, 2),
+        })
+    return {"subtotal": round(subtotal, 2), "iva": round(iva_total, 2),
+            "total": round(subtotal + iva_total, 2), "conceptos": conceptos}
 
 
 def _generar_cfdi(ticket, receptor, cfg, signer):
@@ -80,7 +109,7 @@ def _generar_cfdi(ticket, receptor, cfg, signer):
         receptor_uso_cfdi=receptor["uso_cfdi"],
         receptor_regimen=receptor["regimen_fiscal"],
         receptor_cp=receptor["cp"],
-        conceptos=_conceptos_exentos(ticket, cfg),
+        conceptos=_conceptos_cfdi(ticket, cfg),
     )
 
 

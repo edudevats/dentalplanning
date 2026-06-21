@@ -43,6 +43,10 @@ class ConfiguracionFiscalSchema(Schema):
     rfc = fields.Str(allow_none=True, validate=validate.Length(max=13))
     razon_social = fields.Str(allow_none=True)
     regimen_fiscal = fields.Str(allow_none=True, validate=validate.Length(max=5))
+    naturaleza_juridica = fields.Str(
+        allow_none=True,
+        validate=validate.OneOf(["moral_mercantil", "fisica_o_civil"]),
+    )
     clave_prod_serv_default = fields.Str(load_default="85121800")
     clave_unidad_default = fields.Str(load_default="E48")
     objeto_imp_default = fields.Str(load_default="01")

@@ -18,6 +18,7 @@ class IngresoSchema(Schema):
     descuento_pct = fields.Float(load_default=0)
     factura = fields.Bool(load_default=False)
     sucursal_id = fields.Int(allow_none=True)
+    tipo_servicio = fields.Str(dump_only=True)
     # Enriquecidos (solo lectura)
     ticket_id = fields.Int(dump_only=True)
     ticket_folio = fields.Int(dump_only=True)
