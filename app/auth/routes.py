@@ -300,7 +300,13 @@ def me():
         today = date_cls.today()
         dias_hasta_cobro = (sub.proximo_cobro - today).days
         is_overdue = sub.estado == SUBSCRIPTION_GRACIA
-        not_subscribed = not sub.clip_subscription_id
+        # "no_suscrito" = el tenant no tiene cobro recurrente en Clip NI ningún
+        # pago registrado. Un pago manual capturado por el super-admin cuenta
+        # como suscrito aunque no exista clip_subscription_id.
+        has_payment = db.session.query(
+            Payment.query.filter_by(tenant_id=user.tenant.id).exists()
+        ).scalar()
+        not_subscribed = not sub.clip_subscription_id and not has_payment
         if dias_hasta_cobro <= 1 or is_overdue or not_subscribed:
             billing_nag = {
                 "estado": sub.estado,
