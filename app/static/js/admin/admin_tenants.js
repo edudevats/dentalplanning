@@ -6,6 +6,9 @@
   let currentSearch = '';
   let currentStatus = new URL(window.location.href).searchParams.get('status') || '';
   let plansCache = null;
+  let currentMode = 'tenants';
+  let currentSubEstado = '';
+  let currentSort = 'reciente';
 
   async function loadPlans() {
     if (plansCache) return plansCache;
@@ -18,6 +21,8 @@
     const params = new URLSearchParams();
     if (currentSearch) params.set('search', currentSearch);
     if (currentStatus) params.set('status', currentStatus);
+    if (currentSubEstado) params.set('sub_estado', currentSubEstado);
+    if (currentSort) params.set('sort', currentSort);
     const qs = params.toString() ? `?${params.toString()}` : '';
     const data = await adminApi.get(`/tenants${qs}`);
     renderRows(data.tenants || []);
@@ -95,6 +100,22 @@
         tdPlan.classList.add('text-cs-on-surface-var');
       }
 
+      // Estado suscripción
+      const tdSubEstado = document.createElement('td');
+      tdSubEstado.className = 'px-4 py-3.5';
+      if (t.subscription && t.subscription.estado) {
+        tdSubEstado.appendChild(statusBadge(t.subscription.estado));
+      } else {
+        tdSubEstado.textContent = '—';
+        tdSubEstado.classList.add('text-cs-on-surface-var');
+      }
+
+      // Próximo cobro
+      const tdProximo = document.createElement('td');
+      tdProximo.className = 'px-4 py-3.5 text-cs-on-surface-var';
+      tdProximo.textContent = (t.subscription && t.subscription.proximo_cobro)
+        ? formatDate(t.subscription.proximo_cobro) : '—';
+
       // Users
       const tdUsers = document.createElement('td');
       tdUsers.className = 'px-4 py-3.5 text-right font-cs-display font-semibold text-cs-on-surface';
@@ -118,6 +139,8 @@
       tr.appendChild(tdContact);
       tr.appendChild(tdStatus);
       tr.appendChild(tdPlan);
+      tr.appendChild(tdSubEstado);
+      tr.appendChild(tdProximo);
       tr.appendChild(tdUsers);
       tr.appendChild(tdPago);
       tr.appendChild(tdActions);
@@ -243,6 +266,81 @@
     refresh();
   }
 
+  // ── Modo Personas ──────────────────────────────────────────────────────
+  async function refreshUsers() {
+    const q = currentSearch.trim();
+    const tbody = document.getElementById('users-rows');
+    invDom.clearChildren(tbody);
+    if (q.length < 2) return;
+    const data = await adminApi.get(`/users/search?q=${encodeURIComponent(q)}`);
+    (data.users || []).forEach(u => {
+      const tr = document.createElement('tr');
+      tr.className = 'hover:bg-cs-surface-container transition-colors duration-200 cursor-pointer';
+      tr.addEventListener('click', () => { window.location.href = `/admin/tenants/${u.tenant_id}`; });
+
+      const tdName = document.createElement('td');
+      tdName.className = 'px-4 py-3.5 font-semibold text-cs-on-surface';
+      tdName.textContent = u.name || '—';
+
+      const tdEmail = document.createElement('td');
+      tdEmail.className = 'px-4 py-3.5 text-cs-on-surface-var';
+      tdEmail.appendChild(document.createTextNode(u.email || '—'));
+      if (u.must_change_password) {
+        const badge = document.createElement('span');
+        badge.className = 'inline-flex ml-2 px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-cs-surface-container-high text-cs-on-surface';
+        badge.textContent = 'Contraseña temporal';
+        tdEmail.appendChild(badge);
+      }
+
+      const tdRole = document.createElement('td');
+      tdRole.className = 'px-4 py-3.5 text-cs-on-surface-var';
+      tdRole.textContent = u.is_superuser ? 'super-admin' : (u.role || '—');
+
+      const tdClinic = document.createElement('td');
+      tdClinic.className = 'px-4 py-3.5 text-cs-on-surface';
+      tdClinic.textContent = u.tenant_name || '—';
+
+      const tdGo = document.createElement('td');
+      tdGo.className = 'px-4 py-3.5 text-right';
+      const a = document.createElement('a');
+      a.href = `/admin/tenants/${u.tenant_id}`;
+      a.className = 'inline-flex items-center gap-1 text-cs-primary text-xs font-semibold hover:underline';
+      a.textContent = 'Ver clínica';
+      tdGo.appendChild(a);
+
+      tr.appendChild(tdName);
+      tr.appendChild(tdEmail);
+      tr.appendChild(tdRole);
+      tr.appendChild(tdClinic);
+      tr.appendChild(tdGo);
+      tbody.appendChild(tr);
+    });
+  }
+
+  function applyMode() {
+    const isUsers = currentMode === 'users';
+    document.getElementById('users-table-wrap').classList.toggle('hidden', !isUsers);
+    document.querySelector('#tenants-rows').closest('div').classList.toggle('hidden', isUsers);
+    document.getElementById('status-chips').classList.toggle('hidden', isUsers);
+    document.getElementById('sub-filters').classList.toggle('hidden', isUsers);
+    document.getElementById('empty-state').classList.add('hidden');
+    const search = document.getElementById('filter-search');
+    search.placeholder = isUsers ? 'Buscar persona por nombre o email…' : 'Buscar por nombre, slug o email…';
+    if (isUsers) refreshUsers().catch(err => Toast.show(err.message, 'error'));
+    else refresh().catch(err => Toast.show(err.message, 'error'));
+  }
+
+  function wireModeToggle() {
+    document.querySelectorAll('.mode-chip').forEach(chip => {
+      chip.addEventListener('click', () => {
+        document.querySelectorAll('.mode-chip').forEach(c => c.classList.remove('active'));
+        chip.classList.add('active');
+        currentMode = chip.dataset.mode;
+        applyMode();
+      });
+    });
+  }
+
   // ── Filtros wiring ─────────────────────────────────────────────────────
   function wireFilters() {
     const searchInput = document.getElementById('filter-search');
@@ -250,7 +348,10 @@
     searchInput.addEventListener('input', (e) => {
       currentSearch = e.target.value;
       clearTimeout(timer);
-      timer = setTimeout(refresh, 250);
+      timer = setTimeout(() => {
+        if (currentMode === 'users') refreshUsers().catch(err => Toast.show(err.message, 'error'));
+        else refresh();
+      }, 250);
     });
 
     document.querySelectorAll('.status-chip').forEach(chip => {
@@ -265,10 +366,34 @@
         refresh();
       });
     });
+
+    document.querySelectorAll('.sub-chip').forEach(chip => {
+      chip.addEventListener('click', () => {
+        document.querySelectorAll('.sub-chip').forEach(c => c.classList.remove('active'));
+        chip.classList.add('active');
+        currentSubEstado = chip.dataset.sub;
+        refresh();
+      });
+    });
+    const sortSel = document.getElementById('sort-select');
+    sortSel.addEventListener('change', () => {
+      currentSort = sortSel.value;
+      refresh();
+    });
   }
 
   async function init() {
     wireFilters();
+    wireModeToggle();
+    document.getElementById('btn-export-csv').addEventListener('click', () => {
+      const params = new URLSearchParams();
+      if (currentSearch) params.set('search', currentSearch);
+      if (currentStatus) params.set('status', currentStatus);
+      if (currentSubEstado) params.set('sub_estado', currentSubEstado);
+      if (currentSort) params.set('sort', currentSort);
+      const qs = params.toString() ? `?${params.toString()}` : '';
+      adminApi.download(`/tenants/export.csv${qs}`, 'clinicas.csv');
+    });
     try {
       await refresh();
     } catch (err) {

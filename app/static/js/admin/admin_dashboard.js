@@ -99,64 +99,86 @@
     });
   }
 
+  function saludGroup({ title, icon, rows, valueKey, emptyLabel }) {
+    const { formatDate } = window.adminUI;
+    const wrap = document.createElement('div');
+    wrap.className = 'space-y-2';
+
+    const head = document.createElement('div');
+    head.className = 'flex items-center gap-2';
+    const ic = document.createElement('span');
+    const critical = rows.length > 0;
+    ic.className = `inline-flex items-center justify-center w-7 h-7 rounded-md ${critical ? 'bg-cs-error-container/40 text-cs-on-error-container' : 'bg-cs-primary-container text-cs-on-primary-container'}`;
+    const i = document.createElement('i');
+    i.setAttribute('data-lucide', icon);
+    i.className = 'h-3.5 w-3.5';
+    ic.appendChild(i);
+    const tx = document.createElement('span');
+    tx.className = 'text-sm font-semibold text-cs-on-surface';
+    tx.textContent = `${title} (${rows.length})`;
+    head.appendChild(ic);
+    head.appendChild(tx);
+    wrap.appendChild(head);
+
+    if (rows.length === 0) {
+      const empty = document.createElement('p');
+      empty.className = 'text-xs text-cs-on-surface-var pl-9';
+      empty.textContent = emptyLabel || 'Sin clínicas en este grupo.';
+      wrap.appendChild(empty);
+      return wrap;
+    }
+
+    rows.forEach(r => {
+      const a = document.createElement('a');
+      a.href = `/admin/tenants/${r.tenant_id}`;
+      a.className = 'flex items-center justify-between gap-2 px-3 py-2 rounded-md bg-cs-surface-container hover:bg-cs-surface-container-high transition-colors';
+      const left = document.createElement('span');
+      left.className = 'text-sm text-cs-on-surface truncate';
+      left.textContent = r.tenant_name || '—';
+      const right = document.createElement('span');
+      right.className = 'text-xs text-cs-on-surface-var shrink-0';
+      const dateStr = r[valueKey];
+      right.textContent = dateStr ? formatDate(dateStr) : '—';
+      a.appendChild(left);
+      a.appendChild(right);
+      wrap.appendChild(a);
+    });
+    return wrap;
+  }
+
   async function loadSalud() {
     const data = await adminApi.get('/stats/salud');
     const list = document.getElementById('salud-list');
     invDom.clearChildren(list);
 
-    const items = [
-      {
-        icon: 'hourglass',
-        label: 'Cola de aprobación',
-        value: data.cola_pendientes,
-        href: '/admin/tenants?status=pending',
-        critical: data.cola_pendientes > 0,
-      },
-      {
-        icon: 'alert-triangle',
-        label: 'Suscripciones en mora',
-        value: data.en_mora,
-        href: '/admin/tenants',
-        critical: data.en_mora > 0,
-      },
-      {
-        icon: 'clock',
-        label: 'En periodo de gracia',
-        value: data.en_gracia,
-        href: '/admin/tenants',
-        critical: data.en_gracia > 0,
-      },
-    ];
-
-    items.forEach(item => {
+    // Cola de aprobación: enlace directo a la lista filtrada
+    if (data.cola_pendientes > 0) {
       const a = document.createElement('a');
-      a.href = item.href;
-      a.className = 'flex items-center justify-between gap-3 px-3 py-3 rounded-lg bg-cs-surface-container hover:bg-cs-surface-container-high transition-colors duration-200';
-      const left = document.createElement('div');
-      left.className = 'flex items-center gap-3 min-w-0';
-      const ic = document.createElement('span');
-      const icBg = item.critical && item.value > 0
-        ? 'bg-cs-error-container/40 text-cs-on-error-container'
-        : 'bg-cs-primary-container text-cs-on-primary-container';
-      ic.className = `inline-flex items-center justify-center w-9 h-9 rounded-md ${icBg}`;
-      const i = document.createElement('i');
-      i.setAttribute('data-lucide', item.icon);
-      i.className = 'h-4 w-4';
-      ic.appendChild(i);
-      const tx = document.createElement('span');
-      tx.className = 'text-sm font-medium text-cs-on-surface truncate';
-      tx.textContent = item.label;
-      left.appendChild(ic);
-      left.appendChild(tx);
-
+      a.href = '/admin/tenants?status=pending';
+      a.className = 'flex items-center justify-between gap-3 px-3 py-3 rounded-lg bg-cs-error-container/40 text-cs-on-error-container hover:opacity-90 transition-opacity';
+      const lbl = document.createElement('span');
+      lbl.className = 'text-sm font-semibold';
+      lbl.textContent = 'Cola de aprobación';
       const v = document.createElement('span');
-      v.className = 'font-cs-display text-xl font-bold text-cs-on-surface';
-      v.textContent = item.value;
-
-      a.appendChild(left);
+      v.className = 'font-cs-display text-xl font-bold';
+      v.textContent = data.cola_pendientes;
+      a.appendChild(lbl);
       a.appendChild(v);
       list.appendChild(a);
-    });
+    }
+
+    list.appendChild(saludGroup({
+      title: 'En mora', icon: 'alert-triangle',
+      rows: data.en_mora_list || [], valueKey: 'proximo_cobro',
+    }));
+    list.appendChild(saludGroup({
+      title: 'En gracia', icon: 'clock',
+      rows: data.en_gracia_list || [], valueKey: 'grace_expires_at',
+    }));
+    list.appendChild(saludGroup({
+      title: 'Por vencer (7 días)', icon: 'calendar-clock',
+      rows: data.por_vencer_7d_list || [], valueKey: 'proximo_cobro',
+    }));
 
     if (typeof lucide !== 'undefined') lucide.createIcons();
   }

@@ -1,8 +1,10 @@
 import calendar
+import csv
+import io
 import secrets
 import string
 from datetime import date, datetime, timedelta, timezone
-from flask import Blueprint, request, jsonify, g, current_app
+from flask import Blueprint, request, jsonify, g, current_app, Response
 from sqlalchemy import func
 from app.extensions import db
 from app.middleware.tenant import require_superuser
@@ -20,7 +22,7 @@ from app.clip.service import create_checkout_link, ClipAPIError
 from app.superadmin.schemas import (
     PlanSchema, ApproveTenantSchema, RejectTenantSchema,
     TenantUpdateSchema, PaymentSchema, TenantNoteSchema,
-    SubscriptionUpdateSchema, AssignPlanSchema,
+    SubscriptionUpdateSchema, AssignPlanSchema, ChangeUserRoleSchema,
 )
 from app.catalogo.models import Material
 from app.tratamientos.models import Tratamiento
@@ -87,6 +89,7 @@ def _serialize_tenant(t, *, with_counts=False):
                 "estado": sub.estado,
                 "plan_nombre": sub.plan.nombre if sub.plan else None,
                 "plan_modulos": sub.plan.modulos if sub.plan else [],
+                "proximo_cobro": sub.proximo_cobro.isoformat() if sub.proximo_cobro else None,
                 "grace_expires_at": sub.grace_expires_at.isoformat() if sub.grace_expires_at else None,
             }
     return out
@@ -161,18 +164,58 @@ def _generate_temp_password(length=12):
 
 # ── Tenants ──────────────────────────────────────────────────────────────────
 
-@superadmin_bp.route("/tenants", methods=["GET"])
-@require_superuser
-def list_tenants():
-    status = request.args.get("status")
-    search = (request.args.get("search") or "").strip()
-    q = _exclude_system(Tenant.query)
+def _query_tenants(args):
+    """Aplica filtros (status, search, sub_estado) y orden (sort) a la lista de
+    clínicas. Usado por la ruta JSON y por el export CSV."""
+    status = args.get("status")
+    search = (args.get("search") or "").strip()
+    sub_estado = args.get("sub_estado")
+    sort = args.get("sort") or "reciente"
+    today = date.today()
+
+    q = _exclude_system(Tenant.query).outerjoin(
+        Subscription, Subscription.tenant_id == Tenant.id
+    )
     if status and status in TENANT_STATUSES:
         q = q.filter(Tenant.status == status)
     if search:
         like = f"%{search}%"
-        q = q.filter((Tenant.name.ilike(like)) | (Tenant.slug.ilike(like)) | (Tenant.contact_email.ilike(like)))
-    tenants = q.order_by(Tenant.created_at.desc()).all()
+        q = q.filter(db.or_(
+            Tenant.name.ilike(like), Tenant.slug.ilike(like),
+            Tenant.contact_email.ilike(like),
+        ))
+
+    if sub_estado == "activa":
+        q = q.filter(Subscription.estado == SUBSCRIPTION_ACTIVA).filter(
+            db.or_(Subscription.proximo_cobro.is_(None),
+                   Subscription.proximo_cobro >= today))
+    elif sub_estado == "mora":
+        q = q.filter(Subscription.estado == SUBSCRIPTION_ACTIVA).filter(
+            Subscription.proximo_cobro.isnot(None),
+            Subscription.proximo_cobro < today)
+    elif sub_estado == "gracia":
+        q = q.filter(Subscription.estado == SUBSCRIPTION_GRACIA)
+    elif sub_estado == "vencida":
+        q = q.filter(Subscription.estado == SUBSCRIPTION_VENCIDA)
+
+    if sort == "proximo_cobro":
+        q = q.order_by(Subscription.proximo_cobro.is_(None),
+                       Subscription.proximo_cobro.asc())
+    elif sort == "-proximo_cobro":
+        q = q.order_by(Subscription.proximo_cobro.is_(None),
+                       Subscription.proximo_cobro.desc())
+    elif sort == "plan":
+        q = q.order_by(Tenant.plan.asc())
+    else:
+        q = q.order_by(Tenant.created_at.desc())
+
+    return q.all()
+
+
+@superadmin_bp.route("/tenants", methods=["GET"])
+@require_superuser
+def list_tenants():
+    tenants = _query_tenants(request.args)
     return jsonify({
         "tenants": [_serialize_tenant(t, with_counts=True) for t in tenants],
     })
@@ -301,6 +344,7 @@ def tenant_users(tenant_id):
             {
                 "id": u.id, "email": u.email, "name": u.name, "role": u.role,
                 "is_superuser": u.is_superuser,
+                "must_change_password": u.must_change_password,
                 "created_at": u.created_at.isoformat() if u.created_at else None,
             }
             for u in users
@@ -357,6 +401,62 @@ def reset_password(user_id):
         "user_id": user.id, "email": user.email,
         "temp_password": temp,
     })
+
+
+@superadmin_bp.route("/users/<int:user_id>/role", methods=["PUT"])
+@require_superuser
+def change_user_role(user_id):
+    user = User.query.get_or_404(user_id)
+    if user.is_superuser or (user.tenant and user.tenant.slug == SYSTEM_TENANT_SLUG):
+        return jsonify({"error": "No se puede cambiar el rol de un super-admin"}), 403
+
+    data = ChangeUserRoleSchema().load(request.get_json() or {})
+    new_role = data["role"]
+
+    if user.role == "admin" and new_role != "admin":
+        admin_count = User.query.filter_by(tenant_id=user.tenant_id, role="admin").count()
+        if admin_count <= 1:
+            return jsonify({
+                "error": "No puedes quitar el rol admin al último administrador de la clínica."
+            }), 409
+
+    user.role = new_role
+    db.session.commit()
+    return jsonify({
+        "id": user.id, "email": user.email, "name": user.name, "role": user.role,
+        "is_superuser": user.is_superuser,
+        "must_change_password": user.must_change_password,
+        "created_at": user.created_at.isoformat() if user.created_at else None,
+    })
+
+
+@superadmin_bp.route("/users/search", methods=["GET"])
+@require_superuser
+def search_users():
+    q = (request.args.get("q") or "").strip()
+    if len(q) < 2:
+        return jsonify({"users": []})
+    like = f"%{q}%"
+    users = (
+        User.query.join(Tenant, Tenant.id == User.tenant_id)
+        .filter(Tenant.slug != SYSTEM_TENANT_SLUG)
+        .filter(db.or_(User.name.ilike(like), User.email.ilike(like)))
+        .order_by(User.name.asc())
+        .limit(50)
+        .all()
+    )
+    return jsonify({"users": [
+        {
+            "id": u.id, "name": u.name, "email": u.email, "role": u.role,
+            "must_change_password": u.must_change_password,
+            "is_superuser": u.is_superuser,
+            "tenant_id": u.tenant_id,
+            "tenant_name": u.tenant.name if u.tenant else None,
+            "tenant_slug": u.tenant.slug if u.tenant else None,
+            "tenant_status": u.tenant.status if u.tenant else None,
+        }
+        for u in users
+    ]})
 
 
 # ── Notas internas ──────────────────────────────────────────────────────────
@@ -653,20 +753,32 @@ def assign_plan(tenant_id):
 
 # ── Payments ────────────────────────────────────────────────────────────────
 
+def _query_payments(args):
+    """Aplica filtros (tenant_id, desde, hasta, metodo, clip_status) a los pagos.
+    Usado por la ruta JSON y por el export CSV."""
+    q = Payment.query.join(Tenant).filter(Tenant.slug != SYSTEM_TENANT_SLUG)
+    tenant_id = args.get("tenant_id")
+    if tenant_id:
+        q = q.filter(Payment.tenant_id == int(tenant_id))
+    desde = args.get("desde")
+    if desde:
+        q = q.filter(Payment.fecha >= desde)
+    hasta = args.get("hasta")
+    if hasta:
+        q = q.filter(Payment.fecha <= hasta)
+    metodo = args.get("metodo")
+    if metodo:
+        q = q.filter(Payment.metodo == metodo)
+    clip_status = args.get("clip_status")
+    if clip_status:
+        q = q.filter(Payment.clip_status == clip_status)
+    return q.order_by(Payment.fecha.desc()).all()
+
+
 @superadmin_bp.route("/payments", methods=["GET"])
 @require_superuser
 def list_payments():
-    tenant_id = request.args.get("tenant_id", type=int)
-    desde = request.args.get("desde")
-    hasta = request.args.get("hasta")
-    q = Payment.query.join(Tenant).filter(Tenant.slug != SYSTEM_TENANT_SLUG)
-    if tenant_id:
-        q = q.filter(Payment.tenant_id == tenant_id)
-    if desde:
-        q = q.filter(Payment.fecha >= desde)
-    if hasta:
-        q = q.filter(Payment.fecha <= hasta)
-    payments = q.order_by(Payment.fecha.desc()).all()
+    payments = _query_payments(request.args)
     out = []
     for p in payments:
         d = _serialize_payment(p)
@@ -996,18 +1108,114 @@ def stats_uso():
 def stats_salud():
     today = date.today()
     cola = _exclude_system(Tenant.query).filter(Tenant.status == TENANT_STATUS_PENDING).count()
-    en_mora = (
+
+    def _row(sub):
+        return {
+            "tenant_id": sub.tenant_id,
+            "tenant_name": sub.tenant.name if sub.tenant else None,
+            "plan": sub.plan.nombre if sub.plan else None,
+            "proximo_cobro": sub.proximo_cobro.isoformat() if sub.proximo_cobro else None,
+            "grace_expires_at": sub.grace_expires_at.isoformat() if sub.grace_expires_at else None,
+        }
+
+    base = (
         Subscription.query.join(Tenant)
         .filter(Tenant.slug != SYSTEM_TENANT_SLUG)
-        .filter(Subscription.estado == SUBSCRIPTION_ACTIVA)
+    )
+
+    en_mora_subs = (
+        base.filter(Subscription.estado == SUBSCRIPTION_ACTIVA)
         .filter(Subscription.proximo_cobro.isnot(None))
         .filter(Subscription.proximo_cobro < today)
-        .count()
+        .order_by(Subscription.proximo_cobro.asc())
+        .all()
     )
-    en_gracia = (
-        Subscription.query.join(Tenant)
-        .filter(Tenant.slug != SYSTEM_TENANT_SLUG)
-        .filter(Subscription.estado == SUBSCRIPTION_GRACIA)
-        .count()
+    en_gracia_subs = (
+        base.filter(Subscription.estado == SUBSCRIPTION_GRACIA)
+        .order_by(Subscription.grace_expires_at.asc())
+        .all()
     )
-    return jsonify({"cola_pendientes": cola, "en_mora": en_mora, "en_gracia": en_gracia})
+    por_vencer_subs = (
+        base.filter(Subscription.estado == SUBSCRIPTION_ACTIVA)
+        .filter(Subscription.proximo_cobro.isnot(None))
+        .filter(Subscription.proximo_cobro >= today)
+        .filter(Subscription.proximo_cobro <= today + timedelta(days=7))
+        .order_by(Subscription.proximo_cobro.asc())
+        .all()
+    )
+
+    return jsonify({
+        "cola_pendientes": cola,
+        "en_mora": len(en_mora_subs),
+        "en_gracia": len(en_gracia_subs),
+        "por_vencer_7d": len(por_vencer_subs),
+        "en_mora_list": [_row(s) for s in en_mora_subs],
+        "en_gracia_list": [_row(s) for s in en_gracia_subs],
+        "por_vencer_7d_list": [_row(s) for s in por_vencer_subs],
+    })
+
+
+# ── Export CSV ───────────────────────────────────────────────────────────────
+
+def _csv_response(header, rows, filename):
+    buf = io.StringIO()
+    buf.write("﻿")  # BOM para que Excel detecte UTF-8
+    writer = csv.writer(buf)
+    writer.writerow(header)
+    for row in rows:
+        writer.writerow(row)
+    return Response(
+        buf.getvalue(),
+        mimetype="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
+
+
+@superadmin_bp.route("/tenants/export.csv", methods=["GET"])
+@require_superuser
+def export_tenants_csv():
+    tenants = _query_tenants(request.args)
+    header = [
+        "nombre", "slug", "email_contacto", "estado", "plan",
+        "estado_suscripcion", "proximo_cobro", "usuarios",
+        "ultimo_pago_fecha", "ultimo_pago_monto", "creada",
+    ]
+    rows = []
+    for t in tenants:
+        r = _serialize_tenant(t, with_counts=True)
+        sub = r.get("subscription") or {}
+        up = r.get("ultimo_pago") or {}
+        rows.append([
+            r["name"], r["slug"], r.get("contact_email") or "",
+            r["status"], r.get("plan") or "",
+            sub.get("estado") or "", sub.get("proximo_cobro") or "",
+            r.get("users_count", 0),
+            up.get("fecha") or "", up.get("monto") if up else "",
+            r.get("created_at") or "",
+        ])
+    return _csv_response(header, rows, "clinicas.csv")
+
+
+@superadmin_bp.route("/payments/export.csv", methods=["GET"])
+@require_superuser
+def export_payments_csv():
+    payments = _query_payments(request.args)
+    header = [
+        "clinica", "fecha", "monto", "metodo",
+        "periodo_inicio", "periodo_fin", "estado_clip",
+        "comentarios", "registrado_por_id",
+    ]
+    rows = []
+    for p in payments:
+        rows.append([
+            p.tenant.name if p.tenant else "",
+            p.fecha.isoformat() if p.fecha else "",
+            p.monto,
+            p.metodo or "",
+            p.periodo_inicio.isoformat() if p.periodo_inicio else "",
+            p.periodo_fin.isoformat() if p.periodo_fin else "",
+            p.clip_status or "",
+            p.comentarios or "",
+            p.registrado_por_id or "",
+        ])
+    return _csv_response(header, rows, "pagos.csv")

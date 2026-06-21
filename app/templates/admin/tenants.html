@@ -5,11 +5,21 @@
 
 <div class="space-y-6">
 
+  <!-- Toggle modo -->
+  <div class="flex items-center gap-1" id="mode-toggle">
+    <button data-mode="tenants" class="mode-chip active px-3 py-1.5 rounded-md text-xs font-semibold transition-colors cursor-pointer">Clínicas</button>
+    <button data-mode="users" class="mode-chip px-3 py-1.5 rounded-md text-xs font-semibold transition-colors cursor-pointer">Personas</button>
+  </div>
+
   <div class="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-6">
     <div>
       <h1 class="font-cs-display text-4xl font-bold text-cs-on-surface tracking-tight">Clínicas</h1>
       <p class="mt-1.5 text-sm text-cs-on-surface-var max-w-xl">Aprueba solicitudes, gestiona suscripciones y administra el ciclo de vida de cada clínica.</p>
     </div>
+    <button id="btn-export-csv" class="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-cs-surface-container text-cs-on-surface text-sm font-semibold hover:bg-cs-surface-container-high transition-colors cursor-pointer">
+      <i data-lucide="download" class="h-4 w-4"></i>
+      Exportar CSV
+    </button>
   </div>
 
   <!-- Filtros -->
@@ -27,6 +37,27 @@
     </div>
   </div>
 
+  <!-- Filtros de suscripción + orden (modo Clínicas) -->
+  <div id="sub-filters" class="rounded-lg bg-cs-surface-container-lowest p-4 flex flex-col md:flex-row gap-3 md:items-center">
+    <div class="flex items-center gap-1 flex-wrap" id="sub-estado-chips">
+      <span class="text-xs font-semibold text-cs-on-surface-var mr-1">Suscripción:</span>
+      <button data-sub="" class="sub-chip active px-3 py-1.5 rounded-md text-xs font-semibold transition-colors cursor-pointer">Todas</button>
+      <button data-sub="activa" class="sub-chip px-3 py-1.5 rounded-md text-xs font-semibold transition-colors cursor-pointer">Activa</button>
+      <button data-sub="mora" class="sub-chip px-3 py-1.5 rounded-md text-xs font-semibold transition-colors cursor-pointer">En mora</button>
+      <button data-sub="gracia" class="sub-chip px-3 py-1.5 rounded-md text-xs font-semibold transition-colors cursor-pointer">En gracia</button>
+      <button data-sub="vencida" class="sub-chip px-3 py-1.5 rounded-md text-xs font-semibold transition-colors cursor-pointer">Vencida</button>
+    </div>
+    <div class="md:ml-auto flex items-center gap-2">
+      <label class="text-xs font-semibold text-cs-on-surface-var">Orden</label>
+      <select id="sort-select" class="px-3 py-1.5 rounded-lg bg-cs-surface-container text-sm text-cs-on-surface focus:outline-none focus:ring-2 focus:ring-cs-primary/30">
+        <option value="reciente">Más recientes</option>
+        <option value="proximo_cobro">Próximo cobro ↑</option>
+        <option value="-proximo_cobro">Próximo cobro ↓</option>
+        <option value="plan">Plan (A→Z)</option>
+      </select>
+    </div>
+  </div>
+
   <!-- Tabla -->
   <div class="rounded-lg bg-cs-surface-container-lowest p-2 overflow-x-auto">
     <table class="w-full text-sm">
@@ -36,12 +67,30 @@
           <th class="px-4 py-3 font-semibold">Contacto</th>
           <th class="px-4 py-3 font-semibold">Estado</th>
           <th class="px-4 py-3 font-semibold">Plan</th>
+          <th class="px-4 py-3 font-semibold">Estado susc.</th>
+          <th class="px-4 py-3 font-semibold">Próximo cobro</th>
           <th class="px-4 py-3 font-semibold text-right">Usuarios</th>
           <th class="px-4 py-3 font-semibold">Último pago</th>
           <th class="px-4 py-3"></th>
         </tr>
       </thead>
       <tbody id="tenants-rows"></tbody>
+    </table>
+  </div>
+
+  <!-- Tabla personas (modo Personas) -->
+  <div id="users-table-wrap" class="hidden rounded-lg bg-cs-surface-container-lowest p-2 overflow-x-auto">
+    <table class="w-full text-sm">
+      <thead>
+        <tr class="text-left text-cs-on-surface-var">
+          <th class="px-4 py-3 font-semibold">Nombre</th>
+          <th class="px-4 py-3 font-semibold">Email</th>
+          <th class="px-4 py-3 font-semibold">Rol</th>
+          <th class="px-4 py-3 font-semibold">Clínica</th>
+          <th class="px-4 py-3"></th>
+        </tr>
+      </thead>
+      <tbody id="users-rows"></tbody>
     </table>
   </div>
 
@@ -53,6 +102,12 @@
   .status-chip { background-color: var(--color-cs-surface-container); color: var(--color-cs-on-surface-var); }
   .status-chip:hover { background-color: var(--color-cs-surface-container-high); color: var(--color-cs-on-surface); }
   .status-chip.active { background-color: var(--color-cs-primary); color: var(--color-cs-on-primary); }
+  .mode-chip { background-color: var(--color-cs-surface-container); color: var(--color-cs-on-surface-var); }
+  .mode-chip:hover { background-color: var(--color-cs-surface-container-high); color: var(--color-cs-on-surface); }
+  .mode-chip.active { background-color: var(--color-cs-primary); color: var(--color-cs-on-primary); }
+  .sub-chip { background-color: var(--color-cs-surface-container); color: var(--color-cs-on-surface-var); }
+  .sub-chip:hover { background-color: var(--color-cs-surface-container-high); color: var(--color-cs-on-surface); }
+  .sub-chip.active { background-color: var(--color-cs-primary); color: var(--color-cs-on-primary); }
 </style>
 
 {% endblock %}

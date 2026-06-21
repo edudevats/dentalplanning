@@ -72,3 +72,10 @@ class AssignPlanSchema(Schema):
     plan_id = fields.Int(required=True)
     inicio = fields.Date(load_default=None)
     proximo_cobro = fields.Date(load_default=None)
+
+
+class ChangeUserRoleSchema(Schema):
+    class Meta:
+        unknown = EXCLUDE
+
+    role = fields.Str(required=True, validate=validate.OneOf(["admin", "editor", "viewer"]))

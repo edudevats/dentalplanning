@@ -200,6 +200,17 @@
 
     document.getElementById('btn-nuevo-pago').addEventListener('click', openNewPayment);
     document.getElementById('btn-sync-clip').addEventListener('click', onSyncClip);
+    document.getElementById('btn-export-csv').addEventListener('click', () => {
+      const f = getFilters();
+      const params = new URLSearchParams();
+      if (f.tenant_id) params.set('tenant_id', f.tenant_id);
+      if (f.desde) params.set('desde', f.desde);
+      if (f.hasta) params.set('hasta', f.hasta);
+      if (f.metodo) params.set('metodo', f.metodo);
+      if (f.clip_status) params.set('clip_status', f.clip_status);
+      const qs = params.toString() ? `?${params.toString()}` : '';
+      adminApi.download(`/payments/export.csv${qs}`, 'pagos.csv');
+    });
   }
 
   function setBtnContent(btn, iconName, label, spin) {

@@ -12,6 +12,27 @@
     del:  (path)        => API.delete(PREFIX + path),
   };
 
+  // Descarga autenticada (JWT en header) → Blob → archivo. Para endpoints CSV.
+  adminApi.download = async function (path, filename) {
+    const token = localStorage.getItem('token');
+    const res = await fetch('/api/v1' + PREFIX + path, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    if (!res.ok) {
+      if (typeof Toast !== 'undefined') Toast.show('No se pudo exportar el CSV', 'error');
+      return;
+    }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  };
+
   // ── Status helpers ────────────────────────────────────────────────────────
   const STATUS_LABELS = {
     pending:   { label: 'Pendiente',   variant: 'warning' },

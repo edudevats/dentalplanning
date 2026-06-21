@@ -216,13 +216,60 @@
     (data.users || []).forEach(u => {
       const tr = document.createElement('tr');
       tr.className = 'hover:bg-cs-surface-container transition-colors';
-      const cells = [u.name, u.email, u.role, formatDate(u.created_at)];
-      cells.forEach(v => {
-        const td = document.createElement('td');
-        td.className = 'px-4 py-3 text-cs-on-surface';
-        td.textContent = v != null ? v : '—';
-        tr.appendChild(td);
-      });
+
+      // Nombre
+      const tdName = document.createElement('td');
+      tdName.className = 'px-4 py-3 text-cs-on-surface';
+      tdName.textContent = u.name || '—';
+      tr.appendChild(tdName);
+
+      // Email + badge contraseña temporal
+      const tdEmail = document.createElement('td');
+      tdEmail.className = 'px-4 py-3 text-cs-on-surface';
+      tdEmail.appendChild(document.createTextNode(u.email || '—'));
+      if (u.must_change_password) {
+        const badge = document.createElement('span');
+        badge.className = 'inline-flex items-center ml-2 px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-cs-surface-container-high text-cs-on-surface';
+        badge.textContent = 'Contraseña temporal';
+        tdEmail.appendChild(badge);
+      }
+      tr.appendChild(tdEmail);
+
+      // Rol (select inline, salvo superuser)
+      const tdRole = document.createElement('td');
+      tdRole.className = 'px-4 py-3';
+      if (u.is_superuser) {
+        tdRole.textContent = 'super-admin';
+        tdRole.classList.add('text-cs-on-surface-var');
+      } else {
+        const sel = selectEl('role', [
+          { value: 'admin', label: 'Admin' },
+          { value: 'editor', label: 'Editor' },
+          { value: 'viewer', label: 'Viewer' },
+        ], u.role);
+        sel.classList.add('text-xs', 'py-1');
+        sel.addEventListener('change', async () => {
+          const prev = u.role;
+          try {
+            await adminApi.put(`/users/${u.id}/role`, { role: sel.value });
+            u.role = sel.value;
+            Toast.show('Rol actualizado', 'success');
+          } catch (err) {
+            sel.value = prev;
+            Toast.show(err.message || 'No se pudo cambiar el rol', 'error');
+          }
+        });
+        tdRole.appendChild(sel);
+      }
+      tr.appendChild(tdRole);
+
+      // Alta
+      const tdAlta = document.createElement('td');
+      tdAlta.className = 'px-4 py-3 text-cs-on-surface';
+      tdAlta.textContent = formatDate(u.created_at);
+      tr.appendChild(tdAlta);
+
+      // Acción reset password
       const tdAct = document.createElement('td');
       tdAct.className = 'px-4 py-3 text-right';
       const btn = document.createElement('button');
@@ -231,6 +278,7 @@
       btn.addEventListener('click', () => onResetPassword(u));
       tdAct.appendChild(btn);
       tr.appendChild(tdAct);
+
       tbody.appendChild(tr);
     });
     table.appendChild(tbody);
