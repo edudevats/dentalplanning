@@ -1,15 +1,20 @@
 import calendar
 from datetime import date
 from flask import Blueprint, request, jsonify, g, current_app
+from sqlalchemy.orm import joinedload
 from app.extensions import db
 from app.middleware.tenant import require_auth, require_role
 from app.auth.models import Tenant
-from app.facturacion.models import ConfiguracionFiscal, Sucursal, Ticket
+from app.facturacion.models import (
+    ConfiguracionFiscal, Sucursal, Ticket,
+    TICKET_TIMBRADA, TICKET_CANCELADA,
+)
 from app.facturacion.schemas import (
     ConfiguracionFiscalSchema, SucursalSchema, TicketSchema, ReceptorSchema,
     CancelacionSchema,
 )
 from app.facturacion.cfdi import timbrar_ticket, cancelar_ticket, TimbradoError
+from app.facturacion.iva import iva_de
 from app.engine.accounting import parse_mes, filtro_mes
 from app.facturacion import crypto
 from app.facturacion.csd import validar_csd, validar_fiel, CSDInvalido
@@ -174,6 +179,44 @@ def listar_tickets():
         *filtro_mes(Ticket.fecha, year, month),
     ).order_by(Ticket.fecha.desc(), Ticket.folio.desc()).all()
     return jsonify(TicketSchema(many=True).dump(tickets))
+
+
+@facturacion_bp.route("/tickets/resumen-iva", methods=["GET"])
+@require_auth
+def resumen_iva_tickets():
+    """IVA del mes agregado por estado de ticket (para las cajitas de /facturas).
+
+    Filtra por mes del ticket (Ticket.fecha), igual que el listado. El IVA por
+    ticket usa el mismo iva_de() por concepto (0 si el ingreso no es facturable).
+    """
+    year, month = parse_mes(request.args.get("mes"))
+    cfg = ConfiguracionFiscal.query.filter_by(tenant_id=g.tenant_id).first()
+    naturaleza = cfg.naturaleza_juridica if cfg else None
+
+    tickets = Ticket.query.options(joinedload(Ticket.ingresos)).filter(
+        Ticket.tenant_id == g.tenant_id,
+        *filtro_mes(Ticket.fecha, year, month),
+    ).all()
+
+    iva_generado = iva_reclamado = iva_cancelado = 0.0
+    for t in tickets:
+        iva_t = sum(
+            iva_de(i.monto or 0.0, naturaleza, i.tipo_servicio, i.factura)
+            for i in t.ingresos
+        )
+        if t.estado == TICKET_CANCELADA:
+            iva_cancelado += iva_t
+        else:
+            iva_generado += iva_t
+            if t.estado == TICKET_TIMBRADA:
+                iva_reclamado += iva_t
+
+    return jsonify({
+        "iva_generado": round(iva_generado, 2),
+        "iva_reclamado": round(iva_reclamado, 2),
+        "iva_pendiente": round(iva_generado - iva_reclamado, 2),
+        "iva_cancelado": round(iva_cancelado, 2),
+    })
 
 
 @facturacion_bp.route("/tickets/<int:ticket_id>", methods=["GET"])

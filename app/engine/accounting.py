@@ -118,17 +118,18 @@ def ganancia_tratamiento(precio, costo_materiales, comision_bancaria,
 def reparto_iva(monto, iva, timbrado):
     """Reparte un ingreso facturable según si su factura se timbró.
 
+    El IVA NUNCA se cuenta como ingreso. Solo cuando la factura se timbra
+    (se "reclama") el IVA se registra como IVA por regresar al SAT.
+
     Devuelve (venta_contable, iva_al_sat):
-    - Timbrado con IVA  → el IVA se regresa al SAT: venta = base, iva_al_sat = iva.
-    - No timbrado con IVA → el IVA se queda como ingreso: venta = base + iva, iva_al_sat = 0.
-    - Sin IVA            → venta = base, iva_al_sat = 0.
+    - Timbrado con IVA  → venta = base, iva_al_sat = iva.
+    - No timbrado       → venta = base, iva_al_sat = 0 (el IVA aún no se causa).
+    - Sin IVA           → venta = base, iva_al_sat = 0.
     """
     base = monto or 0.0
     iva = iva or 0.0
     if iva and timbrado:
         return base, iva
-    if iva and not timbrado:
-        return base + iva, 0.0
     return base, 0.0
 
 

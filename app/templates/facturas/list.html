@@ -31,6 +31,24 @@
       <h2 class="text-sm font-semibold uppercase tracking-wide text-text-muted">Tickets del mes</h2>
       <input type="month" id="tk-mes" class="border border-border rounded-lg px-3 py-2 text-sm font-body bg-surface" />
     </div>
+    <div id="tk-iva-cajitas" class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+      <div class="border border-border rounded-xl p-4 bg-surface">
+        <div class="text-xs font-semibold uppercase tracking-wide text-text-muted">IVA generado</div>
+        <div id="iva-generado" class="text-xl font-bold text-text-primary tabular-nums mt-1">$0.00</div>
+      </div>
+      <div class="border border-border rounded-xl p-4 bg-surface">
+        <div class="text-xs font-semibold uppercase tracking-wide text-text-muted">IVA reclamado</div>
+        <div id="iva-reclamado" class="text-xl font-bold text-success-600 tabular-nums mt-1">$0.00</div>
+      </div>
+      <div class="border border-border rounded-xl p-4 bg-surface">
+        <div class="text-xs font-semibold uppercase tracking-wide text-text-muted">IVA pendiente</div>
+        <div id="iva-pendiente" class="text-xl font-bold text-warning-600 tabular-nums mt-1">$0.00</div>
+      </div>
+      <div class="border border-border rounded-xl p-4 bg-surface">
+        <div class="text-xs font-semibold uppercase tracking-wide text-text-muted">IVA cancelado</div>
+        <div id="iva-cancelado" class="text-xl font-bold text-danger-600 tabular-nums mt-1">$0.00</div>
+      </div>
+    </div>
     <div id="tk-chips" class="flex flex-wrap gap-2 mb-3 text-xs"></div>
     <div class="overflow-x-auto">
       <table class="w-full text-sm font-body">
@@ -239,8 +257,26 @@ function mesActualInput() {
   return n.getFullYear() + '-' + String(n.getMonth() + 1).padStart(2, '0');
 }
 
+function fmtMXN(n) {
+  return (Number(n) || 0).toLocaleString('es-MX', { style: 'currency', currency: 'MXN' });
+}
+
+async function cargarResumenIva() {
+  const mes = document.getElementById('tk-mes').value || mesActualInput();
+  try {
+    const r = await API.get('/facturacion/tickets/resumen-iva?mes=' + mes);
+    document.getElementById('iva-generado').textContent = fmtMXN(r.iva_generado);
+    document.getElementById('iva-reclamado').textContent = fmtMXN(r.iva_reclamado);
+    document.getElementById('iva-pendiente').textContent = fmtMXN(r.iva_pendiente);
+    document.getElementById('iva-cancelado').textContent = fmtMXN(r.iva_cancelado);
+  } catch (e) {
+    console.error('Error al cargar resumen de IVA', e);
+  }
+}
+
 async function cargarTickets() {
   const mes = document.getElementById('tk-mes').value || mesActualInput();
+  cargarResumenIva();
   let tickets = [];
   try {
     tickets = await API.get('/facturacion/tickets?mes=' + mes);
