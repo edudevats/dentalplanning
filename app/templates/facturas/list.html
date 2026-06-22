@@ -31,22 +31,42 @@
       <h2 class="text-sm font-semibold uppercase tracking-wide text-text-muted">Tickets del mes</h2>
       <input type="month" id="tk-mes" class="border border-border rounded-lg px-3 py-2 text-sm font-body bg-surface" />
     </div>
-    <div id="tk-iva-cajitas" class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
-      <div class="border border-border rounded-xl p-4 bg-surface">
-        <div class="text-xs font-semibold uppercase tracking-wide text-text-muted">IVA generado</div>
-        <div id="iva-generado" class="text-xl font-bold text-text-primary tabular-nums mt-1">$0.00</div>
+    <div id="tk-iva-cajitas" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+      <div class="bg-surface rounded-xl border border-border p-5 shadow-sm">
+        <div class="flex items-center justify-between">
+          <p class="text-sm font-medium text-text-secondary font-body">IVA generado</p>
+          <div class="h-9 w-9 rounded-lg bg-primary-50 flex items-center justify-center shrink-0">
+            <i data-lucide="receipt" class="h-4 w-4 text-primary-600"></i>
+          </div>
+        </div>
+        <p id="iva-generado" class="mt-3 text-2xl font-bold font-heading tabular-nums text-text-primary">$0.00</p>
       </div>
-      <div class="border border-border rounded-xl p-4 bg-surface">
-        <div class="text-xs font-semibold uppercase tracking-wide text-text-muted">IVA reclamado</div>
-        <div id="iva-reclamado" class="text-xl font-bold text-success-600 tabular-nums mt-1">$0.00</div>
+      <div class="bg-surface rounded-xl border border-border p-5 shadow-sm">
+        <div class="flex items-center justify-between">
+          <p class="text-sm font-medium text-text-secondary font-body">IVA reclamado</p>
+          <div class="h-9 w-9 rounded-lg bg-primary-50 flex items-center justify-center shrink-0">
+            <i data-lucide="badge-check" class="h-4 w-4 text-primary-600"></i>
+          </div>
+        </div>
+        <p id="iva-reclamado" class="mt-3 text-2xl font-bold font-heading tabular-nums text-accent-700">$0.00</p>
       </div>
-      <div class="border border-border rounded-xl p-4 bg-surface">
-        <div class="text-xs font-semibold uppercase tracking-wide text-text-muted">IVA pendiente</div>
-        <div id="iva-pendiente" class="text-xl font-bold text-warning-600 tabular-nums mt-1">$0.00</div>
+      <div class="bg-surface rounded-xl border border-border p-5 shadow-sm">
+        <div class="flex items-center justify-between">
+          <p class="text-sm font-medium text-text-secondary font-body">IVA pendiente</p>
+          <div class="h-9 w-9 rounded-lg bg-primary-50 flex items-center justify-center shrink-0">
+            <i data-lucide="clock" class="h-4 w-4 text-primary-600"></i>
+          </div>
+        </div>
+        <p id="iva-pendiente" class="mt-3 text-2xl font-bold font-heading tabular-nums text-warning-600">$0.00</p>
       </div>
-      <div class="border border-border rounded-xl p-4 bg-surface">
-        <div class="text-xs font-semibold uppercase tracking-wide text-text-muted">IVA cancelado</div>
-        <div id="iva-cancelado" class="text-xl font-bold text-danger-600 tabular-nums mt-1">$0.00</div>
+      <div class="bg-surface rounded-xl border border-border p-5 shadow-sm">
+        <div class="flex items-center justify-between">
+          <p class="text-sm font-medium text-text-secondary font-body">IVA cancelado</p>
+          <div class="h-9 w-9 rounded-lg bg-primary-50 flex items-center justify-center shrink-0">
+            <i data-lucide="ban" class="h-4 w-4 text-primary-600"></i>
+          </div>
+        </div>
+        <p id="iva-cancelado" class="mt-3 text-2xl font-bold font-heading tabular-nums text-danger-600">$0.00</p>
       </div>
     </div>
     <div id="tk-chips" class="flex flex-wrap gap-2 mb-3 text-xs"></div>
