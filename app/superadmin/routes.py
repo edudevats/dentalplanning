@@ -15,7 +15,7 @@ from app.auth.models import (
     TENANT_STATUSES,
 )
 from app.superadmin.models import (
-    Plan, Subscription, Payment, TenantNote,
+    Plan, Subscription, Payment, TenantNote, AdminAuditLog,
     SUBSCRIPTION_ACTIVA, SUBSCRIPTION_GRACIA, SUBSCRIPTION_VENCIDA,
 )
 from app.clip.service import create_checkout_link, ClipAPIError
@@ -23,6 +23,7 @@ from app.superadmin.schemas import (
     PlanSchema, ApproveTenantSchema, RejectTenantSchema,
     TenantUpdateSchema, PaymentSchema, TenantNoteSchema,
     SubscriptionUpdateSchema, AssignPlanSchema, ChangeUserRoleSchema,
+    ToggleActiveSchema,
 )
 from app.catalogo.models import Material
 from app.tratamientos.models import Tratamiento
@@ -92,6 +93,12 @@ def _serialize_tenant(t, *, with_counts=False):
                 "proximo_cobro": sub.proximo_cobro.isoformat() if sub.proximo_cobro else None,
                 "grace_expires_at": sub.grace_expires_at.isoformat() if sub.grace_expires_at else None,
             }
+        out["ultima_actividad"] = (
+            db.session.query(func.max(User.last_login))
+            .filter(User.tenant_id == t.id)
+            .scalar()
+        )
+        out["ultima_actividad"] = out["ultima_actividad"].isoformat() if out["ultima_actividad"] else None
     return out
 
 
@@ -160,6 +167,23 @@ def _exclude_system(query):
 def _generate_temp_password(length=12):
     alphabet = string.ascii_letters + string.digits
     return "".join(secrets.choice(alphabet) for _ in range(length))
+
+
+def log_admin_action(action, *, target_type=None, target_id=None,
+                     tenant_id=None, summary=None, details=None):
+    """Crea una entrada de bitácora con el super-admin actual como actor.
+    Agrega a la sesión; el caller hace el commit."""
+    entry = AdminAuditLog(
+        actor_id=g.current_user.id,
+        action=action,
+        target_type=target_type,
+        target_id=target_id,
+        tenant_id=tenant_id,
+        summary=summary,
+        details=details,
+    )
+    db.session.add(entry)
+    return entry
 
 
 # ── Tenants ──────────────────────────────────────────────────────────────────
@@ -273,6 +297,8 @@ def approve_tenant(tenant_id):
         )
         db.session.add(sub)
 
+    log_admin_action("tenant.approve", target_type="tenant", target_id=t.id,
+                     tenant_id=t.id, summary=f"Aprobó la clínica con plan {plan.nombre}")
     db.session.commit()
     return jsonify(_serialize_tenant(t, with_counts=True))
 
@@ -288,6 +314,9 @@ def reject_tenant(tenant_id):
     t.status = TENANT_STATUS_REJECTED
     t.is_active = False
     t.rejected_reason = data["razon"]
+    log_admin_action("tenant.reject", target_type="tenant", target_id=t.id,
+                     tenant_id=t.id, summary="Rechazó la clínica",
+                     details={"razon": data["razon"]})
     db.session.commit()
     return jsonify(_serialize_tenant(t))
 
@@ -300,6 +329,8 @@ def suspend_tenant(tenant_id):
         return jsonify({"error": "Tenant del sistema"}), 400
     t.status = TENANT_STATUS_SUSPENDED
     t.is_active = False
+    log_admin_action("tenant.suspend", target_type="tenant", target_id=t.id,
+                     tenant_id=t.id, summary="Suspendió la clínica")
     db.session.commit()
     return jsonify(_serialize_tenant(t))
 
@@ -315,6 +346,8 @@ def activate_tenant(tenant_id):
     if not t.approved_at:
         t.approved_at = datetime.now(timezone.utc)
         t.approved_by_id = g.current_user.id
+    log_admin_action("tenant.activate", target_type="tenant", target_id=t.id,
+                     tenant_id=t.id, summary="Reactivó la clínica")
     db.session.commit()
     return jsonify(_serialize_tenant(t))
 
@@ -328,6 +361,8 @@ def update_tenant(tenant_id):
     data = TenantUpdateSchema().load(request.get_json() or {})
     for k, v in data.items():
         setattr(t, k, v)
+    log_admin_action("tenant.update", target_type="tenant", target_id=t.id,
+                     tenant_id=t.id, summary="Editó datos de la clínica", details=data)
     db.session.commit()
     return jsonify(_serialize_tenant(t))
 
@@ -343,8 +378,9 @@ def tenant_users(tenant_id):
         "users": [
             {
                 "id": u.id, "email": u.email, "name": u.name, "role": u.role,
-                "is_superuser": u.is_superuser,
+                "is_superuser": u.is_superuser, "is_active": u.is_active,
                 "must_change_password": u.must_change_password,
+                "last_login": u.last_login.isoformat() if u.last_login else None,
                 "created_at": u.created_at.isoformat() if u.created_at else None,
             }
             for u in users
@@ -395,6 +431,9 @@ def reset_password(user_id):
     temp = _generate_temp_password()
     user.set_password(temp)
     user.must_change_password = True
+    log_admin_action("user.reset_password", target_type="user", target_id=user.id,
+                     tenant_id=user.tenant_id,
+                     summary=f"Generó contraseña temporal para {user.email}")
     db.session.commit()
     return jsonify({
         "message": "Password temporal generado. Compártelo de forma segura.",
@@ -420,12 +459,50 @@ def change_user_role(user_id):
                 "error": "No puedes quitar el rol admin al último administrador de la clínica."
             }), 409
 
+    old_role = user.role
     user.role = new_role
+    log_admin_action("user.role_change", target_type="user", target_id=user.id,
+                     tenant_id=user.tenant_id,
+                     summary=f"Cambió rol de {old_role} a {new_role}",
+                     details={"old_role": old_role, "new_role": new_role})
     db.session.commit()
     return jsonify({
         "id": user.id, "email": user.email, "name": user.name, "role": user.role,
         "is_superuser": user.is_superuser,
         "must_change_password": user.must_change_password,
+        "created_at": user.created_at.isoformat() if user.created_at else None,
+    })
+
+
+@superadmin_bp.route("/users/<int:user_id>/active", methods=["PUT"])
+@require_superuser
+def change_user_active(user_id):
+    user = User.query.get_or_404(user_id)
+    if user.is_superuser or (user.tenant and user.tenant.slug == SYSTEM_TENANT_SLUG):
+        return jsonify({"error": "No se puede deshabilitar un super-admin"}), 403
+
+    data = ToggleActiveSchema().load(request.get_json() or {})
+    new_active = data["is_active"]
+
+    if not new_active and user.role == "admin" and user.is_active:
+        active_admins = User.query.filter_by(
+            tenant_id=user.tenant_id, role="admin", is_active=True
+        ).count()
+        if active_admins <= 1:
+            return jsonify({
+                "error": "No puedes desactivar al último administrador activo de la clínica."
+            }), 409
+
+    user.is_active = new_active
+    log_admin_action("user.activate" if new_active else "user.deactivate",
+                     target_type="user", target_id=user.id, tenant_id=user.tenant_id,
+                     summary=("Habilitó" if new_active else "Deshabilitó") + f" a {user.email}")
+    db.session.commit()
+    return jsonify({
+        "id": user.id, "email": user.email, "name": user.name, "role": user.role,
+        "is_superuser": user.is_superuser, "is_active": user.is_active,
+        "must_change_password": user.must_change_password,
+        "last_login": user.last_login.isoformat() if user.last_login else None,
         "created_at": user.created_at.isoformat() if user.created_at else None,
     })
 
@@ -449,7 +526,7 @@ def search_users():
         {
             "id": u.id, "name": u.name, "email": u.email, "role": u.role,
             "must_change_password": u.must_change_password,
-            "is_superuser": u.is_superuser,
+            "is_superuser": u.is_superuser, "is_active": u.is_active,
             "tenant_id": u.tenant_id,
             "tenant_name": u.tenant.name if u.tenant else None,
             "tenant_slug": u.tenant.slug if u.tenant else None,
@@ -553,6 +630,8 @@ def create_plan():
         current_app.logger.warning("Clip price sync failed for new plan %s: %s", p.nombre, e)
         sync_warning = "Plan creado, pero no se pudo sincronizar con Clip. Usa el botón 'Sincronizar con Clip' después."
 
+    log_admin_action("plan.create", target_type="plan", target_id=p.id,
+                     summary=f"Creó el plan {p.nombre}")
     db.session.commit()
     body = _serialize_plan(p)
     if sync_warning:
@@ -597,6 +676,8 @@ def update_plan(plan_id):
         current_app.logger.warning("Clip price sync failed for plan %s: %s", p.nombre, e)
         sync_warning = "Plan actualizado, pero no se pudo sincronizar con Clip."
 
+    log_admin_action("plan.update", target_type="plan", target_id=p.id,
+                     summary=f"Editó el plan {p.nombre}")
     db.session.commit()
     body = _serialize_plan(p)
     if sync_warning:
@@ -688,6 +769,10 @@ def update_subscription(sub_id):
         s.tenant.plan = plan.nombre
     for k, v in data.items():
         setattr(s, k, v)
+    log_admin_action("subscription.update", target_type="subscription",
+                     target_id=s.id, tenant_id=s.tenant_id,
+                     summary="Actualizó la suscripción",
+                     details={"estado": data.get("estado"), "plan_id": data.get("plan_id")})
     db.session.commit()
     return jsonify(_serialize_subscription(s))
 
@@ -744,6 +829,10 @@ def assign_plan(tenant_id):
                 t.approved_at = datetime.now(timezone.utc)
                 t.approved_by_id = g.current_user.id
 
+    db.session.flush()
+    log_admin_action("subscription.assign_plan", target_type="subscription",
+                     target_id=sub.id, tenant_id=t.id,
+                     summary=f"Asignó/cambió el plan a {plan.nombre}")
     db.session.commit()
 
     out = _serialize_tenant(t, with_counts=True)
@@ -815,6 +904,11 @@ def create_payment():
         registrado_por_id=g.current_user.id,
     )
     db.session.add(payment)
+    db.session.flush()
+    log_admin_action("payment.create", target_type="payment", target_id=payment.id,
+                     tenant_id=tenant.id,
+                     summary=f"Registró un pago de {data['monto']} ({payment.metodo})",
+                     details={"monto": data["monto"], "metodo": payment.metodo})
 
     if sub and data.get("periodo_fin"):
         sub.proximo_cobro = data["periodo_fin"] + timedelta(days=1)
@@ -836,6 +930,8 @@ def create_payment():
 @require_superuser
 def delete_payment(payment_id):
     p = Payment.query.get_or_404(payment_id)
+    log_admin_action("payment.delete", target_type="payment", target_id=p.id,
+                     tenant_id=p.tenant_id, summary=f"Eliminó un pago de {p.monto}")
     db.session.delete(p)
     db.session.commit()
     return jsonify({"message": "Pago eliminado"})
@@ -964,6 +1060,9 @@ def charge_tenant(tenant_id):
     )
     db.session.add(payment)
     sub.clip_checkout_id = clip_id
+    db.session.flush()
+    log_admin_action("payment.charge_clip", target_type="tenant", target_id=t.id,
+                     tenant_id=t.id, summary=f"Generó cobro Clip por {plan.precio_mensual}")
     db.session.commit()
 
     return jsonify({
@@ -1153,6 +1252,38 @@ def stats_salud():
         "en_gracia_list": [_row(s) for s in en_gracia_subs],
         "por_vencer_7d_list": [_row(s) for s in por_vencer_subs],
     })
+
+
+@superadmin_bp.route("/audit", methods=["GET"])
+@require_superuser
+def list_audit():
+    q = AdminAuditLog.query
+    tenant_id = request.args.get("tenant_id", type=int)
+    if tenant_id:
+        q = q.filter(AdminAuditLog.tenant_id == tenant_id)
+    action = request.args.get("action")
+    if action:
+        q = q.filter(AdminAuditLog.action == action)
+    desde = request.args.get("desde")
+    if desde:
+        q = q.filter(AdminAuditLog.created_at >= desde)
+    hasta = request.args.get("hasta")
+    if hasta:
+        q = q.filter(AdminAuditLog.created_at <= hasta)
+    rows = q.order_by(AdminAuditLog.created_at.desc()).limit(200).all()
+    return jsonify({"events": [
+        {
+            "id": r.id, "action": r.action,
+            "target_type": r.target_type, "target_id": r.target_id,
+            "tenant_id": r.tenant_id,
+            "tenant_name": r.tenant.name if r.tenant else None,
+            "actor_id": r.actor_id,
+            "actor_name": r.actor.name if r.actor else None,
+            "summary": r.summary, "details": r.details,
+            "created_at": r.created_at.isoformat() if r.created_at else None,
+        }
+        for r in rows
+    ]})
 
 
 # ── Export CSV ───────────────────────────────────────────────────────────────

@@ -1,0 +1,69 @@
+{% extends "admin/_layout_admin.html" %}
+{% block title %}Auditoría — Panel SaaS{% endblock %}
+{% block admin_title %}Auditoría{% endblock %}
+{% block admin_content %}
+
+<div class="space-y-6">
+  <div>
+    <h1 class="font-cs-display text-4xl font-bold text-cs-on-surface tracking-tight">Auditoría</h1>
+    <p class="mt-1.5 text-sm text-cs-on-surface-var max-w-xl">Registro de acciones del super-admin: quién hizo qué y cuándo.</p>
+  </div>
+
+  <div class="rounded-lg bg-cs-surface-container-lowest p-4 grid grid-cols-1 md:grid-cols-4 gap-3">
+    <label class="block space-y-1">
+      <span class="text-xs font-semibold text-cs-on-surface-var">Acción</span>
+      <select id="filter-action" class="w-full px-3 py-2 rounded-lg bg-cs-surface-container text-sm text-cs-on-surface focus:outline-none focus:ring-2 focus:ring-cs-primary/30">
+        <option value="">Todas</option>
+        <option value="tenant.approve">Aprobar clínica</option>
+        <option value="tenant.reject">Rechazar clínica</option>
+        <option value="tenant.suspend">Suspender clínica</option>
+        <option value="tenant.activate">Reactivar clínica</option>
+        <option value="tenant.update">Editar clínica</option>
+        <option value="subscription.assign_plan">Asignar/cambiar plan</option>
+        <option value="subscription.update">Actualizar suscripción</option>
+        <option value="payment.create">Registrar pago</option>
+        <option value="payment.delete">Eliminar pago</option>
+        <option value="payment.charge_clip">Cobro Clip</option>
+        <option value="user.reset_password">Reset password</option>
+        <option value="user.role_change">Cambio de rol</option>
+        <option value="user.activate">Habilitar usuario</option>
+        <option value="user.deactivate">Deshabilitar usuario</option>
+        <option value="plan.create">Crear plan</option>
+        <option value="plan.update">Editar plan</option>
+      </select>
+    </label>
+    <label class="block space-y-1">
+      <span class="text-xs font-semibold text-cs-on-surface-var">Desde</span>
+      <input id="filter-desde" type="date" class="w-full px-3 py-2 rounded-lg bg-cs-surface-container text-sm text-cs-on-surface focus:outline-none focus:ring-2 focus:ring-cs-primary/30" />
+    </label>
+    <label class="block space-y-1">
+      <span class="text-xs font-semibold text-cs-on-surface-var">Hasta</span>
+      <input id="filter-hasta" type="date" class="w-full px-3 py-2 rounded-lg bg-cs-surface-container text-sm text-cs-on-surface focus:outline-none focus:ring-2 focus:ring-cs-primary/30" />
+    </label>
+    <div class="flex items-end">
+      <button id="btn-clear" class="px-3 py-2 rounded-lg bg-cs-surface-container text-cs-on-surface text-sm font-semibold hover:bg-cs-surface-container-high transition-colors cursor-pointer">Limpiar</button>
+    </div>
+  </div>
+
+  <div class="rounded-lg bg-cs-surface-container-lowest p-2 overflow-x-auto">
+    <table class="w-full text-sm">
+      <thead>
+        <tr class="text-left text-cs-on-surface-var">
+          <th class="px-4 py-3 font-semibold">Fecha</th>
+          <th class="px-4 py-3 font-semibold">Actor</th>
+          <th class="px-4 py-3 font-semibold">Acción</th>
+          <th class="px-4 py-3 font-semibold">Clínica</th>
+          <th class="px-4 py-3 font-semibold">Detalle</th>
+        </tr>
+      </thead>
+      <tbody id="audit-rows"></tbody>
+    </table>
+  </div>
+  <p id="empty-state" class="hidden text-center text-sm text-cs-on-surface-var py-10">Sin eventos para los filtros seleccionados.</p>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/admin/admin_auditoria.js"></script>
+{% endblock %}

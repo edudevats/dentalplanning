@@ -130,6 +130,11 @@
         tdPago.textContent = '—';
       }
 
+      // Última actividad
+      const tdActividad = document.createElement('td');
+      tdActividad.className = 'px-4 py-3.5 text-cs-on-surface-var';
+      tdActividad.textContent = t.ultima_actividad ? formatDate(t.ultima_actividad) : 'Nunca';
+
       // Acciones
       const tdActions = document.createElement('td');
       tdActions.className = 'px-4 py-3.5 text-right space-x-1';
@@ -143,6 +148,7 @@
       tr.appendChild(tdProximo);
       tr.appendChild(tdUsers);
       tr.appendChild(tdPago);
+      tr.appendChild(tdActividad);
       tr.appendChild(tdActions);
       tbody.appendChild(tr);
     });

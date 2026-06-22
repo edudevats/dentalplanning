@@ -79,3 +79,10 @@ class ChangeUserRoleSchema(Schema):
         unknown = EXCLUDE
 
     role = fields.Str(required=True, validate=validate.OneOf(["admin", "editor", "viewer"]))
+
+
+class ToggleActiveSchema(Schema):
+    class Meta:
+        unknown = EXCLUDE
+
+    is_active = fields.Bool(required=True)

@@ -195,10 +195,17 @@ def login():
     if not user or not user.check_password(data["password"]):
         return jsonify({"error": "Credenciales inválidas"}), 401
 
+    if not user.is_superuser and not user.is_active:
+        return jsonify({"error": "Usuario deshabilitado. Contacta al administrador."}), 403
+
     # Super-admin bypassa el chequeo de status
     if not user.is_superuser and user.tenant.status != TENANT_STATUS_ACTIVE:
         msg = _LOGIN_STATUS_MESSAGES.get(user.tenant.status, "Cuenta no activa")
         return jsonify({"error": msg, "status": user.tenant.status}), 403
+
+    from datetime import datetime, timezone
+    user.last_login = datetime.now(timezone.utc)
+    db.session.commit()
 
     access_token = create_access_token(identity=str(user.id))
     refresh_token = create_refresh_token(identity=str(user.id))

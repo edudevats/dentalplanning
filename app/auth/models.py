@@ -69,6 +69,8 @@ class User(db.Model):
     is_superuser = db.Column(db.Boolean, default=False, nullable=False)
     name = db.Column(db.String(200), nullable=False)
     must_change_password = db.Column(db.Boolean, default=False, nullable=False)
+    last_login = db.Column(db.DateTime, nullable=True)
+    is_active = db.Column(db.Boolean, default=True, nullable=False)
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
 
     def set_password(self, password):

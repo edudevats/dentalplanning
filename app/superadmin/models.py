@@ -90,3 +90,20 @@ class TenantNote(db.Model):
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
 
     autor = db.relationship("User")
+
+
+class AdminAuditLog(db.Model):
+    __tablename__ = "admin_audit_log"
+
+    id = db.Column(db.Integer, primary_key=True)
+    actor_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
+    action = db.Column(db.String(50), nullable=False)
+    target_type = db.Column(db.String(20), nullable=True)   # tenant|user|subscription|payment|plan
+    target_id = db.Column(db.Integer, nullable=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey("tenants.id"), nullable=True)
+    summary = db.Column(db.String(500), nullable=True)
+    details = db.Column(db.JSON, nullable=True)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+
+    actor = db.relationship("User", foreign_keys=[actor_id])
+    tenant = db.relationship("Tenant", foreign_keys=[tenant_id])

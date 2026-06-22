@@ -28,6 +28,8 @@ def require_auth(f):
             g.current_user = user
             g.tenant_id = user.tenant_id
             return f(*args, **kwargs)
+        if not user.is_active:
+            return jsonify({"error": "Usuario deshabilitado"}), 403
         if user.tenant.status != TENANT_STATUS_ACTIVE:
             msg = _STATUS_MESSAGES.get(user.tenant.status, "Cuenta no activa")
             return jsonify({"error": msg}), 403

@@ -210,20 +210,27 @@
     table.className = 'w-full text-sm';
     table.appendChild(buildHead([
       { label: 'Nombre' }, { label: 'Email' }, { label: 'Rol' },
-      { label: 'Alta' }, { label: '' },
+      { label: 'Último acceso' }, { label: '' },
     ]));
     const tbody = document.createElement('tbody');
     (data.users || []).forEach(u => {
       const tr = document.createElement('tr');
       tr.className = 'hover:bg-cs-surface-container transition-colors';
+      if (!u.is_active) tr.classList.add('opacity-50');
 
-      // Nombre
+      // Nombre (+ badge deshabilitado)
       const tdName = document.createElement('td');
       tdName.className = 'px-4 py-3 text-cs-on-surface';
-      tdName.textContent = u.name || '—';
+      tdName.appendChild(document.createTextNode(u.name || '—'));
+      if (!u.is_active) {
+        const b = document.createElement('span');
+        b.className = 'inline-flex items-center ml-2 px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-cs-error-container/40 text-cs-on-error-container';
+        b.textContent = 'Deshabilitado';
+        tdName.appendChild(b);
+      }
       tr.appendChild(tdName);
 
-      // Email + badge contraseña temporal
+      // Email (+ badge contraseña temporal)
       const tdEmail = document.createElement('td');
       tdEmail.className = 'px-4 py-3 text-cs-on-surface';
       tdEmail.appendChild(document.createTextNode(u.email || '—'));
@@ -235,7 +242,7 @@
       }
       tr.appendChild(tdEmail);
 
-      // Rol (select inline, salvo superuser)
+      // Rol
       const tdRole = document.createElement('td');
       tdRole.className = 'px-4 py-3';
       if (u.is_superuser) {
@@ -248,6 +255,7 @@
           { value: 'viewer', label: 'Viewer' },
         ], u.role);
         sel.classList.add('text-xs', 'py-1');
+        sel.disabled = !u.is_active;
         sel.addEventListener('change', async () => {
           const prev = u.role;
           try {
@@ -263,19 +271,38 @@
       }
       tr.appendChild(tdRole);
 
-      // Alta
-      const tdAlta = document.createElement('td');
-      tdAlta.className = 'px-4 py-3 text-cs-on-surface';
-      tdAlta.textContent = formatDate(u.created_at);
-      tr.appendChild(tdAlta);
+      // Último acceso
+      const tdLast = document.createElement('td');
+      tdLast.className = 'px-4 py-3 text-cs-on-surface-var';
+      tdLast.textContent = u.last_login ? formatDate(u.last_login) : 'Nunca';
+      tr.appendChild(tdLast);
 
-      // Acción reset password
+      // Acciones
       const tdAct = document.createElement('td');
-      tdAct.className = 'px-4 py-3 text-right';
+      tdAct.className = 'px-4 py-3 text-right space-x-1';
+      if (!u.is_superuser) {
+        const toggleBtn = document.createElement('button');
+        toggleBtn.className = u.is_active
+          ? 'px-2.5 py-1 rounded-md text-xs font-semibold bg-cs-error/90 text-white hover:bg-cs-error transition-colors cursor-pointer'
+          : 'px-2.5 py-1 rounded-md text-xs font-semibold bg-cs-primary text-cs-on-primary hover:opacity-90 transition-opacity cursor-pointer';
+        toggleBtn.textContent = u.is_active ? 'Deshabilitar' : 'Habilitar';
+        toggleBtn.addEventListener('click', async () => {
+          try {
+            await adminApi.put(`/users/${u.id}/active`, { is_active: !u.is_active });
+            Toast.show(u.is_active ? 'Usuario deshabilitado' : 'Usuario habilitado', 'success');
+            await renderUsers();
+          } catch (err) {
+            Toast.show(err.message || 'No se pudo cambiar el estado', 'error');
+          }
+        });
+        tdAct.appendChild(toggleBtn);
+      }
       const btn = document.createElement('button');
       btn.className = 'px-2.5 py-1 rounded-md text-xs font-semibold bg-cs-surface-container text-cs-on-surface hover:bg-cs-surface-container-high transition-colors cursor-pointer';
       btn.textContent = 'Reset password';
-      btn.addEventListener('click', () => onResetPassword(u));
+      btn.disabled = !u.is_active;
+      if (!u.is_active) btn.classList.add('opacity-40', 'cursor-not-allowed');
+      else btn.addEventListener('click', () => onResetPassword(u));
       tdAct.appendChild(btn);
       tr.appendChild(tdAct);
 
@@ -838,6 +865,46 @@
     if (typeof lucide !== 'undefined') lucide.createIcons();
   }
 
+  // ── Tab: Audit ─────────────────────────────────────────────────────────
+  async function renderAudit() {
+    const panel = document.querySelector('[data-panel="audit"]');
+    invDom.clearChildren(panel);
+    const data = await adminApi.get(`/audit?tenant_id=${tenantId}`);
+    const events = data.events || [];
+
+    const card = document.createElement('div');
+    card.className = 'rounded-lg bg-cs-surface-container-lowest p-2 overflow-x-auto';
+    if (events.length === 0) {
+      const empty = document.createElement('p');
+      empty.className = 'text-sm text-cs-on-surface-var p-4';
+      empty.textContent = 'Sin eventos registrados para esta clínica.';
+      card.appendChild(empty);
+      panel.appendChild(card);
+      return;
+    }
+    const table = document.createElement('table');
+    table.className = 'w-full text-sm';
+    table.appendChild(buildHead([
+      { label: 'Fecha' }, { label: 'Actor' }, { label: 'Acción' }, { label: 'Detalle' },
+    ]));
+    const tbody = document.createElement('tbody');
+    events.forEach(e => {
+      const tr = document.createElement('tr');
+      tr.className = 'hover:bg-cs-surface-container transition-colors';
+      const cells = [formatDate(e.created_at), e.actor_name || '—', e.action, e.summary || '—'];
+      cells.forEach(v => {
+        const td = document.createElement('td');
+        td.className = 'px-4 py-2.5 text-cs-on-surface';
+        td.textContent = v;
+        tr.appendChild(td);
+      });
+      tbody.appendChild(tr);
+    });
+    table.appendChild(tbody);
+    card.appendChild(table);
+    panel.appendChild(card);
+  }
+
   // ── Tab orchestration ─────────────────────────────────────────────────
   const renderers = {
     general: renderGeneral,
@@ -845,6 +912,7 @@
     billing: renderBilling,
     notes: renderNotes,
     metrics: renderMetrics,
+    audit: renderAudit,
   };
 
   function activateTab(name) {
