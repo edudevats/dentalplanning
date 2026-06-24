@@ -7,6 +7,7 @@ from app.superadmin.models import (
     SUBSCRIPTION_ACTIVA, SUBSCRIPTION_GRACIA, SUBSCRIPTION_VENCIDA,
 )
 from app.auth.models import Tenant, User, TENANT_STATUS_ACTIVE, TENANT_STATUS_SUSPENDED
+from app.clip.service import get_invoice, get_subscription, ClipAPIError
 
 clip_bp = Blueprint("clip", __name__, url_prefix="/api/v1/clip")
 
@@ -29,9 +30,14 @@ def webhook():
     current_app.logger.info("Clip webhook received: %s", data)
 
     # Detect event type. Clip recurring webhooks use different shapes depending
-    # on the resource. We handle both the v2/checkout (one-time) and the
-    # subscription/invoice (recurring) shapes.
+    # on the resource. We handle three shapes:
+    #   1. v2/checkout (one-time):  {'resource': 'CHECKOUT', 'resource_status': ...}
+    #   2. full subscription/invoice: {'resource': 'SUBSCRIPTION'|'INVOICE', ...}
+    #   3. "thin" recurring notification: {'origin': 'subscription'|'invoice',
+    #      'event_type': 'create'|..., 'id': <resource_id>}  -- only carries an id,
+    #      so we fetch the full resource from the API before processing.
     resource = (data.get("resource") or "").upper()
+    origin = (data.get("origin") or "").lower()
     status = (data.get("resource_status") or data.get("status") or "").upper()
 
     try:
@@ -41,6 +47,10 @@ def webhook():
             _handle_subscription_event(data, status)
         elif resource in ("INVOICE", "PAYMENT", "RECURRING_PAYMENT"):
             _handle_invoice_event(data, status)
+        elif origin == "invoice":
+            _handle_invoice_notification(data)
+        elif origin == "subscription":
+            _handle_subscription_notification(data)
         elif data.get("subscription_id") and data.get("invoice_id"):
             # Best-effort fallback for shape without `resource`
             _handle_invoice_event(data, status)
@@ -210,6 +220,87 @@ def _handle_invoice_event(data, status):
         sub.clip_checkout_id = payment_request_id
 
     db.session.commit()
+
+
+def _handle_invoice_notification(data):
+    """Thin recurring webhook: {'origin': 'invoice', 'event_type': ..., 'id': <invoice_id>}.
+
+    Clip sends only the invoice id for recurring events, so we fetch the full
+    invoice from the API and route it through the normal invoice handler.
+    """
+    invoice_id = data.get("id") or data.get("invoice_id") or ""
+    if not invoice_id:
+        return
+    try:
+        detail = get_invoice(invoice_id)
+    except ClipAPIError as e:
+        current_app.logger.warning("Clip webhook: could not fetch invoice %s: %s", invoice_id, e)
+        return
+    if not detail:
+        current_app.logger.info("Clip webhook: invoice %s not found when fetched", invoice_id)
+        return
+    current_app.logger.info("Clip webhook: fetched invoice %s detail=%s", invoice_id, detail)
+    norm, status = _normalize_invoice(detail, invoice_id)
+    _handle_invoice_event(norm, status)
+
+
+def _handle_subscription_notification(data):
+    """Thin recurring webhook: {'origin': 'subscription', 'event_type': ..., 'id': <sub_id>}.
+
+    Fetches the full subscription from the API and routes it through the normal
+    subscription handler.
+    """
+    sub_id = data.get("id") or data.get("subscription_id") or ""
+    if not sub_id:
+        return
+    try:
+        detail = get_subscription(sub_id)
+    except ClipAPIError as e:
+        current_app.logger.warning("Clip webhook: could not fetch subscription %s: %s", sub_id, e)
+        return
+    if not detail:
+        current_app.logger.info("Clip webhook: subscription %s not found when fetched", sub_id)
+        return
+    current_app.logger.info("Clip webhook: fetched subscription %s detail=%s", sub_id, detail)
+    norm, status = _normalize_subscription(detail, sub_id)
+    _handle_subscription_event(norm, status)
+
+
+def _normalize_invoice(detail, invoice_id):
+    """Map a fetched Clip invoice object to the dict shape _handle_invoice_event expects.
+
+    Field names vary across Clip API versions, so we look up several candidates.
+    Returns (normalized_dict, status_str).
+    """
+    sub = detail.get("subscription")
+    sub_id = detail.get("subscription_id") or ""
+    if not sub_id and isinstance(sub, dict):
+        sub_id = sub.get("id") or ""
+    norm = {
+        "invoice_id": detail.get("id") or invoice_id,
+        "subscription_id": sub_id,
+        "amount": detail.get("amount") or detail.get("total") or 0,
+        "due_date": detail.get("due_date") or "",
+        "paid_at": detail.get("paid_at") or detail.get("payment_date") or "",
+        "payment_request_id": detail.get("payment_request_id") or "",
+    }
+    status = (detail.get("status") or detail.get("payment_status")
+              or detail.get("resource_status") or "").upper()
+    return norm, status
+
+
+def _normalize_subscription(detail, sub_id):
+    """Map a fetched Clip subscription object to the dict shape
+    _handle_subscription_event expects. Returns (normalized_dict, status_str).
+    """
+    customer = detail.get("customer")
+    norm = {
+        "subscription_id": detail.get("id") or sub_id,
+        "price_id": detail.get("price_id") or "",
+        "customer": customer if isinstance(customer, dict) else {},
+    }
+    status = (detail.get("status") or detail.get("resource_status") or "").upper()
+    return norm, status
 
 
 def _parse_iso_date(s):
