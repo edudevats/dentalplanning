@@ -634,9 +634,13 @@ const SubscriptionPopup = {
 // ── Active nav ────────────────────────────────────────────────────────────────
 function setActiveNav() {
   const path = window.location.pathname;
+  const tab = new URLSearchParams(window.location.search).get('tab');
   document.querySelectorAll('[data-nav-path]').forEach(el => {
     const navPath = el.getAttribute('data-nav-path');
-    const isActive = path === navPath || (navPath !== '/dashboard' && path.startsWith(navPath + '/'));
+    const navTab = el.getAttribute('data-nav-tab');
+    const isActive = navTab !== null
+      ? (path === navPath && tab === navTab)
+      : (path === navPath || (navPath !== '/dashboard' && path.startsWith(navPath + '/')));
     if (isActive) {
       el.classList.add('bg-primary-50', 'text-primary-700', 'border-r-2', 'border-primary-500');
       el.classList.remove('text-text-secondary');
