@@ -378,6 +378,9 @@ document.getElementById('register-form').addEventListener('submit', async functi
     if (data.access_token) {
       Auth.setToken(data.access_token);
     }
+    if (data.refresh_token) {
+      Auth.setRefreshToken(data.refresh_token);
+    }
 
     if (data.clip_url) {
       window.location.href = data.clip_url;

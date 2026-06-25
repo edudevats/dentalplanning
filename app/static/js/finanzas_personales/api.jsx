@@ -2,7 +2,41 @@
 
 const FP_BASE = '/api/v1/finanzas-personales';
 
-async function fpRequest(path, options = {}) {
+// Finanzas Personales es una mini-app aparte que no carga app.js, así que la
+// renovación del token vive aquí (single-flight) en vez de reusar Auth.
+let _fpRefreshing = null;
+
+function fpRefreshAccessToken() {
+  if (_fpRefreshing) return _fpRefreshing;
+  const refreshToken = localStorage.getItem('refresh_token');
+  if (!refreshToken) return Promise.resolve(null);
+  _fpRefreshing = (async () => {
+    try {
+      const res = await fetch('/api/v1/auth/refresh', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${refreshToken}` },
+      });
+      if (!res.ok) return null;
+      const data = await res.json().catch(() => ({}));
+      if (!data.access_token) return null;
+      localStorage.setItem('token', data.access_token);
+      return data.access_token;
+    } catch {
+      return null;
+    } finally {
+      _fpRefreshing = null;
+    }
+  })();
+  return _fpRefreshing;
+}
+
+function fpLogout() {
+  localStorage.removeItem('token');
+  localStorage.removeItem('refresh_token');
+  window.location.href = '/login';
+}
+
+async function fpRequest(path, options = {}, _retry = true) {
   const token = localStorage.getItem('token');
   const headers = {
     'Content-Type': 'application/json',
@@ -11,7 +45,12 @@ async function fpRequest(path, options = {}) {
   };
   const res = await fetch(FP_BASE + path, { ...options, headers });
   if (res.status === 401) {
-    window.location.href = '/login';
+    // Token vencido: renueva en silencio y reintenta una vez antes de rendirse.
+    if (_retry) {
+      const newToken = await fpRefreshAccessToken();
+      if (newToken) return fpRequest(path, options, false);
+    }
+    fpLogout();
     throw new Error('Unauthorized');
   }
   if (!res.ok) {

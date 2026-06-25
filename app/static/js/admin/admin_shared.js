@@ -13,11 +13,17 @@
   };
 
   // Descarga autenticada (JWT en header) → Blob → archivo. Para endpoints CSV.
-  adminApi.download = async function (path, filename) {
+  adminApi.download = async function (path, filename, _retry = true) {
     const token = localStorage.getItem('token');
     const res = await fetch('/api/v1' + PREFIX + path, {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     });
+    if (res.status === 401 && _retry) {
+      // Token vencido: renueva y reintenta la descarga una vez.
+      let newToken = null;
+      try { newToken = await Auth.refreshAccessToken(); } catch (_) {}
+      if (newToken) return adminApi.download(path, filename, false);
+    }
     if (!res.ok) {
       if (typeof Toast !== 'undefined') Toast.show('No se pudo exportar el CSV', 'error');
       return;

@@ -10,10 +10,25 @@ function authHeaders() {
   };
 }
 
-async function req(method, path, body) {
+async function req(method, path, body, _retry = true) {
   const opts = { method, headers: authHeaders() };
   if (body) opts.body = JSON.stringify(body);
   const r = await fetch(BASE + path, opts);
+  if (r.status === 401) {
+    // Token vencido: renueva en silencio con el refresh token y reintenta una
+    // vez. Solo si la renovación falla se cierra la sesión.
+    if (_retry) {
+      let newToken = null;
+      try { newToken = await Auth.refreshAccessToken(); } catch (_) {}
+      if (newToken) return req(method, path, body, false);
+    }
+    try { Auth.logout(); } catch (_) {
+      localStorage.removeItem("token");
+      localStorage.removeItem("refresh_token");
+      window.location.href = "/login";
+    }
+    throw new Error("Unauthorized");
+  }
   if (!r.ok) {
     const err = await r.json().catch(() => ({ error: r.statusText }));
     throw new Error(err.error || JSON.stringify(err.errors || err));

@@ -13,9 +13,9 @@ class Config:
     JWT_ACCESS_TOKEN_EXPIRES = timedelta(
         seconds=int(os.getenv("JWT_ACCESS_TOKEN_EXPIRES", 3600))
     )
-    JWT_REFRESH_TOKEN_EXPIRES = timedelta(
-        seconds=int(os.getenv("JWT_REFRESH_TOKEN_EXPIRES", 2592000))
-    )
+    # El refresh token nunca expira: la sesión solo termina cuando el usuario
+    # cierra sesión manualmente (se borra el token del navegador).
+    JWT_REFRESH_TOKEN_EXPIRES = False
     CORS_ORIGINS = os.getenv("CORS_ORIGINS", "*").split(",")
     RATELIMIT_ENABLED = True
     CLIP_API_KEY = os.getenv("CLIP_API_KEY", "")
@@ -25,8 +25,8 @@ class Config:
     APP_BASE_URL = os.getenv("APP_BASE_URL", "http://www.dentalplanning.mx")
     SMTP_HOST = os.getenv("SMTP_HOST", "smtp.gmail.com")
     SMTP_PORT = int(os.getenv("SMTP_PORT", "465"))
-    SMTP_USER = os.getenv("SMTP_USER", "USER_MAIL")
-    SMTP_PASS = os.getenv("SMTP_PASS", "PASS_MAIL")
+    SMTP_USER = os.getenv("SMTP_USER", "")
+    SMTP_PASS = os.getenv("SMTP_PASS", "")
     SMTP_FROM = os.getenv("SMTP_FROM", "alertas@dentalplanning.mx")
     SMTP_USE_TLS = os.getenv("SMTP_USE_TLS", "true").lower() in ("true", "1", "yes")
     BILLING_GRACE_DAYS = int(os.getenv("BILLING_GRACE_DAYS", "3"))

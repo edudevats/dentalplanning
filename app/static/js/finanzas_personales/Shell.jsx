@@ -145,7 +145,7 @@ function Topbar({ title }) {
     }}>
       <h1 style={{ margin: 0, fontSize: 18, fontWeight: 600, fontFamily: 'var(--font-heading)', color: '#164e63' }}>{title}</h1>
       <button
-        onClick={() => { localStorage.removeItem('token'); window.location.href = '/login'; }}
+        onClick={() => { localStorage.removeItem('token'); localStorage.removeItem('refresh_token'); window.location.href = '/login'; }}
         style={{ padding: 8, borderRadius: 8, border: 'none', background: 'transparent', color: '#475569', cursor: 'pointer', fontFamily: 'var(--font-body)', fontSize: 13 }}>
         Cerrar sesion
       </button>

@@ -163,6 +163,7 @@ def register():
     db.session.commit()
 
     access_token = create_access_token(identity=str(user.id))
+    refresh_token = create_refresh_token(identity=str(user.id))
 
     if is_paid:
         msg = "Cuenta creada. Suscríbete para activar tu acceso."
@@ -175,6 +176,7 @@ def register():
         "message": msg,
         "clip_url": clip_url,
         "access_token": access_token,
+        "refresh_token": refresh_token,
         "tenant": {
             "id": tenant.id,
             "name": tenant.name,

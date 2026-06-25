@@ -138,6 +138,7 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
       body: JSON.stringify({ email, password }),
     });
     Auth.setToken(data.access_token);
+    if (data.refresh_token) Auth.setRefreshToken(data.refresh_token);
     if (data.user) {
       try { localStorage.setItem('user', JSON.stringify(data.user)); } catch (e) {}
     }

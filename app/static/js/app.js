@@ -40,6 +40,41 @@ const Auth = {
   setToken: (t) => localStorage.setItem('token', t),
   removeToken: () => localStorage.removeItem('token'),
 
+  getRefreshToken: () => localStorage.getItem('refresh_token'),
+  setRefreshToken: (t) => localStorage.setItem('refresh_token', t),
+  removeRefreshToken: () => localStorage.removeItem('refresh_token'),
+
+  _refreshing: null,
+
+  // Renueva el access token usando el refresh token. Single-flight: si ya hay
+  // una renovación en curso, reusa la misma promesa para no llamar /refresh
+  // varias veces cuando coinciden muchos 401. Devuelve el nuevo access token,
+  // o null si no se pudo renovar.
+  refreshAccessToken() {
+    if (this._refreshing) return this._refreshing;
+    const refreshToken = this.getRefreshToken();
+    if (!refreshToken) return Promise.resolve(null);
+
+    this._refreshing = (async () => {
+      try {
+        const res = await fetch('/api/v1/auth/refresh', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${refreshToken}` },
+        });
+        if (!res.ok) return null;
+        const data = await res.json().catch(() => ({}));
+        if (!data.access_token) return null;
+        this.setToken(data.access_token);
+        return data.access_token;
+      } catch {
+        return null;
+      } finally {
+        this._refreshing = null;
+      }
+    })();
+    return this._refreshing;
+  },
+
   check() {
     if (!this.getToken()) {
       window.location.href = '/login';
@@ -50,6 +85,7 @@ const Auth = {
 
   logout() {
     this.removeToken();
+    this.removeRefreshToken();
     window.location.href = '/login';
   },
 
@@ -64,7 +100,7 @@ const Auth = {
 
 // ── API Client ────────────────────────────────────────────────────────────────
 const API = {
-  async request(url, options = {}) {
+  async request(url, options = {}, _retry = true) {
     const token = Auth.getToken();
     const headers = {
       'Content-Type': 'application/json',
@@ -74,9 +110,18 @@ const API = {
 
     const res = await fetch('/api/v1' + url, { ...options, headers });
 
-    if (res.status === 401) {
-      Auth.removeToken();
-      window.location.href = '/login';
+    // Un 401 de /auth/login o /auth/refresh es un error de credenciales que el
+    // llamador debe manejar; no es una sesión expirada. El resto de los 401 sí
+    // son token vencido: se renueva en silencio una vez y se reintenta; solo si
+    // la renovación falla se cierra la sesión.
+    const isCredentialCall =
+      url.startsWith('/auth/login') || url.startsWith('/auth/refresh');
+    if (res.status === 401 && !isCredentialCall) {
+      if (_retry) {
+        const newToken = await Auth.refreshAccessToken();
+        if (newToken) return API.request(url, options, false);
+      }
+      Auth.logout();
       throw new Error('Unauthorized');
     }
 
