@@ -112,6 +112,19 @@
     </div>
   </div>
 </div>
+
+<div id="modal-ver-ticket" class="hidden fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+  <div class="bg-surface rounded-2xl shadow-xl w-full max-w-sm p-5">
+    <div class="flex items-center justify-between mb-3">
+      <h3 class="text-base font-semibold">Ticket</h3>
+      <button onclick="document.getElementById('modal-ver-ticket').classList.add('hidden')" aria-label="Cerrar" class="text-text-muted hover:text-text-primary cursor-pointer"><i data-lucide="x" class="h-5 w-5 pointer-events-none"></i></button>
+    </div>
+    <div id="vt-body" class="text-sm font-body"></div>
+    <div class="flex justify-end mt-4">
+      <button onclick="document.getElementById('modal-ver-ticket').classList.add('hidden')" class="px-4 py-2 text-sm bg-primary-500 text-white rounded-lg font-semibold">Cerrar</button>
+    </div>
+  </div>
+</div>
 </div>
 
 <script>
@@ -132,6 +145,40 @@ async function reimprimirTicket(ticketId) {
     Toast.success('Ticket enviado a impresión');
   } catch (e) {
     Toast.warning('No se pudo imprimir (¿agente encendido?)');
+  }
+}
+
+async function verTicket(ticketId) {
+  try {
+    const t = await API.get('/facturacion/tickets/' + ticketId + '/impresion');
+    const conceptos = (t.conceptos || []).map(c =>
+      `<div class="flex justify-between gap-3 py-1">
+         <span class="text-text-secondary">${esc(c.nombre)}</span>
+         <span class="tabular-nums">${fmtMXN(c.monto)}</span>
+       </div>`).join('');
+    document.getElementById('vt-body').innerHTML = `
+      <div class="text-center mb-3">
+        <p class="font-semibold text-text-primary">${esc(t.empresa || '')}</p>
+        ${t.rfc ? `<p class="text-xs text-text-muted">RFC: ${esc(t.rfc)}</p>` : ''}
+        ${t.sucursal ? `<p class="text-xs text-text-muted">${esc(t.sucursal)}</p>` : ''}
+        ${t.direccion ? `<p class="text-xs text-text-muted">${esc(t.direccion)}</p>` : ''}
+      </div>
+      <div class="flex justify-between text-xs text-text-muted border-y border-border py-2 mb-2">
+        <span>Folio: ${esc(t.folio || '')}</span>
+        <span>${esc((t.fecha || '').slice(0, 10))}</span>
+      </div>
+      ${conceptos}
+      <div class="border-t border-border mt-2 pt-2 space-y-1">
+        <div class="flex justify-between"><span class="text-text-secondary">Subtotal</span><span class="tabular-nums">${fmtMXN(t.subtotal)}</span></div>
+        <div class="flex justify-between"><span class="text-text-secondary">IVA</span><span class="tabular-nums">${fmtMXN(t.iva)}</span></div>
+        <div class="flex justify-between font-semibold text-text-primary"><span>Total</span><span class="tabular-nums">${fmtMXN(t.total)}</span></div>
+      </div>
+      ${t.facturable_hasta ? `<p class="text-xs text-text-muted text-center mt-3">Facturable hasta: ${esc((t.facturable_hasta || '').slice(0, 10))}</p>` : ''}
+    `;
+    document.getElementById('modal-ver-ticket').classList.remove('hidden');
+    if (window.lucide) lucide.createIcons();
+  } catch (e) {
+    Toast.error(e.message || 'No se pudo cargar el ticket');
   }
 }
 
@@ -197,7 +244,8 @@ async function cargarTickets() {
     const cliente = t.receptor_rfc ? `${esc(t.receptor_nombre || '')} · ${esc(t.receptor_rfc)}` : '—';
     const uuid = t.uuid ? esc(t.uuid.slice(-9)) : '—';
     const monto = (Number(t.total) || 0).toLocaleString('es-MX', { style: 'currency', currency: 'MXN' });
-    let acciones = `<button data-reprint="${t.id}" class="text-text-secondary hover:text-text-primary font-semibold text-sm cursor-pointer">Reimprimir</button>`;
+    let acciones = `<button data-ver="${t.id}" title="Ver ticket" aria-label="Ver ticket" class="inline-flex items-center align-middle text-text-secondary hover:text-primary-600 cursor-pointer"><i data-lucide="eye" class="h-4 w-4 pointer-events-none"></i></button>`;
+    acciones += ` · <button data-reprint="${t.id}" class="text-text-secondary hover:text-text-primary font-semibold text-sm cursor-pointer">Reimprimir</button>`;
     if (t.estado === 'sin_timbrar') {
       acciones += ` · <button data-facturar="${t.id}" class="text-primary-600 hover:text-primary-700 font-semibold text-sm cursor-pointer">Facturar</button>`;
     } else if (t.estado === 'timbrada' || t.estado === 'en_proceso_cancelacion') {
@@ -218,7 +266,9 @@ async function cargarTickets() {
     const bR = tr.querySelector('button[data-reprint]'); if (bR) bR.addEventListener('click', () => reimprimirTicket(t.id));
     const bF = tr.querySelector('button[data-facturar]'); if (bF) bF.addEventListener('click', () => abrirFacturar(t.id));
     const bC = tr.querySelector('button[data-cancelar]'); if (bC) bC.addEventListener('click', () => abrirCancelar(t.id));
+    const bV = tr.querySelector('button[data-ver]'); if (bV) bV.addEventListener('click', () => verTicket(t.id));
   }
+  if (window.lucide) lucide.createIcons();
 }
 
 document.getElementById('tk-mes').value = mesActualInput();

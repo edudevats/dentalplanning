@@ -25,9 +25,9 @@ class Config:
     APP_BASE_URL = os.getenv("APP_BASE_URL", "http://www.dentalplanning.mx")
     SMTP_HOST = os.getenv("SMTP_HOST", "")
     SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
-    SMTP_USER = os.getenv("SMTP_USER", "")
-    SMTP_PASS = os.getenv("SMTP_PASS", "")
-    SMTP_FROM = os.getenv("SMTP_FROM", "no-reply@dentalplanning.mx")
+    SMTP_USER = os.getenv("SMTP_USER", "USER_MAIL")
+    SMTP_PASS = os.getenv("SMTP_PASS", "PASS_MAIL")
+    SMTP_FROM = os.getenv("SMTP_FROM", "alertas@dentalplanning.mx")
     SMTP_USE_TLS = os.getenv("SMTP_USE_TLS", "true").lower() in ("true", "1", "yes")
     BILLING_GRACE_DAYS = int(os.getenv("BILLING_GRACE_DAYS", "3"))
     # Llave maestra (Fernet) para cifrar secretos del CSD. NUNCA en el repo ni en la BD.
