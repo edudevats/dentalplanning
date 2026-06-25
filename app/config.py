@@ -23,7 +23,7 @@ class Config:
     CLIP_WEBHOOK_SECRET = os.getenv("CLIP_WEBHOOK_SECRET", "")
     CLIP_BASE_URL = os.getenv("CLIP_BASE_URL", "https://api.payclip.com")
     APP_BASE_URL = os.getenv("APP_BASE_URL", "http://www.dentalplanning.mx")
-    SMTP_HOST = os.getenv("SMTP_HOST", "smtp.gmail.com")
+    SMTP_HOST = os.getenv("SMTP_HOST")
     SMTP_PORT = int(os.getenv("SMTP_PORT", "465"))
     SMTP_USER = os.getenv("SMTP_USER", "")
     SMTP_PASS = os.getenv("SMTP_PASS", "")

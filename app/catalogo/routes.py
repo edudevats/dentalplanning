@@ -51,7 +51,9 @@ def importar_master():
                 _inicializar_stock_material(g.tenant_id, existe.id)
             continue
 
-        costo_info = data["costos"].get(str(master.id), {})
+        # Las llaves de `costos` se deserializan como int (ImportMasterSchema:
+        # keys=fields.Int()), así que la búsqueda debe usar el id int, no str.
+        costo_info = data["costos"].get(master.id, {})
         material = Material(
             tenant_id=g.tenant_id,
             master_id=master.id,
