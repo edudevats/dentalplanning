@@ -65,7 +65,7 @@ class User(db.Model):
     tenant_id = db.Column(db.Integer, db.ForeignKey("tenants.id"), nullable=False)
     email = db.Column(db.String(255), unique=True, nullable=False)
     password_hash = db.Column(db.String(255), nullable=False)
-    role = db.Column(db.String(20), default="editor")  # admin / editor / viewer
+    role = db.Column(db.String(20), default="recepcionista")  # admin / recepcionista
     is_superuser = db.Column(db.Boolean, default=False, nullable=False)
     name = db.Column(db.String(200), nullable=False)
     must_change_password = db.Column(db.Boolean, default=False, nullable=False)

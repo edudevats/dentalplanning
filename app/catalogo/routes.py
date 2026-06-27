@@ -29,7 +29,7 @@ def listar_master():
 
 @catalogo_bp.route("/importar-master", methods=["POST"])
 @require_auth
-@require_role("admin", "editor")
+@require_role("admin")
 def importar_master():
     """Importar materiales seleccionados del catálogo master al tenant."""
     schema = ImportMasterSchema()
@@ -110,7 +110,7 @@ def obtener(material_id):
 
 @catalogo_bp.route("", methods=["POST"])
 @require_auth
-@require_role("admin", "editor")
+@require_role("admin")
 def crear():
     """Crear material propio del tenant."""
     schema = MaterialSchema()
@@ -133,7 +133,7 @@ def crear():
 
 @catalogo_bp.route("/<int:material_id>", methods=["PUT"])
 @require_auth
-@require_role("admin", "editor")
+@require_role("admin")
 def actualizar(material_id):
     material = Material.query.filter_by(
         id=material_id, tenant_id=g.tenant_id

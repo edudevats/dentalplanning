@@ -78,7 +78,7 @@ class ChangeUserRoleSchema(Schema):
     class Meta:
         unknown = EXCLUDE
 
-    role = fields.Str(required=True, validate=validate.OneOf(["admin", "editor", "viewer"]))
+    role = fields.Str(required=True, validate=validate.OneOf(["admin", "recepcionista"]))
 
 
 class ToggleActiveSchema(Schema):
@@ -86,3 +86,16 @@ class ToggleActiveSchema(Schema):
         unknown = EXCLUDE
 
     is_active = fields.Bool(required=True)
+
+
+class RechazarAsientoSchema(Schema):
+    motivo = fields.Str(required=True, validate=validate.Length(min=3, max=500))
+
+
+class ActivarManualSchema(Schema):
+    class Meta:
+        unknown = EXCLUDE
+
+    monto = fields.Float(load_default=None, validate=validate.Range(min=0))
+    fecha = fields.Date(load_default=None)
+    comentarios = fields.Str(load_default=None, validate=validate.Length(max=500))

@@ -53,7 +53,7 @@ def obtener(tx_id):
 
 @tratamientos_bp.route("", methods=["POST"])
 @require_auth
-@require_role("admin", "editor")
+@require_role("admin")
 def crear():
     schema = TratamientoSchema()
     data = schema.load(request.get_json() or {})
@@ -92,7 +92,7 @@ def crear():
 
 @tratamientos_bp.route("/<int:tx_id>", methods=["PUT"])
 @require_auth
-@require_role("admin", "editor")
+@require_role("admin")
 def actualizar(tx_id):
     tx = Tratamiento.query.filter_by(
         id=tx_id, tenant_id=g.tenant_id
@@ -142,7 +142,7 @@ def eliminar(tx_id):
 
 @tratamientos_bp.route("/<int:tx_id>/duplicar", methods=["POST"])
 @require_auth
-@require_role("admin", "editor")
+@require_role("admin")
 def duplicar(tx_id):
     original = Tratamiento.query.filter_by(
         id=tx_id, tenant_id=g.tenant_id

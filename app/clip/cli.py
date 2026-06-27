@@ -7,6 +7,7 @@ from app.superadmin.models import (
     Plan, Subscription,
     SUBSCRIPTION_ACTIVA, SUBSCRIPTION_GRACIA, SUBSCRIPTION_VENCIDA,
 )
+from app.superadmin.models import ADDON_TIPO_RECEPCIONISTA
 from app.clip.service import create_price, get_price, ClipAPIError
 
 billing_cli = AppGroup("billing", help="Comandos de facturacion Clip")
@@ -179,6 +180,30 @@ def sync_prices(dry_run):
 
     click.echo(f"\nResultado: {created} creados, {synced} sincronizados, "
                f"{skipped} sin cambios, {errors} errores")
+
+
+@billing_cli.command("seed-addon")
+@click.option("--precio", default=199.0, type=float, help="Precio mensual del recepcionista adicional")
+def seed_addon(precio):
+    """Crea el Plan oculto 'Recepcionista adicional' si no existe."""
+    existing = Plan.query.filter_by(addon_tipo=ADDON_TIPO_RECEPCIONISTA).first()
+    if existing:
+        click.echo(f"  EXISTS Recepcionista adicional (id={existing.id})")
+        return
+    plan = Plan(
+        nombre="Recepcionista adicional",
+        precio_mensual=precio,
+        descripcion="Asiento adicional de recepcionista (cobro recurrente mensual)",
+        modulos=[],
+        activo=True,
+        publico=False,
+        es_temporal=False,
+        addon_tipo=ADDON_TIPO_RECEPCIONISTA,
+    )
+    db.session.add(plan)
+    db.session.commit()
+    click.echo(f"  CREATED Recepcionista adicional id={plan.id} precio={precio}. "
+               f"Corre `flask billing sync-prices` para sincronizar con Clip.")
 
 
 @billing_cli.command("seed-plans")

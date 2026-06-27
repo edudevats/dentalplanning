@@ -33,11 +33,20 @@ class LoginSchema(Schema):
     password = fields.Str(required=True)
 
 
-class InviteSchema(Schema):
+class UserCreateSchema(Schema):
     email = fields.Email(required=True)
-    name = fields.Str(required=True)
-    role = fields.Str(validate=validate.OneOf(["admin", "editor", "viewer"]), load_default="editor")
+    name = fields.Str(required=True, validate=validate.Length(min=2, max=200))
     password = fields.Str(required=True, validate=validate.Length(min=8))
+
+    @validates("password")
+    def validate_password(self, value, **kwargs):
+        _validate_password_strength(value)
+
+
+class UserUpdateSchema(Schema):
+    name = fields.Str(validate=validate.Length(min=2, max=200))
+    is_active = fields.Bool()
+    password = fields.Str(validate=validate.Length(min=8))
 
     @validates("password")
     def validate_password(self, value, **kwargs):

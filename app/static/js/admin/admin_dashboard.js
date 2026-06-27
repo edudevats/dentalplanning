@@ -51,7 +51,22 @@
       }));
     }
 
+    await loadSolicitudesPendientes(grid);
+
     if (typeof lucide !== 'undefined') lucide.createIcons();
+  }
+
+  async function loadSolicitudesPendientes(grid) {
+    try {
+      const r = await adminApi.get('/asientos?estado=pendiente');
+      const n = (r.asientos || []).length;
+      grid.appendChild(adminUI.kpiCard({
+        label: 'Solicitudes recepcionista',
+        value: String(n),
+        icon: 'user-plus',
+        hint: n ? 'Pendientes de aprobar' : 'Sin pendientes',
+      }));
+    } catch (_) {}
   }
 
   async function loadMrr() {

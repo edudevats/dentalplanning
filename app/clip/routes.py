@@ -97,6 +97,14 @@ def _handle_checkout_event(data, status):
         db.session.commit()
 
 
+def _es_precio_addon_recepcionista(price_id):
+    if not price_id:
+        return False
+    from app.auth.seats_service import get_addon_plan
+    plan = get_addon_plan()
+    return bool(plan and plan.clip_price_id and plan.clip_price_id == price_id)
+
+
 def _handle_subscription_event(data, status):
     """Subscription lifecycle: created, active, inactive."""
     clip_sub_id = data.get("subscription_id") or data.get("id") or ""
@@ -106,6 +114,20 @@ def _handle_subscription_event(data, status):
 
     if not clip_sub_id:
         return
+
+    if _es_precio_addon_recepcionista(price_id):
+        from app.auth.seats_service import activar_por_clip
+        if status == "ACTIVE" and email:
+            user = User.query.filter(db.func.lower(User.email) == email).first()
+            if user:
+                activar_por_clip(user.tenant_id, clip_sub_id)
+        elif status in ("INACTIVE", "CANCELLED", "CANCELED"):
+            from app.superadmin.models import AsientoRecepcionista, ASIENTO_CANCELADA
+            a = AsientoRecepcionista.query.filter_by(clip_subscription_id=clip_sub_id).first()
+            if a and a.estado != ASIENTO_CANCELADA:
+                from app.auth.seats_service import cancelar_asiento
+                cancelar_asiento(a)
+        return  # no tratar como suscripción principal
 
     # Match by clip_subscription_id first, then by customer email + plan
     sub = Subscription.query.filter_by(clip_subscription_id=clip_sub_id).first()

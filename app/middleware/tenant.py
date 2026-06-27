@@ -1,3 +1,4 @@
+import re
 from functools import wraps
 from flask import g, jsonify, request
 from flask_jwt_extended import get_jwt_identity, verify_jwt_in_request
@@ -6,6 +7,44 @@ from app.auth.models import (
     User, TENANT_STATUS_ACTIVE, TENANT_STATUS_PENDING,
     TENANT_STATUS_SUSPENDED, TENANT_STATUS_REJECTED,
 )
+
+# (método, regex de ruta) que el rol recepcionista puede llamar. Resto → 403.
+_RECEP_RULES = [
+    ("GET", r"/api/v1/auth/me"),
+    ("PUT", r"/api/v1/auth/password"),
+    ("GET", r"/api/v1/edr/ingresos"),
+    ("POST", r"/api/v1/edr/ingresos"),
+    ("PUT", r"/api/v1/edr/ingresos/\d+"),
+    ("GET", r"/api/v1/facturacion/tickets"),
+    ("GET", r"/api/v1/facturacion/tickets/resumen-iva"),
+    ("GET", r"/api/v1/facturacion/tickets/\d+"),
+    ("GET", r"/api/v1/facturacion/tickets/\d+/impresion"),
+    ("POST", r"/api/v1/facturacion/tickets/\d+/timbrar"),
+    ("POST", r"/api/v1/facturacion/tickets/\d+/cancelar"),
+    ("GET", r"/api/v1/facturacion/ingresos/\d+/ticket-simple"),
+    ("GET", r"/api/v1/facturacion/sucursales"),
+    ("GET", r"/api/v1/facturacion/configuracion"),
+    ("GET", r"/api/v1/ajustes/especialistas"),
+    ("GET", r"/api/v1/ajustes/metodos-pago"),
+    ("GET", r"/api/v1/ajustes/estrategias"),
+    ("GET", r"/api/v1/tratamientos"),
+]
+RECEPCIONISTA_ALLOWLIST = [(m, re.compile("^" + p + "/?$")) for m, p in _RECEP_RULES]
+
+
+def check_recepcionista_access():
+    """Si el usuario es recepcionista, solo permite método+ruta de la allowlist."""
+    if not hasattr(g, "current_user"):
+        return None
+    if g.current_user.is_superuser:
+        return None
+    if g.current_user.role != "recepcionista":
+        return None
+    method, path = request.method, request.path
+    for m, pattern in RECEPCIONISTA_ALLOWLIST:
+        if method == m and pattern.match(path):
+            return None
+    return jsonify({"error": "No tienes acceso a esta sección"}), 403
 
 
 _STATUS_MESSAGES = {
@@ -44,6 +83,10 @@ def require_auth(f):
 
         from app.middleware.modules import check_module_access
         blocked = check_module_access()
+        if blocked is not None:
+            return blocked
+
+        blocked = check_recepcionista_access()
         if blocked is not None:
             return blocked
 

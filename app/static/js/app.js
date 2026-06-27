@@ -390,11 +390,40 @@ async function loadUserInfo() {
     document.querySelectorAll('[data-user-role]').forEach(el => { el.textContent = role; });
     document.querySelectorAll('[data-user-initials]').forEach(el => { el.textContent = initials; });
 
+    window.__userRole = user.role || null;
+    applyRoleNav(user.role);
+
     SubscriptionPopup.check(data);
     return user;
   } catch {
     Auth.logout();
   }
+}
+
+// ── Gating de navegación por rol ──────────────────────────────────────────────
+function applyRoleNav(role) {
+  if (role !== 'recepcionista') return;
+  const allowed = ['/ingresos', '/facturas'];
+  // Ocultar la opción "Cambiar de Sistema"
+  document.querySelectorAll('aside a[href="/selector"]').forEach(a => {
+    const wrap = a.closest('div');
+    if (wrap) wrap.style.display = 'none';
+  });
+  // Ocultar cada ítem de nav que no esté permitido
+  document.querySelectorAll('aside nav li').forEach(li => {
+    const link = li.querySelector('[data-nav-path]');
+    const path = link ? link.getAttribute('data-nav-path') : null;
+    if (!path || !allowed.includes(path)) li.style.display = 'none';
+  });
+  // Ocultar encabezados de sección que quedaron sin ítems visibles
+  document.querySelectorAll('aside nav > div').forEach(group => {
+    const visible = Array.from(group.querySelectorAll('li'))
+      .some(li => li.style.display !== 'none');
+    if (!visible) group.style.display = 'none';
+  });
+  // Redirección suave si está en una página no permitida
+  const here = window.location.pathname;
+  if (!allowed.includes(here)) window.location.replace('/ingresos');
 }
 
 // ── Subscription / Trial popups ───────────────────────────────────────────────

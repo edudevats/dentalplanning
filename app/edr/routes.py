@@ -53,7 +53,7 @@ def listar_ingresos():
 
 @edr_bp.route("/ingresos", methods=["POST"])
 @require_auth
-@require_role("admin", "editor")
+@require_role("admin", "recepcionista")
 def crear_ingreso():
     body = request.get_json() or {}
     ticket_folio = body.get("ticket_folio")
@@ -85,7 +85,7 @@ def crear_ingreso():
 
 @edr_bp.route("/ingresos/<int:ingreso_id>", methods=["PUT"])
 @require_auth
-@require_role("admin", "editor")
+@require_role("admin", "recepcionista")
 def actualizar_ingreso(ingreso_id):
     ingreso = Ingreso.query.filter_by(
         id=ingreso_id, tenant_id=g.tenant_id
@@ -153,7 +153,7 @@ def listar_gastos():
 
 @edr_bp.route("/gastos", methods=["POST"])
 @require_auth
-@require_role("admin", "editor")
+@require_role("admin")
 def crear_gasto():
     schema = GastoOperativoSchema()
     data = schema.load(request.get_json() or {})
@@ -165,7 +165,7 @@ def crear_gasto():
 
 @edr_bp.route("/gastos/<int:gasto_id>", methods=["PUT"])
 @require_auth
-@require_role("admin", "editor")
+@require_role("admin")
 def actualizar_gasto(gasto_id):
     gasto = GastoOperativo.query.filter_by(
         id=gasto_id, tenant_id=g.tenant_id
@@ -213,7 +213,7 @@ def listar_pagos():
 
 @edr_bp.route("/pagos-doctores", methods=["POST"])
 @require_auth
-@require_role("admin", "editor")
+@require_role("admin")
 def crear_pago():
     schema = PagoDoctorSchema()
     data = schema.load(request.get_json() or {})
@@ -225,7 +225,7 @@ def crear_pago():
 
 @edr_bp.route("/pagos-doctores/<int:pago_id>", methods=["PUT"])
 @require_auth
-@require_role("admin", "editor")
+@require_role("admin")
 def actualizar_pago(pago_id):
     pago = PagoDoctor.query.filter_by(
         id=pago_id, tenant_id=g.tenant_id
@@ -323,7 +323,7 @@ def comisiones_pendientes():
 
 @edr_bp.route("/comisiones/pagar", methods=["POST"])
 @require_auth
-@require_role("admin", "editor")
+@require_role("admin")
 def pagar_comisiones():
     """Liquida las comisiones de los ingresos indicados en una sola fecha.
 

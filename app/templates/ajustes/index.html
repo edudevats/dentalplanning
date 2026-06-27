@@ -264,6 +264,24 @@
         </div>
       </div>
     </div>
+
+    <!-- USUARIOS -->
+    <div id="panel-usuarios" class="hidden space-y-6">
+      <div class="bg-surface rounded-xl border border-border shadow-sm">
+        <div class="px-5 py-4 border-b border-border flex items-center justify-between">
+          <h3 class="text-sm font-semibold font-heading text-text-primary">Usuarios del consultorio</h3>
+          <button id="btn-add-user" type="button"
+            class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-accent-600 hover:bg-accent-700 text-white text-xs font-medium font-body transition-colors cursor-pointer">
+            <i data-lucide="user-plus" class="h-3.5 w-3.5"></i> Agregar recepcionista
+          </button>
+        </div>
+        <div id="users-list" class="divide-y divide-border"></div>
+        <p class="text-xs text-text-muted font-body px-5 py-3">
+          Puedes tener 1 recepcionista. Los recepcionistas adicionales requieren un
+          asiento de pago (próximamente).
+        </p>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -349,6 +367,7 @@
 
   // ── Tab setup ────────────────────────────────────────────
   const TABS = [
+    { key: 'usuarios', label: 'Usuarios', icon: 'users-round' },
     { key: 'consultorio', label: 'Consultorio', icon: 'building-2' },
     { key: 'especialistas', label: 'Especialistas', icon: 'users' },
     { key: 'metodos-pago', label: 'Metodos de Pago', icon: 'credit-card' },
@@ -393,6 +412,7 @@
     else if (key === 'distribucion') loadDist();
     else if (key === 'fiscal') cargarConfigFiscal();
     else if (key === 'sucursales') cargarSucursales();
+    else if (key === 'usuarios') loadUsuarios();
   }
 
   buildNav();
@@ -1263,5 +1283,189 @@
       Toast.error(err.message || 'Error al crear sucursal');
     }
   });
+
+  // ── USUARIOS ──────────────────────────────────────────────
+  async function loadUsuarios() {
+    let users = [], seatInfo = { capacidad: 1, usados: 0, asientos: [], precio_addon: null, subscription_link: null };
+    try {
+      users = await API.get('/auth/users');
+      seatInfo = await API.get('/auth/asientos');
+    } catch { Toast.error('Error al cargar usuarios'); return; }
+
+    const list = document.getElementById('users-list');
+    list.replaceChildren();
+
+    users.forEach(u => {
+      const row = domEl('div', 'flex items-center gap-3 px-5 py-3');
+      const info = domEl('div', 'flex-1 min-w-0');
+      info.appendChild(domEl('p', 'text-sm font-medium text-text-primary truncate', u.name));
+      info.appendChild(domEl('p', 'text-xs text-text-muted truncate', u.email));
+      const roleBadge = domEl('span',
+        'inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ' +
+        (u.role === 'admin' ? 'bg-primary-50 text-primary-700' : 'bg-accent-50 text-accent-700'),
+        u.role === 'admin' ? 'Administrador' : 'Recepcionista');
+      row.appendChild(info);
+      row.appendChild(roleBadge);
+      if (u.role === 'recepcionista') {
+        const del = domEl('button', 'p-1.5 rounded-md text-text-muted hover:text-danger-600 hover:bg-danger-50 transition-colors cursor-pointer');
+        del.type = 'button'; del.title = 'Eliminar recepcionista';
+        del.appendChild(domIcon('trash-2', 'h-4 w-4'));
+        del.addEventListener('click', () => deleteUsuario(u));
+        row.appendChild(del);
+      }
+      list.appendChild(row);
+    });
+
+    // Botón principal: crear (si hay cupo) o solicitar asiento (si está al límite)
+    const addBtn = document.getElementById('btn-add-user');
+    const conCupo = seatInfo.usados < seatInfo.capacidad;
+    const abierto = (seatInfo.asientos || []).find(a => a.estado === 'pendiente' || a.estado === 'aprobada');
+    addBtn.replaceChildren();
+    if (conCupo) {
+      addBtn.appendChild(domIcon('user-plus', 'h-3.5 w-3.5'));
+      addBtn.appendChild(domEl('span', '', 'Agregar recepcionista'));
+      addBtn.disabled = false;
+      addBtn.onclick = openAddUserModal;
+    } else if (!abierto) {
+      const precio = seatInfo.precio_addon ? ` ($${seatInfo.precio_addon}/mes)` : '';
+      addBtn.appendChild(domIcon('plus', 'h-3.5 w-3.5'));
+      addBtn.appendChild(domEl('span', '', 'Solicitar recepcionista adicional' + precio));
+      addBtn.disabled = false;
+      addBtn.onclick = solicitarAsiento;
+    } else {
+      addBtn.appendChild(domEl('span', '', 'Solicitud en curso'));
+      addBtn.disabled = true;
+    }
+    addBtn.classList.toggle('opacity-50', addBtn.disabled);
+    addBtn.classList.toggle('cursor-not-allowed', addBtn.disabled);
+
+    renderSeats(seatInfo);
+    lucide.createIcons();
+  }
+
+  function renderSeats(seatInfo) {
+    let box = document.getElementById('seats-box');
+    if (!box) {
+      box = domEl('div', 'px-5 py-3 space-y-2 border-t border-border');
+      box.id = 'seats-box';
+      document.getElementById('users-list').after(box);
+    }
+    box.replaceChildren();
+    (seatInfo.asientos || []).filter(a => ['pendiente','aprobada','activa'].includes(a.estado)).forEach(a => {
+      const row = domEl('div', 'flex items-center gap-3 text-sm');
+      const labels = {
+        pendiente: 'Asiento solicitado — en revisión',
+        aprobada: 'Asiento aprobado — paga para activarlo',
+        activa: a.usuario_id ? 'Asiento activo (en uso)' : 'Asiento activo — ya puedes crear el recepcionista',
+      };
+      row.appendChild(domEl('span', 'flex-1 text-text-secondary font-body', labels[a.estado]));
+      if (a.estado === 'aprobada' && seatInfo.subscription_link) {
+        const pay = domEl('a', 'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary-500 hover:bg-primary-600 text-white text-xs font-medium', 'Pagar suscripción');
+        pay.href = seatInfo.subscription_link; pay.target = '_blank';
+        row.appendChild(pay);
+      }
+      if (a.estado === 'activa' && a.usuario_id) {
+        const cancel = domEl('button', 'text-xs text-danger-600 hover:underline', 'Cancelar asiento');
+        cancel.type = 'button';
+        cancel.addEventListener('click', () => cancelarAsiento(a.id));
+        row.appendChild(cancel);
+      }
+      box.appendChild(row);
+    });
+  }
+
+  async function solicitarAsiento() {
+    try {
+      await API.post('/auth/asientos', {});
+      Toast.success('Solicitud enviada. El equipo la revisará.');
+      loadUsuarios();
+    } catch (e) { Toast.error(e?.error || 'No se pudo solicitar'); }
+  }
+
+  async function cancelarAsiento(id) {
+    if (!confirm('¿Cancelar el asiento? Se dejará de cobrar y el recepcionista perderá acceso.')) return;
+    try {
+      await API.delete('/auth/asientos/' + id);
+      Toast.success('Asiento cancelado');
+      loadUsuarios();
+    } catch (e) { Toast.error(e?.error || 'No se pudo cancelar'); }
+  }
+
+  function openAddUserModal() {
+    const body = document.getElementById('modal-crud-body');
+    body.replaceChildren();
+    document.getElementById('modal-crud-title').textContent = 'Nuevo recepcionista';
+    const fields = [
+      { id: 'nu-name', label: 'Nombre', type: 'text' },
+      { id: 'nu-email', label: 'Correo', type: 'email' },
+      { id: 'nu-pass', label: 'Contraseña temporal', type: 'password' },
+    ];
+    fields.forEach(f => {
+      const wrap = domEl('div', '');
+      wrap.appendChild(domEl('label', 'block text-sm font-medium text-text-secondary mb-1 font-body', f.label));
+      const inp = document.createElement('input');
+      inp.id = f.id; inp.type = f.type;
+      inp.className = 'block w-full rounded-lg border border-border px-3 py-2.5 text-sm font-body bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-500 min-h-[44px]';
+      wrap.appendChild(inp);
+      body.appendChild(wrap);
+    });
+    const footer = domEl('div', 'flex justify-end gap-3 pt-2');
+    const cancel = domEl('button', 'inline-flex items-center gap-2 px-4 py-2.5 rounded-lg border border-border bg-surface hover:bg-surface-hover text-sm font-medium font-body text-text-primary transition-colors cursor-pointer min-h-[44px]', 'Cancelar');
+    cancel.type = 'button';
+    cancel.addEventListener('click', () => Modal.close('modal-crud'));
+    const save = domEl('button', 'inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-accent-600 hover:bg-accent-700 text-white text-sm font-medium font-body transition-colors cursor-pointer min-h-[44px]');
+    save.type = 'button';
+    save.appendChild(domIcon('save', 'h-4 w-4'));
+    save.appendChild(domEl('span', '', 'Crear'));
+    save.addEventListener('click', saveUsuario);
+    footer.appendChild(cancel); footer.appendChild(save);
+    body.appendChild(footer);
+    Modal.open('modal-crud');
+    lucide.createIcons();
+  }
+
+  let _savingUsuario = false;
+  async function saveUsuario() {
+    if (_savingUsuario) return;
+    const payload = {
+      name: document.getElementById('nu-name').value.trim(),
+      email: document.getElementById('nu-email').value.trim(),
+      password: document.getElementById('nu-pass').value,
+    };
+    if (!payload.name || !payload.email || !payload.password) {
+      Toast.warning('Completa todos los campos'); return;
+    }
+    _savingUsuario = true;
+    try {
+      await API.post('/auth/users', payload);
+      Toast.success('Recepcionista creado');
+      Modal.close('modal-crud');
+      loadUsuarios();
+    } catch (e) { Toast.error(e?.error || e?.message || 'Error al crear'); }
+    finally { _savingUsuario = false; }
+  }
+
+  async function deleteUsuario(u) {
+    document.getElementById('modal-delete-title').textContent = 'Eliminar recepcionista';
+    document.getElementById('modal-delete-msg').textContent =
+      `¿Eliminar a "${u.name}"? Perderá el acceso al sistema.`;
+    Modal.open('modal-delete');
+    const confirmBtn = document.getElementById('modal-delete-confirm');
+    const handler = async () => {
+      confirmBtn.disabled = true;
+      try {
+        await API.delete('/auth/users/' + u.id);
+        Toast.success('Recepcionista eliminado');
+        Modal.close('modal-delete');
+        loadUsuarios();
+      } catch (e) { Toast.error(e?.error || 'Error al eliminar'); }
+      finally {
+        confirmBtn.removeEventListener('click', handler);
+        confirmBtn.disabled = false;
+      }
+    };
+    confirmBtn.addEventListener('click', handler);
+  }
+
 </script>
 {% endblock %}

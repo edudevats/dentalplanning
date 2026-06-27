@@ -16,14 +16,16 @@ from app.auth.models import (
 )
 from app.superadmin.models import (
     Plan, Subscription, Payment, TenantNote, AdminAuditLog,
+    AsientoRecepcionista,
     SUBSCRIPTION_ACTIVA, SUBSCRIPTION_GRACIA, SUBSCRIPTION_VENCIDA,
 )
+from app.auth import seats_service
 from app.clip.service import create_checkout_link, ClipAPIError
 from app.superadmin.schemas import (
     PlanSchema, ApproveTenantSchema, RejectTenantSchema,
     TenantUpdateSchema, PaymentSchema, TenantNoteSchema,
     SubscriptionUpdateSchema, AssignPlanSchema, ChangeUserRoleSchema,
-    ToggleActiveSchema,
+    ToggleActiveSchema, RechazarAsientoSchema, ActivarManualSchema,
 )
 from app.catalogo.models import Material
 from app.tratamientos.models import Tratamiento
@@ -1325,6 +1327,101 @@ def export_tenants_csv():
             r.get("created_at") or "",
         ])
     return _csv_response(header, rows, "clinicas.csv")
+
+
+# ── Asientos de recepcionista ────────────────────────────────────────────────
+
+def _serialize_asiento_admin(a):
+    d = seats_service.serialize_asiento(a, with_usuario=True)
+    d["tenant_name"] = a.tenant.name if a.tenant else None
+    d["solicitado_por_id"] = a.solicitado_por_id
+    return d
+
+
+@superadmin_bp.route("/asientos", methods=["GET"])
+@require_superuser
+def list_asientos():
+    q = AsientoRecepcionista.query
+    estado = request.args.get("estado")
+    if estado:
+        q = q.filter_by(estado=estado)
+    asientos = q.order_by(AsientoRecepcionista.created_at.desc()).all()
+    return jsonify({"asientos": [_serialize_asiento_admin(a) for a in asientos]})
+
+
+@superadmin_bp.route("/tenants/<int:tenant_id>/asientos", methods=["GET"])
+@require_superuser
+def tenant_asientos(tenant_id):
+    asientos = AsientoRecepcionista.query.filter_by(
+        tenant_id=tenant_id
+    ).order_by(AsientoRecepcionista.created_at.desc()).all()
+    return jsonify({"asientos": [_serialize_asiento_admin(a) for a in asientos]})
+
+
+@superadmin_bp.route("/asientos/<int:asiento_id>/aprobar", methods=["POST"])
+@require_superuser
+def aprobar_asiento_endpoint(asiento_id):
+    a = AsientoRecepcionista.query.get_or_404(asiento_id)
+    try:
+        seats_service.aprobar_asiento(a, g.current_user.id)
+    except seats_service.SeatError as e:
+        return jsonify({"error": str(e)}), 400
+    log_admin_action("asiento.aprobar", target_type="asiento", target_id=a.id,
+                     tenant_id=a.tenant_id, summary="Aprobó un asiento de recepcionista")
+    db.session.commit()
+    return jsonify(_serialize_asiento_admin(a))
+
+
+@superadmin_bp.route("/asientos/<int:asiento_id>/rechazar", methods=["POST"])
+@require_superuser
+def rechazar_asiento_endpoint(asiento_id):
+    a = AsientoRecepcionista.query.get_or_404(asiento_id)
+    data = RechazarAsientoSchema().load(request.get_json() or {})
+    try:
+        seats_service.rechazar_asiento(a, data["motivo"])
+    except seats_service.SeatError as e:
+        return jsonify({"error": str(e)}), 400
+    log_admin_action("asiento.rechazar", target_type="asiento", target_id=a.id,
+                     tenant_id=a.tenant_id, summary="Rechazó un asiento de recepcionista")
+    db.session.commit()
+    return jsonify(_serialize_asiento_admin(a))
+
+
+@superadmin_bp.route("/asientos/<int:asiento_id>/activar-manual", methods=["POST"])
+@require_superuser
+def activar_manual_endpoint(asiento_id):
+    a = AsientoRecepcionista.query.get_or_404(asiento_id)
+    if a.estado != "aprobada":
+        return jsonify({"error": "El asiento no está aprobado"}), 400
+    data = ActivarManualSchema().load(request.get_json() or {})
+    monto = data.get("monto") if data.get("monto") is not None else (a.monto or 0)
+    sub = Subscription.query.filter_by(tenant_id=a.tenant_id).first()
+    payment = Payment(
+        tenant_id=a.tenant_id,
+        subscription_id=sub.id if sub else None,
+        fecha=data.get("fecha") or date.today(),
+        monto=monto,
+        metodo="transferencia",
+        comentarios=data.get("comentarios") or "Asiento recepcionista (manual)",
+        registrado_por_id=g.current_user.id,
+    )
+    db.session.add(payment)
+    seats_service.activar_asiento(a, "manual")
+    log_admin_action("asiento.activar_manual", target_type="asiento", target_id=a.id,
+                     tenant_id=a.tenant_id, summary=f"Activó asiento (pago manual {monto})")
+    db.session.commit()
+    return jsonify(_serialize_asiento_admin(a))
+
+
+@superadmin_bp.route("/asientos/<int:asiento_id>/cancelar", methods=["POST"])
+@require_superuser
+def cancelar_asiento_admin_endpoint(asiento_id):
+    a = AsientoRecepcionista.query.get_or_404(asiento_id)
+    seats_service.cancelar_asiento(a)
+    log_admin_action("asiento.cancelar", target_type="asiento", target_id=a.id,
+                     tenant_id=a.tenant_id, summary="Canceló un asiento de recepcionista")
+    db.session.commit()
+    return jsonify(_serialize_asiento_admin(a))
 
 
 @superadmin_bp.route("/payments/export.csv", methods=["GET"])

@@ -309,7 +309,7 @@ def ticket_simple(ingreso_id):
 
 @facturacion_bp.route("/tickets/<int:ticket_id>/timbrar", methods=["POST"])
 @require_auth
-@require_role("admin", "editor")
+@require_role("admin", "recepcionista")
 def timbrar(ticket_id):
     t = Ticket.query.filter_by(
         id=ticket_id, tenant_id=g.tenant_id
@@ -324,7 +324,7 @@ def timbrar(ticket_id):
 
 @facturacion_bp.route("/tickets/<int:ticket_id>/cancelar", methods=["POST"])
 @require_auth
-@require_role("admin")
+@require_role("admin", "recepcionista")
 def cancelar(ticket_id):
     t = Ticket.query.filter_by(
         id=ticket_id, tenant_id=g.tenant_id

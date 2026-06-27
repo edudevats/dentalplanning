@@ -231,9 +231,13 @@ function renderTable_() {
       const div = domEl('div', 'flex items-center justify-end gap-1');
       const eBtn = domEl('button', 'rounded-lg p-1.5 text-text-muted hover:bg-primary-50 hover:text-primary-700 transition-colors cursor-pointer');
       eBtn.type = 'button'; eBtn.appendChild(domIcon('pencil')); eBtn.addEventListener('click', () => openEdit(row));
-      const dBtn = domEl('button', 'rounded-lg p-1.5 text-text-muted hover:bg-danger-50 hover:text-danger-600 transition-colors cursor-pointer');
-      dBtn.type = 'button'; dBtn.appendChild(domIcon('trash-2')); dBtn.addEventListener('click', () => openDel(row));
-      div.appendChild(eBtn); div.appendChild(dBtn); return div;
+      div.appendChild(eBtn);
+      if (window.__userRole !== 'recepcionista') {
+        const dBtn = domEl('button', 'rounded-lg p-1.5 text-text-muted hover:bg-danger-50 hover:text-danger-600 transition-colors cursor-pointer');
+        dBtn.type = 'button'; dBtn.appendChild(domIcon('trash-2')); dBtn.addEventListener('click', () => openDel(row));
+        div.appendChild(dBtn);
+      }
+      return div;
     }},
   ];
   renderTable('table-wrap', cols, tableData, 'No hay ingresos registrados', false);

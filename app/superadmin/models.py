@@ -10,6 +10,18 @@ SUBSCRIPTION_ESTADOS = (SUBSCRIPTION_ACTIVA, SUBSCRIPTION_VENCIDA, SUBSCRIPTION_
 
 PAYMENT_METODOS = ("transferencia", "efectivo", "tarjeta", "clip", "otro")
 
+ADDON_TIPO_RECEPCIONISTA = "recepcionista"
+
+ASIENTO_PENDIENTE = "pendiente"
+ASIENTO_RECHAZADA = "rechazada"
+ASIENTO_APROBADA = "aprobada"
+ASIENTO_ACTIVA = "activa"
+ASIENTO_CANCELADA = "cancelada"
+ASIENTO_ESTADOS = (
+    ASIENTO_PENDIENTE, ASIENTO_RECHAZADA, ASIENTO_APROBADA,
+    ASIENTO_ACTIVA, ASIENTO_CANCELADA,
+)
+
 
 class Plan(db.Model):
     __tablename__ = "plans"
@@ -25,6 +37,7 @@ class Plan(db.Model):
     dias_expiracion = db.Column(db.Integer, nullable=True)
     clip_price_id = db.Column(db.String(100), nullable=True)
     clip_subscription_link = db.Column(db.String(500), nullable=True)
+    addon_tipo = db.Column(db.String(30), nullable=True)
     # Promotional plan limits — all optional, combinable
     cupo_maximo = db.Column(db.Integer, nullable=True)
     cupo_usados = db.Column(db.Integer, nullable=False, default=0)
@@ -106,4 +119,23 @@ class AdminAuditLog(db.Model):
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
 
     actor = db.relationship("User", foreign_keys=[actor_id])
+    tenant = db.relationship("Tenant", foreign_keys=[tenant_id])
+
+
+class AsientoRecepcionista(db.Model):
+    __tablename__ = "asientos_recepcionista"
+
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey("tenants.id"), nullable=False, index=True)
+    estado = db.Column(db.String(20), nullable=False, default=ASIENTO_PENDIENTE)
+    solicitado_por_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
+    aprobado_por_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
+    aprobado_at = db.Column(db.DateTime, nullable=True)
+    rechazo_motivo = db.Column(db.String(500), nullable=True)
+    monto = db.Column(db.Float, nullable=True)
+    pago_metodo = db.Column(db.String(20), nullable=True)
+    clip_subscription_id = db.Column(db.String(100), nullable=True)
+    usuario_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+
     tenant = db.relationship("Tenant", foreign_keys=[tenant_id])

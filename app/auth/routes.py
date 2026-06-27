@@ -11,12 +11,13 @@ from app.auth.models import (
     TENANT_STATUS_PENDING, TENANT_STATUS_ACTIVE,
     TENANT_STATUS_SUSPENDED, TENANT_STATUS_REJECTED,
 )
-from app.auth.schemas import RegisterSchema, LoginSchema, InviteSchema, ChangePasswordSchema
+from app.auth.schemas import RegisterSchema, LoginSchema, UserCreateSchema, UserUpdateSchema, ChangePasswordSchema
 from app.middleware.tenant import require_auth, require_role
 from app.middleware.rate_limit import rate_limit
 from app.configuracion.models import ConfigConsultorio
 from app.ajustes.models import DistribucionConfig, ensure_impuesto_concepto
 from app.superadmin.models import Plan, Subscription, Payment, SUBSCRIPTION_ACTIVA
+from app.auth import seats_service
 
 auth_bp = Blueprint("auth", __name__, url_prefix="/api/v1/auth")
 
@@ -242,30 +243,128 @@ def refresh():
     return jsonify({"access_token": access_token})
 
 
-@auth_bp.route("/invite", methods=["POST"])
+def _user_dump(u):
+    return {
+        "id": u.id,
+        "email": u.email,
+        "name": u.name,
+        "role": u.role,
+        "is_active": u.is_active,
+        "must_change_password": u.must_change_password,
+        "last_login": u.last_login.isoformat() if u.last_login else None,
+    }
+
+
+@auth_bp.route("/users", methods=["GET"])
 @require_auth
 @require_role("admin")
-def invite():
-    schema = InviteSchema()
-    data = schema.load(request.get_json() or {})
+def listar_users():
+    users = User.query.filter_by(tenant_id=g.tenant_id).order_by(User.created_at).all()
+    return jsonify([_user_dump(u) for u in users])
 
+
+@auth_bp.route("/users", methods=["POST"])
+@require_auth
+@require_role("admin")
+def crear_user():
+    data = UserCreateSchema().load(request.get_json() or {})
     if User.query.filter_by(email=data["email"]).first():
         return jsonify({"error": "Este email ya está registrado"}), 409
-
+    if not seats_service.puede_crear_recepcionista(g.tenant_id):
+        return jsonify({
+            "error": "Necesitas un asiento de pago activo para agregar otro "
+                     "recepcionista. Solicítalo desde esta sección."
+        }), 409
+    era_primero = seats_service.recepcionistas_actuales(g.tenant_id) == 0
     user = User(
         tenant_id=g.tenant_id,
         email=data["email"],
         name=data["name"],
-        role=data["role"],
+        role="recepcionista",
+        must_change_password=True,
     )
     user.set_password(data["password"])
     db.session.add(user)
+    db.session.flush()
+    if not era_primero:
+        libre = seats_service.asiento_libre_activo(g.tenant_id)
+        if libre:
+            libre.usuario_id = user.id
     db.session.commit()
+    return jsonify(_user_dump(user)), 201
 
+
+@auth_bp.route("/users/<int:user_id>", methods=["PUT"])
+@require_auth
+@require_role("admin")
+def actualizar_user(user_id):
+    user = User.query.filter_by(id=user_id, tenant_id=g.tenant_id).first_or_404()
+    if user.role == "admin":
+        return jsonify({"error": "No puedes editar al administrador desde aquí"}), 403
+    data = UserUpdateSchema().load(request.get_json() or {})
+    if "name" in data:
+        user.name = data["name"]
+    if "is_active" in data:
+        user.is_active = data["is_active"]
+    if data.get("password"):
+        user.set_password(data["password"])
+        user.must_change_password = True
+    db.session.commit()
+    return jsonify(_user_dump(user))
+
+
+@auth_bp.route("/users/<int:user_id>", methods=["DELETE"])
+@require_auth
+@require_role("admin")
+def eliminar_user(user_id):
+    user = User.query.filter_by(id=user_id, tenant_id=g.tenant_id).first_or_404()
+    if user.id == g.current_user.id:
+        return jsonify({"error": "No puedes eliminarte a ti mismo"}), 400
+    if user.role == "admin":
+        return jsonify({"error": "No puedes eliminar a un administrador"}), 403
+    seats_service.desligar_usuario(user)
+    db.session.delete(user)
+    db.session.commit()
+    return jsonify({"message": "Usuario eliminado"})
+
+
+@auth_bp.route("/asientos", methods=["GET"])
+@require_auth
+@require_role("admin")
+def listar_asientos():
+    asientos = seats_service.AsientoRecepcionista.query.filter_by(
+        tenant_id=g.tenant_id
+    ).order_by(seats_service.AsientoRecepcionista.created_at.desc()).all()
+    plan = seats_service.get_addon_plan()
     return jsonify({
-        "message": "Usuario invitado exitosamente",
-        "user": {"id": user.id, "email": user.email, "name": user.name, "role": user.role},
-    }), 201
+        "capacidad": seats_service.capacidad_recepcionistas(g.tenant_id),
+        "usados": seats_service.recepcionistas_actuales(g.tenant_id),
+        "precio_addon": plan.precio_mensual if plan else None,
+        "subscription_link": plan.clip_subscription_link if plan else None,
+        "asientos": [seats_service.serialize_asiento(a, with_usuario=True) for a in asientos],
+    })
+
+
+@auth_bp.route("/asientos", methods=["POST"])
+@require_auth
+@require_role("admin")
+def solicitar_asiento_endpoint():
+    try:
+        a = seats_service.solicitar_asiento(g.tenant_id, g.current_user.id)
+    except seats_service.SeatError as e:
+        return jsonify({"error": str(e)}), 409
+    return jsonify(seats_service.serialize_asiento(a)), 201
+
+
+@auth_bp.route("/asientos/<int:asiento_id>", methods=["DELETE"])
+@require_auth
+@require_role("admin")
+def cancelar_asiento_endpoint(asiento_id):
+    a = seats_service.AsientoRecepcionista.query.filter_by(
+        id=asiento_id, tenant_id=g.tenant_id
+    ).first_or_404()
+    seats_service.cancelar_asiento(a)
+    return jsonify({"message": "Asiento cancelado"})
 
 
 @auth_bp.route("/password", methods=["PUT"])

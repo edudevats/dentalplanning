@@ -865,6 +865,98 @@
     if (typeof lucide !== 'undefined') lucide.createIcons();
   }
 
+  // ── Asientos de recepcionista ──────────────────────────────────────────
+  function asientoActionBtn(label, onClick, destructive) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer '
+      + (destructive ? 'bg-cs-error-container/40 text-cs-on-error-container hover:opacity-90'
+                     : 'bg-cs-surface-container text-cs-on-surface hover:bg-cs-surface-container-high');
+    b.textContent = label;
+    b.addEventListener('click', onClick);
+    return b;
+  }
+
+  function renderAsientoRow(a) {
+    const row = document.createElement('div');
+    row.className = 'flex items-center gap-3 py-2 border-b border-cs-outline-variant/30';
+    const info = document.createElement('div');
+    info.className = 'flex-1 min-w-0 flex items-center gap-2';
+    const txt = document.createElement('span');
+    txt.className = 'text-sm text-cs-on-surface';
+    txt.textContent = `Asiento #${a.id}`
+      + (a.monto ? ` · ${currency(a.monto)}` : '')
+      + (a.usuario_email ? ` · ${a.usuario_email}` : '');
+    info.appendChild(txt);
+    info.appendChild(statusBadge(a.estado));
+    row.appendChild(info);
+
+    const actions = document.createElement('div');
+    actions.className = 'flex items-center gap-2';
+    if (a.estado === 'pendiente') {
+      actions.appendChild(asientoActionBtn('Aprobar', () => onAprobarAsiento(a.id)));
+      actions.appendChild(asientoActionBtn('Rechazar', () => onRechazarAsiento(a.id), true));
+    } else if (a.estado === 'aprobada') {
+      actions.appendChild(asientoActionBtn('Pago manual', () => onPagoManualAsiento(a.id)));
+      actions.appendChild(asientoActionBtn('Cancelar', () => onCancelarAsiento(a.id), true));
+    } else if (a.estado === 'activa') {
+      actions.appendChild(asientoActionBtn('Cancelar', () => onCancelarAsiento(a.id), true));
+    }
+    row.appendChild(actions);
+    return row;
+  }
+
+  async function loadAsientos() {
+    const cont = document.getElementById('asientos-list');
+    if (!cont) return;
+    let data;
+    try { data = await adminApi.get(`/tenants/${tenantId}/asientos`); }
+    catch { cont.textContent = 'Error al cargar asientos'; return; }
+    invDom.clearChildren(cont);
+    const asientos = (data.asientos || []).filter(a => a.estado !== 'cancelada' && a.estado !== 'rechazada');
+    if (!asientos.length) { cont.textContent = 'Sin asientos.'; return; }
+    asientos.forEach(a => cont.appendChild(renderAsientoRow(a)));
+  }
+
+  async function onAprobarAsiento(id) {
+    const ok = await confirmAction({ title: 'Aprobar asiento',
+      message: 'Se aprobará el asiento; el tenant podrá pagarlo.', confirmLabel: 'Aprobar' });
+    if (!ok) return;
+    await adminApi.post(`/asientos/${id}/aprobar`, {});
+    loadAsientos();
+  }
+
+  function onRechazarAsiento(id) {
+    const ta = textareaEl('motivo', '', 3);
+    openModal({
+      title: 'Rechazar asiento',
+      content: buildField('Motivo', ta),
+      primary: { label: 'Rechazar', onClick: async () => {
+        const motivo = ta.value.trim();
+        if (motivo.length < 3) throw new Error('Escribe un motivo');
+        await adminApi.post(`/asientos/${id}/rechazar`, { motivo });
+        loadAsientos();
+      }},
+    });
+  }
+
+  async function onPagoManualAsiento(id) {
+    const ok = await confirmAction({ title: 'Registrar pago manual',
+      message: 'Registra un pago por transferencia y activa el asiento.', confirmLabel: 'Activar' });
+    if (!ok) return;
+    await adminApi.post(`/asientos/${id}/activar-manual`, {});
+    loadAsientos();
+  }
+
+  async function onCancelarAsiento(id) {
+    const ok = await confirmAction({ title: 'Cancelar asiento',
+      message: 'Cancela la suscripción en Clip (irreversible) y el recepcionista pierde acceso.',
+      confirmLabel: 'Cancelar asiento', destructive: true });
+    if (!ok) return;
+    await adminApi.post(`/asientos/${id}/cancelar`, {});
+    loadAsientos();
+  }
+
   // ── Tab: Audit ─────────────────────────────────────────────────────────
   async function renderAudit() {
     const panel = document.querySelector('[data-panel="audit"]');
@@ -939,6 +1031,7 @@
     try {
       await loadTenant();
       activateTab('general');
+      loadAsientos();
     } catch (err) {
       console.error(err);
       Toast.show(err.message || 'Error al cargar la clínica', 'error');

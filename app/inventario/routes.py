@@ -32,7 +32,7 @@ def listar_operatorios():
 
 @inventario_bp.route("/operatorios", methods=["POST"])
 @require_auth
-@require_role("admin", "editor")
+@require_role("admin")
 def crear_operatorio():
     try:
         data = OperatorioSchema().load(request.get_json())
@@ -50,7 +50,7 @@ def crear_operatorio():
 
 @inventario_bp.route("/operatorios/<int:op_id>", methods=["PUT"])
 @require_auth
-@require_role("admin", "editor")
+@require_role("admin")
 def actualizar_operatorio(op_id):
     op = Operatorio.query.filter_by(id=op_id, tenant_id=g.tenant_id).first_or_404()
     try:
@@ -74,7 +74,7 @@ def actualizar_operatorio(op_id):
 
 @inventario_bp.route("/operatorios/<int:op_id>/estado", methods=["PUT"])
 @require_auth
-@require_role("admin", "editor")
+@require_role("admin")
 def cambiar_estado_operatorio(op_id):
     op = Operatorio.query.filter_by(id=op_id, tenant_id=g.tenant_id).first_or_404()
     try:
@@ -130,7 +130,7 @@ def crear_categoria():
 
 @inventario_bp.route("/compras", methods=["POST"])
 @require_auth
-@require_role("admin", "editor")
+@require_role("admin")
 def registrar_compra_endpoint():
     try:
         data = CompraSchema().load(request.get_json())
@@ -182,7 +182,7 @@ def listar_compras():
 
 @inventario_bp.route("/transferencias", methods=["POST"])
 @require_auth
-@require_role("admin", "editor")
+@require_role("admin")
 def transferir_endpoint():
     try:
         data = TransferenciaSchema().load(request.get_json())
@@ -209,7 +209,7 @@ def transferir_endpoint():
 
 @inventario_bp.route("/ajustes", methods=["POST"])
 @require_auth
-@require_role("admin", "editor")
+@require_role("admin")
 def ajustar_endpoint():
     try:
         data = AjusteSchema().load(request.get_json())
@@ -360,7 +360,7 @@ def inspeccionar_material(material_id):
 
 @inventario_bp.route("/materiales", methods=["POST"])
 @require_auth
-@require_role("admin", "editor")
+@require_role("admin")
 def crear_material_inv():
     try:
         data = MaterialInventarioSchema().load(request.get_json())
@@ -387,7 +387,7 @@ def crear_material_inv():
 
 @inventario_bp.route("/materiales/<int:material_id>", methods=["PUT"])
 @require_auth
-@require_role("admin", "editor")
+@require_role("admin")
 def actualizar_material_inv(material_id):
     m = Material.query.filter_by(id=material_id, tenant_id=g.tenant_id).first_or_404()
     try:
@@ -511,7 +511,7 @@ def movimientos_recientes():
 
 @inventario_bp.route("/materiales/importar-master", methods=["POST"])
 @require_auth
-@require_role("admin", "editor")
+@require_role("admin")
 def importar_master_inv():
     try:
         data = ImportMasterInventarioSchema().load(request.get_json())
