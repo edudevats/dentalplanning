@@ -251,8 +251,7 @@
       } else {
         const sel = selectEl('role', [
           { value: 'admin', label: 'Admin' },
-          { value: 'editor', label: 'Editor' },
-          { value: 'viewer', label: 'Viewer' },
+          { value: 'recepcionista', label: 'Recepcionista' },
         ], u.role);
         sel.classList.add('text-xs', 'py-1');
         sel.disabled = !u.is_active;
