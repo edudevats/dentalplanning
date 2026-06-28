@@ -395,7 +395,13 @@ async function loadUserInfo() {
 
     SubscriptionPopup.check(data);
     return user;
-  } catch {
+  } catch (e) {
+    // Contraseña temporal: require_auth responde 403 con must_change_password.
+    // En vez de cerrar sesión, forzamos el cambio de contraseña.
+    if (e?.response?.status === 403 && e?.response?.data?.must_change_password) {
+      forceChangePassword();
+      return;
+    }
     Auth.logout();
   }
 }
@@ -424,6 +430,95 @@ function applyRoleNav(role) {
   // Redirección suave si está en una página no permitida
   const here = window.location.pathname;
   if (!allowed.includes(here)) window.location.replace('/ingresos');
+}
+
+// ── Menú de usuario (top bar) + cambiar contraseña ────────────────────────────
+let forcedPwChange = false;
+
+function setCpForced(forced) {
+  forcedPwChange = forced;
+  const title = document.getElementById('modal-cp-title');
+  if (title) title.textContent = forced ? 'Debes cambiar tu contraseña' : 'Cambiar contraseña';
+  // En modo obligatorio se ocultan los botones de cerrar/cancelar.
+  ['modal-cp-close', 'cp-cancel'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.classList.toggle('hidden', forced);
+  });
+}
+
+// Abre el modal en modo OBLIGATORIO (no se puede cerrar): para la contraseña temporal.
+function forceChangePassword() {
+  ['cp-current', 'cp-new', 'cp-confirm'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+  });
+  setCpForced(true);
+  document.documentElement.style.visibility = 'visible';
+  Modal.open('modal-change-password');
+}
+
+function initUserMenu() {
+  const btn = document.getElementById('user-menu-btn');
+  const menu = document.getElementById('user-menu');
+  if (!btn || !menu) return;
+
+  const closeMenu = () => { menu.classList.add('hidden'); btn.setAttribute('aria-expanded', 'false'); };
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const open = menu.classList.toggle('hidden');
+    btn.setAttribute('aria-expanded', open ? 'false' : 'true');
+  });
+  document.addEventListener('click', (e) => {
+    if (!menu.contains(e.target) && !btn.contains(e.target)) closeMenu();
+  });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeMenu(); });
+
+  document.getElementById('btn-logout-menu')?.addEventListener('click', () => Auth.logout());
+
+  const cpBtn = document.getElementById('btn-change-password');
+  cpBtn?.addEventListener('click', () => {
+    closeMenu();
+    ['cp-current', 'cp-new', 'cp-confirm'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.value = '';
+    });
+    setCpForced(false);
+    Modal.open('modal-change-password');
+  });
+
+  const closeCp = () => { if (forcedPwChange) return; Modal.close('modal-change-password'); };
+  document.getElementById('modal-cp-close')?.addEventListener('click', closeCp);
+  document.getElementById('modal-cp-backdrop')?.addEventListener('click', closeCp);
+  document.getElementById('cp-cancel')?.addEventListener('click', closeCp);
+  document.getElementById('cp-save')?.addEventListener('click', changePassword);
+}
+
+async function changePassword() {
+  const current = document.getElementById('cp-current').value;
+  const nueva = document.getElementById('cp-new').value;
+  const confirmar = document.getElementById('cp-confirm').value;
+  if (!current || !nueva || !confirmar) { Toast.warning('Completa todos los campos'); return; }
+  if (nueva !== confirmar) { Toast.error('La nueva contraseña no coincide'); return; }
+  const btn = document.getElementById('cp-save');
+  btn.disabled = true;
+  try {
+    await API.put('/auth/password', { current_password: current, new_password: nueva });
+    Toast.success('Contraseña actualizada');
+    if (forcedPwChange) { window.location.reload(); return; }
+    Modal.close('modal-change-password');
+  } catch (e) {
+    const data = e?.response?.data;
+    let msg = data?.error || e?.message || 'No se pudo cambiar la contraseña';
+    // Si es un error de validación de Marshmallow, mostrar la regla específica.
+    if (data?.details) {
+      const first = Object.values(data.details)[0];
+      if (Array.isArray(first) && first.length) msg = first[0];
+      else if (typeof first === 'string') msg = first;
+    }
+    Toast.error(msg);
+  } finally {
+    btn.disabled = false;
+  }
 }
 
 // ── Subscription / Trial popups ───────────────────────────────────────────────

@@ -42,11 +42,26 @@
       <button class="relative p-2 rounded-lg text-text-secondary hover:bg-surface-hover transition-colors cursor-pointer" aria-label="Notificaciones">
         <i data-lucide="bell" class="h-5 w-5"></i>
       </button>
-      <div class="hidden sm:flex items-center gap-2 ml-2 pl-3 border-l border-border">
-        <div class="w-8 h-8 rounded-full bg-primary-100 text-primary-700 flex items-center justify-center text-xs font-semibold font-heading">
-          <span data-user-initials>??</span>
+      <div class="relative ml-2 pl-3 border-l border-border">
+        <button id="user-menu-btn" type="button" class="flex items-center gap-2 cursor-pointer rounded-lg p-1 hover:bg-surface-hover transition-colors" aria-haspopup="true" aria-expanded="false" aria-label="Menu de usuario">
+          <div class="w-8 h-8 rounded-full bg-primary-100 text-primary-700 flex items-center justify-center text-xs font-semibold font-heading">
+            <span data-user-initials>??</span>
+          </div>
+          <span class="text-sm font-medium text-text-primary hidden md:inline" data-user-name>Usuario</span>
+          <i data-lucide="chevron-down" class="h-4 w-4 text-text-muted hidden sm:inline"></i>
+        </button>
+        <div id="user-menu" class="hidden absolute right-0 mt-2 w-56 bg-surface border border-border rounded-lg shadow-lg z-50 py-1">
+          <div class="px-4 py-2 border-b border-border">
+            <p class="text-sm font-medium text-text-primary truncate" data-user-name>Usuario</p>
+            <p class="text-xs text-text-muted truncate" data-user-role>—</p>
+          </div>
+          <button id="btn-change-password" type="button" class="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-text-secondary hover:bg-surface-hover hover:text-text-primary transition-colors cursor-pointer text-left">
+            <i data-lucide="key-round" class="h-4 w-4 shrink-0"></i> Cambiar contrase&ntilde;a
+          </button>
+          <button id="btn-logout-menu" type="button" class="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-danger-600 hover:bg-danger-50 transition-colors cursor-pointer text-left">
+            <i data-lucide="log-out" class="h-4 w-4 shrink-0"></i> Cerrar sesi&oacute;n
+          </button>
         </div>
-        <span class="text-sm font-medium text-text-primary hidden md:inline" data-user-name>Usuario</span>
       </div>
     </div>
   </div>
@@ -57,6 +72,38 @@
   {% block content %}{% endblock %}
 </main>
 
+<!-- Cambiar contrasena modal -->
+<div id="modal-change-password" class="hidden fixed inset-0 z-[60] flex items-center justify-center p-4">
+  <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" id="modal-cp-backdrop"></div>
+  <div class="relative bg-surface rounded-2xl shadow-xl w-full max-w-sm">
+    <div class="flex items-center justify-between px-5 py-4 border-b border-border">
+      <h2 id="modal-cp-title" class="text-base font-semibold font-heading text-text-primary">Cambiar contrase&ntilde;a</h2>
+      <button id="modal-cp-close" type="button" class="p-1.5 rounded-lg text-text-muted hover:bg-surface-hover cursor-pointer" aria-label="Cerrar">
+        <i data-lucide="x" class="h-4 w-4"></i>
+      </button>
+    </div>
+    <div class="p-5 space-y-4">
+      <div>
+        <label class="block text-sm font-medium text-text-secondary mb-1 font-body">Contrase&ntilde;a actual</label>
+        <input id="cp-current" type="password" autocomplete="current-password" class="block w-full rounded-lg border border-border px-3 py-2.5 text-sm font-body bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-500 min-h-[44px]" />
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-text-secondary mb-1 font-body">Nueva contrase&ntilde;a</label>
+        <input id="cp-new" type="password" autocomplete="new-password" class="block w-full rounded-lg border border-border px-3 py-2.5 text-sm font-body bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-500 min-h-[44px]" />
+        <p class="text-xs text-text-muted mt-1 font-body">M&iacute;nimo 8 caracteres, con may&uacute;scula, min&uacute;scula y n&uacute;mero.</p>
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-text-secondary mb-1 font-body">Confirmar nueva contrase&ntilde;a</label>
+        <input id="cp-confirm" type="password" autocomplete="new-password" class="block w-full rounded-lg border border-border px-3 py-2.5 text-sm font-body bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-500 min-h-[44px]" />
+      </div>
+      <div class="flex justify-end gap-3 pt-1">
+        <button id="cp-cancel" type="button" class="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg border border-border bg-surface hover:bg-surface-hover text-sm font-medium font-body text-text-primary transition-colors cursor-pointer min-h-[44px]">Cancelar</button>
+        <button id="cp-save" type="button" class="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-accent-600 hover:bg-accent-700 text-white text-sm font-medium font-body transition-colors cursor-pointer min-h-[44px] disabled:opacity-50 disabled:cursor-not-allowed">Guardar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 {% block scripts %}{% endblock %}
 
 <script>
@@ -64,5 +111,6 @@
   setActiveNav();
   initMobileSidebar();
   loadUserInfo();
+  initUserMenu();
 </script>
 {% endblock %}

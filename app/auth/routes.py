@@ -222,6 +222,7 @@ def login():
             "is_superuser": user.is_superuser,
             "tenant_id": user.tenant_id,
             "tenant_name": user.tenant.name,
+            "must_change_password": user.must_change_password,
         },
         "access_token": access_token,
         "refresh_token": refresh_token,

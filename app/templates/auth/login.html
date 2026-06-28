@@ -144,6 +144,9 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
     }
     if (data.user && data.user.is_superuser === true) {
       window.location.href = '/admin';
+    } else if (data.user && data.user.must_change_password) {
+      // Contrasena temporal: ir a una pagina con layout para forzar el cambio.
+      window.location.href = '/dashboard';
     } else {
       window.location.href = '/selector';
     }
