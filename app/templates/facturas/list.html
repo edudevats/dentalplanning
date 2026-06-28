@@ -131,20 +131,15 @@
 // Uses the global API client (app.js) and esc() helper already defined in app.js.
 // Auth token is managed by Auth.getToken() → localStorage 'token'.
 
-const PRINT_AGENT_URL = localStorage.getItem('print_agent_url') || 'http://localhost:9099';
-
 async function reimprimirTicket(ticketId) {
   try {
     const payload = await API.get('/facturacion/tickets/' + ticketId + '/impresion');
-    const resp = await fetch(PRINT_AGENT_URL + '/imprimir-ticket', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-    if (!resp.ok) throw new Error(resp.status);
+    await PrintAgent.print(payload);
     Toast.success('Ticket enviado a impresión');
   } catch (e) {
-    Toast.warning('No se pudo imprimir (¿agente encendido?)');
+    Toast.warning((e.code || e.status)
+      ? e.message
+      : 'No se pudo imprimir (¿agente encendido?)');
   }
 }
 

@@ -282,6 +282,49 @@
         </p>
       </div>
     </div>
+
+    <!-- IMPRESION -->
+    <div id="panel-impresion" class="hidden space-y-6">
+      <div class="bg-surface rounded-xl border border-border shadow-sm">
+        <div class="px-5 py-4 border-b border-border">
+          <h3 class="text-sm font-semibold font-heading text-text-primary">Clave del agente de impresión</h3>
+        </div>
+        <div class="p-5 space-y-4">
+          <p class="text-sm text-text-muted font-body">
+            Esta clave conecta de forma segura tu sistema con el Agente de Impresión instalado en la PC de recepción.
+            Cópiala y pégala en el agente (campo <strong>API Key</strong>) y guarda. La recepción imprimirá sin configurar nada.
+          </p>
+          <div class="flex items-stretch gap-2">
+            <input id="pa-key" type="text" readonly
+              class="flex-1 min-w-0 rounded-lg border border-border px-3 py-2.5 text-sm font-mono bg-surface-alt text-text-primary select-all"
+              value="" />
+            <button id="pa-copy" type="button"
+              class="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-primary-500 hover:bg-primary-600 text-white text-sm font-medium font-body transition-colors cursor-pointer min-h-[44px]">
+              <i data-lucide="copy" class="h-4 w-4"></i> Copiar
+            </button>
+          </div>
+          <div class="flex items-center gap-3 pt-1">
+            <button id="pa-regenerate" type="button"
+              class="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg border border-border bg-surface hover:bg-surface-hover text-sm font-medium font-body text-text-primary transition-colors cursor-pointer min-h-[44px]">
+              <i data-lucide="refresh-cw" class="h-4 w-4"></i> Regenerar clave
+            </button>
+            <span class="text-xs text-text-muted font-body">Al regenerar tendrás que volver a pegar la clave en el agente.</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="bg-surface rounded-xl border border-border shadow-sm">
+        <div class="px-5 py-4 border-b border-border">
+          <h3 class="text-sm font-semibold font-heading text-text-primary">Cómo conectarlo</h3>
+        </div>
+        <ol class="p-5 space-y-2 text-sm text-text-secondary font-body list-decimal list-inside">
+          <li>Abre el Agente de Impresión en la PC de recepción.</li>
+          <li>Pega esta clave en el campo <strong>API Key</strong> de la sección Configuración del Agente.</li>
+          <li>Haz clic en <strong>Guardar Cambios</strong> en el agente.</li>
+          <li>Listo: desde Ingresos y Facturas se imprimirá automáticamente.</li>
+        </ol>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -376,6 +419,7 @@
     { key: 'distribucion', label: 'Distribucion', icon: 'pie-chart' },
     { key: 'fiscal', label: 'Configuracion fiscal', icon: 'receipt' },
     { key: 'sucursales', label: 'Sucursales', icon: 'store' },
+    { key: 'impresion', label: 'Impresión', icon: 'printer' },
   ];
 
   const urlTab = new URLSearchParams(location.search).get('tab');
@@ -412,6 +456,7 @@
     else if (key === 'distribucion') loadDist();
     else if (key === 'fiscal') cargarConfigFiscal();
     else if (key === 'sucursales') cargarSucursales();
+    else if (key === 'impresion') loadImpresion();
     else if (key === 'usuarios') loadUsuarios();
   }
 
@@ -1466,6 +1511,48 @@
     };
     confirmBtn.addEventListener('click', handler);
   }
+
+  // ── IMPRESION (API key del agente) ────────────────────────
+  function paRenderKey(key) {
+    document.getElementById('pa-key').value = key || '';
+  }
+
+  async function loadImpresion() {
+    try {
+      let r = await API.get('/facturacion/print-agent/key');
+      if (!r.configured || !r.api_key) {
+        // Generar automáticamente la primera vez que el admin abre la pestaña
+        r = await API.post('/facturacion/print-agent/key/regenerate');
+      }
+      paRenderKey(r.api_key);
+    } catch (e) {
+      Toast.error('No se pudo cargar la clave de impresión');
+    }
+  }
+
+  document.getElementById('pa-copy').addEventListener('click', async () => {
+    const val = document.getElementById('pa-key').value;
+    if (!val) return;
+    try {
+      await navigator.clipboard.writeText(val);
+      Toast.success('Clave copiada');
+    } catch {
+      const inp = document.getElementById('pa-key');
+      inp.focus(); inp.select();
+      Toast.info('Selecciona y copia la clave manualmente (Ctrl+C)');
+    }
+  });
+
+  document.getElementById('pa-regenerate').addEventListener('click', async () => {
+    if (!confirm('Se invalidará la clave actual. Tendrás que volver a pegarla en el agente de impresión. ¿Continuar?')) return;
+    try {
+      const r = await API.post('/facturacion/print-agent/key/regenerate');
+      paRenderKey(r.api_key);
+      Toast.success('Clave regenerada. Pégala de nuevo en el agente.');
+    } catch (e) {
+      Toast.error('No se pudo regenerar la clave');
+    }
+  });
 
 </script>
 {% endblock %}

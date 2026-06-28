@@ -36,6 +36,8 @@ class ConfiguracionFiscal(db.Model):
     fiel_valido_hasta = db.Column(db.DateTime)
     # Portal de autofacturación
     ventana_facturacion = db.Column(db.String(20), default="fin_de_mes")
+    # API key compartida con el agente de impresión local (cifrada con Fernet)
+    print_agent_key_cifrada = db.Column(db.LargeBinary)
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = db.Column(
         db.DateTime,
@@ -50,6 +52,10 @@ class ConfiguracionFiscal(db.Model):
     @property
     def fiel_configurada(self):
         return bool(self.fiel_cer and self.fiel_key_cifrada)
+
+    @property
+    def print_agent_configurado(self):
+        return bool(self.print_agent_key_cifrada)
 
 
 class Sucursal(db.Model):

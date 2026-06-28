@@ -1,4 +1,5 @@
 import calendar
+import secrets
 from datetime import date
 from flask import Blueprint, request, jsonify, g, current_app
 from sqlalchemy.orm import joinedload
@@ -120,6 +121,32 @@ def subir_logo():
     cfg.logo = logo.read()
     db.session.commit()
     return jsonify({"message": "Logo actualizado"})
+
+
+# ── AGENTE DE IMPRESIÓN (API key por tenant) ──
+
+@facturacion_bp.route("/print-agent/key", methods=["GET"])
+@require_auth
+def obtener_print_agent_key():
+    """Devuelve la API key del agente para este tenant (en claro). Cualquier
+    usuario del tenant la necesita para imprimir; no la genera."""
+    cfg = ConfiguracionFiscal.query.filter_by(tenant_id=g.tenant_id).first()
+    if not cfg or not cfg.print_agent_key_cifrada:
+        return jsonify({"configured": False, "api_key": None})
+    api_key = crypto.decrypt(cfg.print_agent_key_cifrada).decode()
+    return jsonify({"configured": True, "api_key": api_key})
+
+
+@facturacion_bp.route("/print-agent/key/regenerate", methods=["POST"])
+@require_auth
+@require_role("admin")
+def regenerar_print_agent_key():
+    """Genera y guarda una nueva API key para el agente (solo admin)."""
+    cfg = _get_or_create_config()
+    nueva = secrets.token_urlsafe(32)
+    cfg.print_agent_key_cifrada = crypto.encrypt(nueva)
+    db.session.commit()
+    return jsonify({"api_key": nueva})
 
 
 # ── SUCURSALES ──

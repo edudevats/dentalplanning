@@ -24,6 +24,7 @@ _RECEP_RULES = [
     ("GET", r"/api/v1/facturacion/ingresos/\d+/ticket-simple"),
     ("GET", r"/api/v1/facturacion/sucursales"),
     ("GET", r"/api/v1/facturacion/configuracion"),
+    ("GET", r"/api/v1/facturacion/print-agent/key"),
     ("GET", r"/api/v1/ajustes/especialistas"),
     ("GET", r"/api/v1/ajustes/metodos-pago"),
     ("GET", r"/api/v1/ajustes/estrategias"),

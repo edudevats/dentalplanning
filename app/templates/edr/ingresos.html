@@ -145,33 +145,25 @@ let selYear = String(now.getFullYear());
 let tableData = [], especialistas = [], metodosPago = [], tratamientos = [], estrategias = [], sucursales = [];
 let editingId = null;
 
-const PRINT_AGENT_URL = localStorage.getItem('print_agent_url') || 'http://localhost:9099';
-
 async function imprimirTicket(ticketId) {
   try {
     const payload = await API.get('/facturacion/tickets/' + ticketId + '/impresion');
-    const resp = await fetch(PRINT_AGENT_URL + '/imprimir-ticket', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-    if (!resp.ok) throw new Error('agente respondió ' + resp.status);
+    await PrintAgent.print(payload);
   } catch (e) {
-    Toast.warning('No se pudo imprimir el ticket (¿agente de impresión encendido?)');
+    Toast.warning((e.code || e.status)
+      ? e.message
+      : 'No se pudo imprimir el ticket (¿agente de impresión encendido?)');
   }
 }
 
 async function imprimirSimple(ingresoId) {
   try {
     const payload = await API.get('/facturacion/ingresos/' + ingresoId + '/ticket-simple');
-    const resp = await fetch(PRINT_AGENT_URL + '/imprimir-ticket', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-    if (!resp.ok) throw new Error('agente respondió ' + resp.status);
+    await PrintAgent.print(payload);
   } catch (e) {
-    Toast.warning('No se pudo imprimir el recibo (¿agente de impresión encendido?)');
+    Toast.warning((e.code || e.status)
+      ? e.message
+      : 'No se pudo imprimir el recibo (¿agente de impresión encendido?)');
   }
 }
 

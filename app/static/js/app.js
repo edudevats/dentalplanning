@@ -144,6 +144,49 @@ const API = {
   delete: (url) => API.request(url, { method: 'DELETE' }),
 };
 
+// ── Print Agent (impresión de tickets vía agente local) ──────────────────────
+const PrintAgent = {
+  _key: null, // cache en memoria por carga de página
+
+  getUrl() {
+    return (localStorage.getItem('print_agent_url') || 'http://localhost:9099')
+      .replace(/\/+$/, '');
+  },
+
+  async _fetchKey() {
+    if (this._key) return this._key;
+    const r = await API.get('/facturacion/print-agent/key');
+    if (!r.configured || !r.api_key) {
+      const e = new Error('La impresión no está configurada. Pide al administrador que genere la clave en Ajustes → Impresión.');
+      e.code = 'NOT_CONFIGURED';
+      throw e;
+    }
+    this._key = r.api_key;
+    return this._key;
+  },
+
+  async print(payload) {
+    const key = await this._fetchKey();
+    const res = await fetch(this.getUrl() + '/imprimir-ticket', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-API-Key': key },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      if (res.status === 401) this._key = null; // la key cambió: limpiar cache
+      const map = {
+        401: 'La clave del agente no coincide. El administrador debe regenerarla en Ajustes → Impresión y volver a pegarla en el agente.',
+        503: 'El agente de impresión no tiene clave configurada.',
+        429: 'Demasiadas impresiones seguidas. Espera un momento.',
+      };
+      const e = new Error(map[res.status] || ('agente respondió ' + res.status));
+      e.status = res.status;
+      throw e;
+    }
+    return res;
+  },
+};
+
 // ── Toast ─────────────────────────────────────────────────────────────────────
 const Toast = {
   _container: null,
