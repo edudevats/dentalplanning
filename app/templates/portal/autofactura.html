@@ -18,8 +18,11 @@
   <div class="w-full max-w-md mx-auto px-3 py-4 sm:py-8">
     <div class="bg-white rounded-2xl shadow-md p-5 sm:p-6">
 
-      <!-- Logo del consultorio (se muestra solo si existe) -->
-      <img id="logo" alt="{{ tenant_nombre }}" class="hidden mx-auto h-auto max-h-32 w-auto max-w-full object-contain mb-4">
+      <!-- Logo del consultorio (se muestra solo si existe).
+           Zona acotada y centrada: el logo entra siempre, sin importar su proporción. -->
+      <div id="logo-zona" class="hidden items-center justify-center mb-4">
+        <img id="logo" alt="{{ tenant_nombre }}" class="block max-h-20 w-auto max-w-[220px] object-contain">
+      </div>
       <h1 class="text-lg sm:text-xl font-bold text-center">Facturación</h1>
       <p class="text-sm text-gray-500 text-center mb-5">{{ tenant_nombre }}</p>
 
@@ -132,8 +135,9 @@ const money = (n) => "$" + Number(n||0).toLocaleString("es-MX",{minimumFractionD
 // Logo del consultorio: se muestra solo si carga; se quita si no hay (404).
 (function loadLogo(){
   const logo = $("logo");
-  logo.addEventListener("load", () => logo.classList.remove("hidden"));
-  logo.addEventListener("error", () => logo.remove());
+  const zona = $("logo-zona");
+  logo.addEventListener("load", () => { zona.classList.remove("hidden"); zona.classList.add("flex"); });
+  logo.addEventListener("error", () => zona.remove());
   logo.src = API + "/logo";
 })();
 
