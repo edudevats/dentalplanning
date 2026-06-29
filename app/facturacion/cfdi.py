@@ -121,12 +121,57 @@ def _timbrar(cfdi_obj):
         finkok_password=current_app.config.get("FINKOK_PASSWORD", ""),
         environment=current_app.config.get("FINKOK_ENVIRONMENT", "TEST"),
     )
-    return svc.timbrar_factura(cfdi_obj, accept="XML_PDF")
+    # Finkok solo devuelve XML al timbrar (no soporta accept=PDF/XML_PDF).
+    # El PDF se genera localmente a partir del XML timbrado (ver generar_pdf_de_xml).
+    return svc.timbrar_factura(cfdi_obj, accept="XML")
 
 
 def generar_pdf(cfdi_obj):
     from satcfdi.render import pdf_bytes
     return pdf_bytes(cfdi_obj)
+
+
+def _logo_mime(logo_bytes):
+    """Infiere el mime del logo a partir de sus magic bytes (no se guarda el tipo)."""
+    if logo_bytes[:8] == b"\x89PNG\r\n\x1a\n":
+        return "image/png"
+    if logo_bytes[:3] == b"\xff\xd8\xff":
+        return "image/jpeg"
+    if logo_bytes[:6] in (b"GIF87a", b"GIF89a"):
+        return "image/gif"
+    return "image/png"
+
+
+def generar_pdf_de_xml(xml_str, logo=None):
+    """Convierte el XML ya timbrado (con TFD/UUID/QR) a PDF con weasyprint.
+
+    Replica el render del sistema de facturación funcional: satcfdi arma el HTML del
+    comprobante y weasyprint lo convierte a PDF, inyectando el logo del consultorio.
+    """
+    import base64
+    import weasyprint
+    from satcfdi.cfdi import CFDI
+    from satcfdi import render as cfdi_render
+    from app.facturacion.xml_safety import assert_safe_xml
+
+    xml_bytes = xml_str.encode("utf-8") if isinstance(xml_str, str) else xml_str
+    assert_safe_xml(xml_bytes)
+    cfdi = CFDI.from_string(xml_bytes)
+    html = cfdi_render.html_str(cfdi)
+
+    if logo:
+        logo_b64 = base64.b64encode(logo).decode("ascii")
+        logo_tag = (
+            '<div style="text-align:center;padding:8px 0;">'
+            f'<img src="data:{_logo_mime(logo)};base64,{logo_b64}" '
+            'style="max-height:90px;max-width:280px;"/></div>'
+        )
+        if "<body>" in html:
+            html = html.replace("<body>", "<body>" + logo_tag, 1)
+        else:
+            html = logo_tag + html
+
+    return weasyprint.HTML(string=html).write_pdf(stylesheets=[cfdi_render.PDF_CSS])
 
 
 def enviar_factura_email(ticket, pdf, xml_str):
@@ -191,11 +236,10 @@ def timbrar_ticket(ticket, receptor):
     ticket.error_timbrado = None
     db.session.commit()
 
-    # PDF (de Finkok si vino; si no, weasyprint) + correo. No rompen el timbrado.
+    # PDF a partir del XML timbrado (incluye UUID/sello SAT/QR) + correo.
+    # No rompen el timbrado: si fallan, la factura ya quedó timbrada.
     try:
-        pdf = result.get("pdf")
-        if not pdf:
-            pdf = generar_pdf(cfdi_obj)
+        pdf = result.get("pdf") or generar_pdf_de_xml(xml_timbrado, logo=cfg.logo)
         ticket.email_enviado = bool(enviar_factura_email(ticket, pdf, xml_timbrado))
         db.session.commit()
     except Exception as e:  # noqa: BLE001
