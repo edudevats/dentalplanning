@@ -13,7 +13,7 @@ import os
 import time
 import uuid
 from lxml import etree
-from app.facturacion.timezone_helper import now_mexico
+from app.facturacion.timezone_helper import now_mexico, to_mexico_time
 
 logger = logging.getLogger(__name__)
 
@@ -157,6 +157,10 @@ class CFDIGenerator:
 
             if not fecha:
                 fecha = now_mexico()
+            # El CFDI 4.0 exige Fecha en hora local SIN offset de zona. satcfdi la
+            # serializa con isoformat(); un datetime con tzinfo emitiría "...-06:00"
+            # y el SAT lo rechaza (CFDI40101). La dejamos naive en hora de México.
+            fecha = to_mexico_time(fecha).replace(tzinfo=None)
 
             # Obtener firmante
             signer = self._get_signer()
