@@ -7,6 +7,8 @@ import calendar
 import logging
 from datetime import date, datetime, timezone
 
+from app.facturacion.timezone_helper import get_today
+
 from flask import current_app
 
 from app.extensions import db
@@ -26,7 +28,7 @@ class TimbradoError(Exception):
 
 def _ventana_vencida(ticket, hoy=None):
     from datetime import timedelta
-    hoy = hoy or date.today()
+    hoy = hoy or get_today()
     ultimo = calendar.monthrange(ticket.fecha.year, ticket.fecha.month)[1]
     limite = date(ticket.fecha.year, ticket.fecha.month, ultimo) + timedelta(days=3)
     return hoy > limite

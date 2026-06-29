@@ -4,9 +4,9 @@ Toda escritura de tickets pasa por aquí (patrón como inventario/services.py).
 Las funciones NO hacen commit; lo hace el llamador.
 """
 import secrets
-from datetime import date
 from app.extensions import db
 from app.facturacion.models import Ticket, Sucursal, TICKET_SIN_TIMBRAR
+from app.facturacion.timezone_helper import get_today
 
 
 class FacturacionError(Exception):
@@ -67,7 +67,7 @@ def asignar_ticket(ingreso, sucursal_id, ticket_folio=None):
             sucursal_id=sucursal_id,
             serie=suc.serie or "",
             folio=siguiente_folio(ingreso.tenant_id, sucursal_id),
-            fecha=ingreso.fecha or date.today(),
+            fecha=ingreso.fecha or get_today(),
             estado=TICKET_SIN_TIMBRAR,
             token=secrets.token_urlsafe(24),
             total=0.0,
