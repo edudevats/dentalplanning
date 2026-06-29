@@ -1,8 +1,17 @@
-"""Zona horaria de México para fechas del CFDI (SAT)."""
-from datetime import datetime
-from zoneinfo import ZoneInfo
+"""Zona horaria de México para fechas del CFDI (SAT).
 
-MEXICO_TIMEZONE = ZoneInfo("America/Mexico_City")
+Usamos un offset FIJO de UTC-6 en lugar de ZoneInfo("America/Mexico_City"):
+la Ciudad de México dejó de observar horario de verano (DST) en octubre de 2022
+y es UTC-6 (CST) todo el año. Si el servidor de despliegue tuviera una versión
+desactualizada de tzdata, ZoneInfo aplicaría DST en verano y la Fecha del CFDI
+saldría 1 hora en el futuro, y el SAT/Finkok la rechaza
+("401 - Fecha y hora de generación fuera de rango"). El offset fijo elimina esa
+dependencia del sistema operativo.
+"""
+from datetime import datetime, timezone, timedelta
+
+# Horario del Centro de México (CST): UTC-6 fijo, sin DST desde 2022.
+MEXICO_TIMEZONE = timezone(timedelta(hours=-6))
 
 
 def now_mexico():
