@@ -190,7 +190,8 @@ def timbrar_ticket(ticket, receptor):
 
     Lanza TimbradoError ante reglas de negocio o fallo del PAC (deja estado='error').
     """
-    if ticket.estado != TICKET_SIN_TIMBRAR:
+    # 'error' es re-intentable: un timbrado fallido no deja la factura emitida.
+    if ticket.estado not in (TICKET_SIN_TIMBRAR, TICKET_ERROR):
         raise TimbradoError("El ticket ya fue timbrado o cancelado.")
     if _ventana_vencida(ticket):
         raise TimbradoError("La ventana de facturación de este ticket ya venció.")

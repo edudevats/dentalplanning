@@ -31,6 +31,7 @@ class TicketSchema(Schema):
     receptor_nombre = fields.Str(dump_only=True)
     uuid = fields.Str(dump_only=True)
     email = fields.Str(dump_only=True)
+    error_timbrado = fields.Str(dump_only=True, allow_none=True)
     created_at = fields.DateTime(dump_only=True)
 
 

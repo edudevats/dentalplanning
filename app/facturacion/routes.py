@@ -149,6 +149,25 @@ def regenerar_print_agent_key():
     return jsonify({"api_key": nueva})
 
 
+# ── CATÁLOGOS SAT (autocompletado) ──
+
+@facturacion_bp.route("/catalogos/<tipo>/buscar", methods=["GET"])
+@require_auth
+def buscar_catalogo(tipo):
+    """Autocompletado de catálogos SAT (Régimen / ClaveProdServ / ClaveUnidad).
+
+    tipo ∈ {regimenes, productos, unidades}. Devuelve [{code, description}].
+    """
+    from app.facturacion.catalogos import buscar, CATALOGS
+    if tipo not in CATALOGS:
+        return jsonify({"error": "Catálogo no válido"}), 404
+    try:
+        limit = min(max(int(request.args.get("limit", 50)), 1), 100)
+    except (TypeError, ValueError):
+        limit = 50
+    return jsonify(buscar(tipo, request.args.get("q", ""), limit))
+
+
 # ── SUCURSALES ──
 
 @facturacion_bp.route("/sucursales", methods=["GET"])
@@ -190,6 +209,21 @@ def eliminar_sucursal(sucursal_id):
     suc = Sucursal.query.filter_by(
         id=sucursal_id, tenant_id=g.tenant_id
     ).first_or_404()
+    # Check for related tickets (FK NOT NULL → would cause integrity error)
+    ticket_count = Ticket.query.filter_by(sucursal_id=suc.id).count()
+    if ticket_count > 0:
+        return jsonify({
+            "error": f"No se puede eliminar: la sucursal tiene {ticket_count} ticket(s) asociado(s). "
+                     "Puedes desactivarla en su lugar."
+        }), 409
+    # Check for related ingresos (FK NULLABLE but still a reference)
+    from app.edr.models import Ingreso
+    ingreso_count = Ingreso.query.filter_by(sucursal_id=suc.id).count()
+    if ingreso_count > 0:
+        return jsonify({
+            "error": f"No se puede eliminar: la sucursal tiene {ingreso_count} ingreso(s) asociado(s). "
+                     "Puedes desactivarla en su lugar."
+        }), 409
     db.session.delete(suc)
     db.session.commit()
     return jsonify({"message": "Sucursal eliminada"})

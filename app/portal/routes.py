@@ -3,7 +3,13 @@ from flask import Blueprint, request, jsonify, render_template, abort, Response
 from marshmallow import ValidationError
 
 from app.auth.models import Tenant
-from app.facturacion.models import Ticket, ConfiguracionFiscal, TICKET_SIN_TIMBRAR
+from app.facturacion.models import (
+    Ticket, ConfiguracionFiscal, TICKET_SIN_TIMBRAR, TICKET_ERROR,
+)
+
+# Estados desde los que el cliente todavía puede (re)facturar: nunca se emitió
+# un CFDI vigente. 'error' es un intento fallido, así que se permite reintentar.
+REFACTURABLE = (TICKET_SIN_TIMBRAR, TICKET_ERROR)
 from app.facturacion.schemas import ReceptorSchema
 from app.facturacion.cfdi import (
     _ventana_vencida, _conceptos_cfdi, timbrar_ticket, TimbradoError,
@@ -104,7 +110,7 @@ def portal_buscar(slug):
     t = _resolver_ticket(tenant, request.get_json() or {})
     if not t:
         return jsonify({"error": "No encontramos ese ticket. Verifica los datos."}), 404
-    if t.estado != TICKET_SIN_TIMBRAR:
+    if t.estado not in REFACTURABLE:
         return jsonify({"ya_facturado": True, "estado": t.estado,
                         "folio": t.folio_display,
                         "mensaje": "Este ticket ya fue facturado."}), 200
@@ -130,7 +136,7 @@ def portal_facturar(slug):
     t = _resolver_ticket(tenant, data)
     if not t:
         return jsonify({"error": "No encontramos ese ticket."}), 404
-    if t.estado != TICKET_SIN_TIMBRAR:
+    if t.estado not in REFACTURABLE:
         return jsonify({"error": "Este ticket ya fue facturado."}), 400
 
     try:
