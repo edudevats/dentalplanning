@@ -155,18 +155,27 @@ class CFDIGenerator:
             if not conceptos:
                 raise ValueError("Debe proporcionar al menos un concepto")
 
+            # Obtener el huso horario correcto según el código postal (LugarExpedicion)
+            from satcfdi.create.cfd.cfdi40 import get_timezone
+            try:
+                tz = get_timezone(lugar_expedicion)
+            except Exception:
+                from app.facturacion.timezone_helper import MEXICO_TIMEZONE
+                tz = MEXICO_TIMEZONE
+
             if not fecha:
                 from datetime import timedelta
-                # Restamos 5 minutos como margen de seguridad para evitar desfases de reloj
-                # con el SAT (que rechaza inmediatamente si la hora está en el futuro).
-                fecha = now_mexico() - timedelta(minutes=5)
-            # El CFDI 4.0 exige Fecha en hora local SIN offset de zona. satcfdi la
-            # serializa con isoformat(); un datetime con tzinfo emitiría "...-06:00"
-            # y el SAT lo rechaza (CFDI40101). La dejamos naive en hora de México.
-            fecha = to_mexico_time(fecha).replace(tzinfo=None)
+                # Obtenemos la hora actual en la zona horaria del código postal de expedición
+                # y restamos 5 minutos para evitar desfases de reloj (tolerancia del SAT).
+                fecha = datetime.now(tz) - timedelta(minutes=5)
+
+            # Si es aware, convertir al huso de la sucursal. Si es naive, conservar como está.
+            if fecha.tzinfo is not None:
+                fecha = fecha.astimezone(tz).replace(tzinfo=None)
+
             logger.info(
-                "CFDI Fecha (naive MX): %s | now_mexico(): %s",
-                fecha.isoformat(), now_mexico().isoformat(),
+                "CFDI Fecha (naive CP %s): %s | now_mexico(): %s",
+                lugar_expedicion, fecha.isoformat(), now_mexico().isoformat(),
             )
 
             # Obtener firmante
