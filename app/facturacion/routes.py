@@ -1,6 +1,8 @@
 import calendar
 import secrets
+from io import BytesIO
 from datetime import date
+from PIL import Image, UnidentifiedImageError
 from flask import Blueprint, request, jsonify, g, current_app
 from sqlalchemy.orm import joinedload
 from app.extensions import db
@@ -110,6 +112,28 @@ def subir_fiel():
     return jsonify(ConfiguracionFiscalSchema().dump(cfg))
 
 
+# Procesamiento del logo al subir: normalizamos a un tamaño/formato controlado
+# para que siempre quede chico (sin riesgo de truncado en BD) y se vea consistente.
+LOGO_MAX_PX = 512          # lado mayor; suficiente para mostrarlo a 80-220px (incl. retina)
+LOGO_MAX_UPLOAD = 8 * 1024 * 1024  # tope del archivo de entrada (8MB) antes de decodificar
+
+
+def _procesar_logo(raw):
+    """Valida que sea imagen, la reescala a LOGO_MAX_PX y la devuelve como PNG.
+    Conserva la transparencia. Lanza ValueError si no es una imagen válida."""
+    try:
+        img = Image.open(BytesIO(raw))
+        img.load()  # fuerza el decode real → valida que no esté corrupta
+    except (UnidentifiedImageError, OSError, ValueError):
+        raise ValueError("archivo no es una imagen válida")
+    # Conserva canal alfa si lo tiene; si no, RGB plano
+    img = img.convert("RGBA" if img.mode in ("RGBA", "LA", "P") else "RGB")
+    img.thumbnail((LOGO_MAX_PX, LOGO_MAX_PX), Image.LANCZOS)  # mantiene proporción
+    out = BytesIO()
+    img.save(out, format="PNG", optimize=True)
+    return out.getvalue()
+
+
 @facturacion_bp.route("/configuracion/logo", methods=["POST"])
 @require_auth
 @require_role("admin")
@@ -117,8 +141,15 @@ def subir_logo():
     logo = request.files.get("logo")
     if not logo:
         return jsonify({"error": "Se requiere el archivo del logo"}), 400
+    raw = logo.read()
+    if len(raw) > LOGO_MAX_UPLOAD:
+        return jsonify({"error": "El logo no debe superar 8MB"}), 400
+    try:
+        procesado = _procesar_logo(raw)
+    except ValueError:
+        return jsonify({"error": "El archivo no es una imagen válida (usa PNG o JPG)"}), 400
     cfg = _get_or_create_config()
-    cfg.logo = logo.read()
+    cfg.logo = procesado
     db.session.commit()
     return jsonify({"message": "Logo actualizado"})
 
