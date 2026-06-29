@@ -231,6 +231,17 @@
               Subir logo
             </button>
           </form>
+
+          <!-- Vista previa de cómo se guarda el logo (bytes reales almacenados) -->
+          <div id="logo-preview-wrap" class="hidden mt-4 pt-4 border-t border-border">
+            <p class="text-xs font-semibold text-text-muted font-body mb-2">Así se guardó (vista previa):</p>
+            <div class="flex items-center gap-4">
+              <div class="flex items-center justify-center bg-gray-50 border border-border rounded-lg p-2" style="width:120px;height:90px;">
+                <img id="logo-preview" alt="logo" class="max-h-full max-w-full object-contain" />
+              </div>
+              <p id="logo-meta" class="text-xs text-text-muted font-body"></p>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -1336,6 +1347,34 @@
     Toast.success('FIEL subida correctamente');
   });
 
+  // Vista previa del logo realmente almacenado (bytes de la BD), con dimensiones y peso.
+  async function cargarLogoPreview() {
+    const wrap = document.getElementById('logo-preview-wrap');
+    const img = document.getElementById('logo-preview');
+    const meta = document.getElementById('logo-meta');
+    if (!wrap) return;
+    try {
+      const token = Auth.getToken();
+      const resp = await fetch('/api/v1/facturacion/configuracion/logo', {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        cache: 'no-store',
+      });
+      if (!resp.ok) { wrap.classList.add('hidden'); return; }
+      const blob = await resp.blob();
+      const url = URL.createObjectURL(blob);
+      img.onload = () => {
+        const kb = (blob.size / 1024).toFixed(1);
+        const tipo = (blob.type || '').split('/')[1]?.toUpperCase() || 'IMG';
+        meta.textContent = `${tipo} · ${img.naturalWidth}×${img.naturalHeight}px · ${kb} KB`;
+        URL.revokeObjectURL(url);
+      };
+      img.src = url;
+      wrap.classList.remove('hidden');
+    } catch (_) {
+      wrap.classList.add('hidden');
+    }
+  }
+
   document.getElementById('form-logo').addEventListener('submit', async (e) => {
     e.preventDefault();
     try {
@@ -1347,6 +1386,8 @@
       });
       if (resp.ok) {
         Toast.success('Logo actualizado');
+        e.target.reset();
+        cargarLogoPreview();  // refresca la vista previa con lo recién guardado
       } else {
         const data = await resp.json().catch(() => ({}));
         Toast.error(data.error || 'Error al subir logo');
@@ -1355,6 +1396,8 @@
       Toast.error(err.message || 'Error al subir logo');
     }
   });
+
+  cargarLogoPreview();  // al abrir Ajustes, muestra el logo actual si existe
 
   document.querySelectorAll('.nat-opt').forEach(btn => btn.addEventListener('click', async () => {
     try {

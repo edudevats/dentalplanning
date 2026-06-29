@@ -154,6 +154,22 @@ def subir_logo():
     return jsonify({"message": "Logo actualizado"})
 
 
+@facturacion_bp.route("/configuracion/logo", methods=["GET"])
+@require_auth
+@require_role("admin")
+def ver_logo():
+    """Devuelve el logo guardado (para la vista previa en Ajustes). 404 si no hay."""
+    from flask import Response
+    cfg = ConfiguracionFiscal.query.filter_by(tenant_id=g.tenant_id).first()
+    if not cfg or not cfg.logo:
+        return jsonify({"error": "Sin logo"}), 404
+    data = bytes(cfg.logo)
+    mime = "image/png" if data[:8].startswith(b"\x89PNG") else "application/octet-stream"
+    resp = Response(data, mimetype=mime)
+    resp.headers["Cache-Control"] = "no-store"  # siempre muestra el actual
+    return resp
+
+
 # ── AGENTE DE IMPRESIÓN (API key por tenant) ──
 
 @facturacion_bp.route("/print-agent/key", methods=["GET"])
