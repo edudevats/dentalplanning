@@ -159,6 +159,14 @@
               <div data-cat-dropdown class="hidden absolute z-30 top-full left-0 right-0 mt-1 max-h-60 overflow-auto bg-surface border border-border rounded-lg shadow-lg text-sm"></div>
               <p data-cat-desc class="text-xs text-text-muted font-body min-h-[1rem]"></p>
             </div>
+            <div class="flex flex-col gap-1 md:col-span-2">
+              <label class="text-xs font-semibold text-text-muted font-body">Naturaleza jurídica (define cómo se cobra el IVA)</label>
+              <select name="naturaleza_juridica" class="border border-border rounded-lg px-3 py-2 text-sm font-body bg-surface focus:ring-2 focus:ring-primary-300 focus:border-primary-500 outline-none">
+                <option value="moral_mercantil">Persona Moral Mercantil (S.A., S. de R.L., S.A.P.I.) — grava 16% en todo</option>
+                <option value="fisica_o_civil">Persona Física o Moral Civil (S.C.) — exento en clínicos, 16% en estéticos</option>
+              </select>
+              <p class="text-xs text-text-muted font-body">Cámbiala aquí si la elegiste mal al configurar. Afecta el IVA de las próximas facturas.</p>
+            </div>
             <div class="md:col-span-2">
               <button type="submit" class="inline-flex items-center justify-center gap-2 rounded-lg font-medium font-body cursor-pointer bg-primary-500 hover:bg-primary-600 text-white px-4 py-2 text-sm min-h-[38px]">
                 Guardar datos fiscales
@@ -1179,7 +1187,7 @@
     try {
       const cfg = await API.get('/facturacion/configuracion');
       const form = document.getElementById('form-config');
-      for (const k of ['rfc', 'razon_social', 'regimen_fiscal', 'clave_prod_serv_default', 'clave_unidad_default']) {
+      for (const k of ['rfc', 'razon_social', 'regimen_fiscal', 'clave_prod_serv_default', 'clave_unidad_default', 'naturaleza_juridica']) {
         const el = form.querySelector(`[name=${k}]`);
         if (el && cfg[k] != null) el.value = cfg[k];
       }
