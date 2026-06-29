@@ -29,6 +29,7 @@ class Config:
     SMTP_PASS = os.getenv("SMTP_PASS", "")
     SMTP_FROM = os.getenv("SMTP_FROM", "alertas@dentalplanning.mx")
     SMTP_USE_TLS = os.getenv("SMTP_USE_TLS", "true").lower() in ("true", "1", "yes")
+    SMTP_USE_SSL = os.getenv("SMTP_USE_SSL", "false").lower() in ("true", "1", "yes")
     BILLING_GRACE_DAYS = int(os.getenv("BILLING_GRACE_DAYS", "3"))
     # Llave maestra (Fernet) para cifrar secretos del CSD. NUNCA en el repo ni en la BD.
     FACTURACION_FERNET_KEY = os.getenv("FACTURACION_FERNET_KEY", "")

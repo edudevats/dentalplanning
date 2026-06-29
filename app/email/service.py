@@ -23,6 +23,7 @@ def send_email(to_address, subject, html_body, text_body=None):
     password = cfg.get("SMTP_PASS", "")
     from_addr = cfg.get("SMTP_FROM", "no-reply@dentalplanning.mx")
     use_tls = cfg.get("SMTP_USE_TLS", True)
+    use_ssl = cfg.get("SMTP_USE_SSL", False) or port == 465
 
     msg = MIMEMultipart("alternative")
     msg["Subject"] = subject
@@ -33,11 +34,16 @@ def send_email(to_address, subject, html_body, text_body=None):
     msg.attach(MIMEText(html_body, "html", "utf-8"))
 
     try:
-        with smtplib.SMTP(host, port, timeout=20) as server:
-            server.ehlo()
+        if use_ssl:
+            server_conn = smtplib.SMTP_SSL(host, port, timeout=20)
+        else:
+            server_conn = smtplib.SMTP(host, port, timeout=20)
+            server_conn.ehlo()
             if use_tls:
-                server.starttls()
-                server.ehlo()
+                server_conn.starttls()
+                server_conn.ehlo()
+
+        with server_conn as server:
             if user and password:
                 server.login(user, password)
             server.sendmail(from_addr, [to_address], msg.as_string())
@@ -67,6 +73,7 @@ def send_email_with_attachments(to_address, subject, html_body, attachments,
     password = cfg.get("SMTP_PASS", "")
     from_addr = cfg.get("SMTP_FROM", "no-reply@dentalplanning.mx")
     use_tls = cfg.get("SMTP_USE_TLS", True)
+    use_ssl = cfg.get("SMTP_USE_SSL", False) or port == 465
 
     msg = MIMEMultipart("mixed")
     msg["Subject"] = subject
@@ -86,11 +93,16 @@ def send_email_with_attachments(to_address, subject, html_body, attachments,
         msg.attach(part)
 
     try:
-        with smtplib.SMTP(host, port, timeout=20) as server:
-            server.ehlo()
+        if use_ssl:
+            server_conn = smtplib.SMTP_SSL(host, port, timeout=20)
+        else:
+            server_conn = smtplib.SMTP(host, port, timeout=20)
+            server_conn.ehlo()
             if use_tls:
-                server.starttls()
-                server.ehlo()
+                server_conn.starttls()
+                server_conn.ehlo()
+
+        with server_conn as server:
             if user and password:
                 server.login(user, password)
             server.sendmail(from_addr, [to_address], msg.as_string())

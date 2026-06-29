@@ -113,6 +113,21 @@
   </div>
 </div>
 
+<div id="modal-reenviar" class="hidden fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+  <div class="bg-surface rounded-2xl shadow-xl w-full max-w-md p-5">
+    <h3 class="text-base font-semibold mb-3">Reenviar factura por correo</h3>
+    <p class="text-xs text-text-muted mb-3">Introduce la dirección de correo a la que deseas reenviar los archivos de la factura (PDF y XML).</p>
+    <div class="space-y-2">
+      <input id="re-email" type="email" placeholder="Correo" class="w-full border border-border rounded-lg px-3 py-2 text-sm" />
+    </div>
+    <div class="flex justify-end gap-2 mt-4">
+      <button onclick="document.getElementById('modal-reenviar').classList.add('hidden')" class="px-4 py-2 text-sm border border-border rounded-lg">Cancelar</button>
+      <button id="re-enviar" class="px-4 py-2 text-sm bg-primary-500 text-white rounded-lg font-semibold">Reenviar</button>
+    </div>
+  </div>
+</div>
+
+
 <div id="modal-error" class="hidden fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
   <div class="bg-surface rounded-2xl shadow-xl w-full max-w-md p-5">
     <div class="flex items-center gap-2 mb-3">
@@ -265,6 +280,9 @@ async function cargarTickets() {
       const lbl = t.estado === 'error' ? 'Reintentar' : 'Facturar';
       acciones += ` · <button data-facturar="${t.id}" class="text-primary-600 hover:text-primary-700 font-semibold text-sm cursor-pointer">${lbl}</button>`;
     } else if (t.estado === 'timbrada' || t.estado === 'en_proceso_cancelacion') {
+      if (t.estado === 'timbrada') {
+        acciones += ` · <button data-reenviar="${t.id}" class="text-primary-600 hover:text-primary-700 font-semibold text-sm cursor-pointer">Reenviar</button>`;
+      }
       acciones += ` · <button data-cancelar="${t.id}" class="text-danger-600 hover:text-danger-700 font-semibold text-sm cursor-pointer">Cancelar</button>`;
     }
     // Icono de alerta junto al estado para ver el detalle del error
@@ -286,6 +304,7 @@ async function cargarTickets() {
     const bR = tr.querySelector('button[data-reprint]'); if (bR) bR.addEventListener('click', () => reimprimirTicket(t.id));
     const bF = tr.querySelector('button[data-facturar]'); if (bF) bF.addEventListener('click', () => abrirFacturar(t.id));
     const bC = tr.querySelector('button[data-cancelar]'); if (bC) bC.addEventListener('click', () => abrirCancelar(t.id));
+    const bRe = tr.querySelector('button[data-reenviar]'); if (bRe) bRe.addEventListener('click', () => abrirReenviar(t.id, t.email));
     const bV = tr.querySelector('button[data-ver]'); if (bV) bV.addEventListener('click', () => verTicket(t.id));
     const bE = tr.querySelector('button[data-error]'); if (bE) bE.addEventListener('click', () => verError(t.error_timbrado));
   }
@@ -295,9 +314,14 @@ async function cargarTickets() {
 document.getElementById('tk-mes').value = mesActualInput();
 document.getElementById('tk-mes').addEventListener('change', cargarTickets);
 
-let facturarId = null, cancelarId = null;
+let facturarId = null, cancelarId = null, reenviarId = null;
 function abrirFacturar(id){ facturarId = id; document.getElementById('modal-facturar').classList.remove('hidden'); }
 function abrirCancelar(id){ cancelarId = id; document.getElementById('modal-cancelar').classList.remove('hidden'); }
+function abrirReenviar(id, email){
+  reenviarId = id;
+  document.getElementById('re-email').value = email || '';
+  document.getElementById('modal-reenviar').classList.remove('hidden');
+}
 
 document.getElementById('cc-motivo').addEventListener('change', (e) => {
   document.getElementById('cc-sustitucion').classList.toggle('hidden', e.target.value !== '01');
@@ -330,6 +354,16 @@ document.getElementById('cc-enviar').addEventListener('click', async () => {
     document.getElementById('modal-cancelar').classList.add('hidden');
     cargarTickets();
   } catch (e) { Toast.error(e.message || 'Error al cancelar'); }
+});
+
+document.getElementById('re-enviar').addEventListener('click', async () => {
+  const email = document.getElementById('re-email').value.trim();
+  try {
+    await API.post('/facturacion/tickets/' + reenviarId + '/reenviar', { email });
+    Toast.success('Factura reenviada');
+    document.getElementById('modal-reenviar').classList.add('hidden');
+    cargarTickets();
+  } catch (e) { Toast.error(e.message || 'Error al reenviar'); }
 });
 
 // Initial load

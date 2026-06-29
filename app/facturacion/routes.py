@@ -396,3 +396,44 @@ def cancelar(ticket_id):
     except TimbradoError as e:
         return jsonify({"error": str(e)}), 400
     return jsonify(TicketSchema().dump(t))
+
+
+@facturacion_bp.route("/tickets/<int:ticket_id>/reenviar", methods=["POST"])
+@require_auth
+@require_role("admin", "recepcionista")
+def reenviar(ticket_id):
+    t = Ticket.query.filter_by(
+        id=ticket_id, tenant_id=g.tenant_id
+    ).first_or_404()
+    
+    if t.estado != TICKET_TIMBRADA:
+        return jsonify({"error": "Solo se pueden reenviar facturas timbradas."}), 400
+
+    data = request.get_json() or {}
+    dest_email = data.get("email") or t.email
+
+    if not dest_email:
+        return jsonify({"error": "Debe proporcionar una dirección de correo."}), 400
+
+    # Actualizar el correo en el ticket si cambió
+    if dest_email != t.email:
+        t.email = dest_email
+        db.session.commit()
+
+    cfg = ConfiguracionFiscal.query.filter_by(tenant_id=g.tenant_id).first()
+    if not cfg:
+        return jsonify({"error": "Configuración fiscal no encontrada."}), 400
+
+    try:
+        from app.facturacion.cfdi import generar_pdf_de_xml, enviar_factura_email
+        pdf = generar_pdf_de_xml(t.xml, logo=cfg.logo)
+        t.email_enviado = bool(enviar_factura_email(t, pdf, t.xml))
+        db.session.commit()
+        
+        if not t.email_enviado:
+            return jsonify({"error": "No se pudo enviar el correo. Verifique la configuración de SMTP."}), 500
+    except Exception as e:
+        return jsonify({"error": f"Error al reenviar factura: {str(e)}"}), 500
+
+    return jsonify(TicketSchema().dump(t))
+
