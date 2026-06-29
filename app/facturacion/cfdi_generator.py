@@ -161,6 +161,10 @@ class CFDIGenerator:
             # serializa con isoformat(); un datetime con tzinfo emitiría "...-06:00"
             # y el SAT lo rechaza (CFDI40101). La dejamos naive en hora de México.
             fecha = to_mexico_time(fecha).replace(tzinfo=None)
+            logger.info(
+                "CFDI Fecha (naive MX): %s | now_mexico(): %s",
+                fecha.isoformat(), now_mexico().isoformat(),
+            )
 
             # Obtener firmante
             signer = self._get_signer()
