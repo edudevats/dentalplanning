@@ -156,10 +156,7 @@ class CFDIGenerator:
                 raise ValueError("Debe proporcionar al menos un concepto")
 
             if not fecha:
-                from datetime import timedelta
-                # Restamos 3 minutos como margen de seguridad para evitar desfases de reloj
-                # con el SAT (que rechaza inmediatamente si la hora está en el futuro).
-                fecha = now_mexico() - timedelta(minutes=3)
+                fecha = now_mexico()
             # El CFDI 4.0 exige Fecha en hora local SIN offset de zona. satcfdi la
             # serializa con isoformat(); un datetime con tzinfo emitiría "...-06:00"
             # y el SAT lo rechaza (CFDI40101). La dejamos naive en hora de México.
