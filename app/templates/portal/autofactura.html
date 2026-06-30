@@ -122,6 +122,7 @@
 
 <script>
 const SLUG = {{ slug|tojson }};
+const LOGO_VER = {{ logo_ver|tojson }};
 const API = "/api/v1/portal/" + encodeURIComponent(SLUG);
 const params = new URLSearchParams(location.search);
 const TOKEN = params.get("t");
@@ -138,7 +139,7 @@ const money = (n) => "$" + Number(n||0).toLocaleString("es-MX",{minimumFractionD
   const zona = $("logo-zona");
   logo.addEventListener("load", () => { zona.classList.remove("hidden"); zona.classList.add("flex"); });
   logo.addEventListener("error", () => zona.remove());
-  logo.src = API + "/logo";
+  logo.src = API + "/logo" + (LOGO_VER ? "?v=" + LOGO_VER : "");
 })();
 
 function escapeHtml(s){return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}

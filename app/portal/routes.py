@@ -1,7 +1,9 @@
 """Portal público de autofacturación (sin login). Scope por slug del tenant."""
 from flask import Blueprint, request, jsonify, render_template, abort, Response
 from marshmallow import ValidationError
+from sqlalchemy import func
 
+from app.extensions import db
 from app.auth.models import Tenant
 from app.facturacion.models import (
     Ticket, ConfiguracionFiscal, TICKET_SIN_TIMBRAR, TICKET_ERROR,
@@ -74,8 +76,14 @@ def _resolver_ticket(tenant, data):
 @portal_bp.route("/<slug>")
 def portal_page(slug):
     tenant = _tenant_or_404(slug)
+    # Versión del logo (longitud en bytes, sin cargar el BLOB) para cache-busting:
+    # cambia cuando el consultorio sube otro logo, así el navegador no muestra el viejo.
+    logo_ver = db.session.query(
+        func.length(ConfiguracionFiscal.logo)
+    ).filter_by(tenant_id=tenant.id).scalar()
     return render_template("portal/autofactura.html",
-                           slug=slug, tenant_nombre=tenant.name)
+                           slug=slug, tenant_nombre=tenant.name,
+                           logo_ver=logo_ver or "")
 
 
 def _img_mime(data):
