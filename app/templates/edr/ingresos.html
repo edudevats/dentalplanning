@@ -104,6 +104,10 @@
             <label class="block text-sm font-medium text-text-secondary mb-1 font-body">Agregar a ticket (folio, opcional)</label>
             <input id="f-ticket-folio" type="number" placeholder="Nuevo ticket si se deja vacío" class="block w-full rounded-lg border border-border px-3 py-2.5 text-sm font-body min-h-[44px] bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-500" />
           </div>
+          <div class="sm:col-span-2">
+            <label class="block text-sm font-medium text-text-secondary mb-1 font-body">Comentarios</label>
+            <textarea id="f-comentarios" rows="3" placeholder="Notas u observaciones (opcional)" class="block w-full rounded-lg border border-border px-3 py-2.5 text-sm font-body text-text-primary placeholder:text-text-muted bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-500"></textarea>
+          </div>
         </div>
         <div class="flex justify-end gap-3 mt-6 pt-4 border-t border-border">
           <button type="button" onclick="Modal.close('modal-form')" class="inline-flex items-center justify-center gap-2 rounded-lg font-medium font-body cursor-pointer border border-border bg-surface hover:bg-surface-hover text-text-secondary px-4 py-2 text-sm min-h-[38px]">Cancelar</button>
@@ -253,6 +257,7 @@ function openCreate() {
   ['f-fecha','f-paciente','f-monto','f-com-ban','f-com-doc'].forEach(id => document.getElementById(id).value = '');
   document.getElementById('f-factura').checked = true;  // Factura ON por defecto
   document.getElementById('f-ticket-folio').value = '';
+  document.getElementById('f-comentarios').value = '';
   // Sucursal: si solo hay una, selecciónala
   const selSuc = document.getElementById('f-sucursal');
   selSuc.value = sucursales.length === 1 ? String(sucursales[0].id) : '';
@@ -287,6 +292,7 @@ function openEdit(row) {
   document.getElementById('f-estrategia').value = row.estrategia_id ? String(row.estrategia_id) : '';
   document.getElementById('f-sucursal').value = row.sucursal_id ? String(row.sucursal_id) : '';
   document.getElementById('f-ticket-folio').value = '';
+  document.getElementById('f-comentarios').value = row.comentarios || '';
   Modal.open('modal-form');
 }
 
@@ -324,6 +330,7 @@ async function handleSave() {
     estrategia_id: Number(document.getElementById('f-estrategia').value) || null,
     sucursal_id: sucursalId,
     ticket_folio: ticketFolio,
+    comentarios: document.getElementById('f-comentarios').value.trim() || null,
   };
   try {
     if (editingId) { await API.put('/edr/ingresos/' + editingId, payload); Toast.success('Ingreso actualizado'); }

@@ -7,7 +7,7 @@ from app.middleware.tenant import require_auth
 from app.edr.models import Ingreso, GastoOperativo, PagoDoctor
 from app.tratamientos.models import Tratamiento
 from app.configuracion.models import ConfigConsultorio
-from app.ajustes.models import DistribucionConfig, DistribucionCategoria, DIST_CATEGORIAS_DEFAULT
+from app.ajustes.models import DistribucionConfig, DistribucionCategoria, DIST_CATEGORIAS_DEFAULT, EstrategiaMarketing
 from app.engine.pricing_engine import generar_dashboard_ganancias
 # parse_mes y el Estado de Resultados canónico viven en el núcleo contable
 from app.engine.accounting import parse_mes as _parse_mes, estado_resultados, filtro_mes, reparto_iva
@@ -471,6 +471,59 @@ def marketing():
     ]
 
     return jsonify({"mes": f"{year}-{month:02d}", "por_estrategia": result})
+
+
+# ── MARKETING ANUAL (12 meses, apilado por estrategia) ──
+
+@dashboard_bp.route("/reportes/marketing/anual", methods=["GET"])
+@require_auth
+def marketing_anual():
+    year = request.args.get("year", date.today().year, type=int)
+    ini = date(year, 1, 1)
+    fin = date(year + 1, 1, 1)
+
+    # Una sola consulta agregada por (mes, estrategia). outerjoin para
+    # conservar ingresos sin estrategia (estrategia_id NULL).
+    rows = db.session.query(
+        extract("month", Ingreso.fecha).label("mes"),
+        EstrategiaMarketing.nombre.label("estrategia"),
+        func.count(Ingreso.id).label("cantidad"),
+        func.coalesce(func.sum(Ingreso.monto), 0).label("total"),
+    ).outerjoin(
+        EstrategiaMarketing, Ingreso.estrategia_id == EstrategiaMarketing.id
+    ).filter(
+        Ingreso.tenant_id == g.tenant_id,
+        Ingreso.fecha >= ini, Ingreso.fecha < fin,
+    ).group_by(
+        extract("month", Ingreso.fecha), EstrategiaMarketing.nombre
+    ).all()
+
+    # meses[mes][estrategia] = total ; totales[estrategia] = {cantidad, total}
+    meses_map = {m: {} for m in range(1, 13)}
+    totales = {}
+    for r in rows:
+        nombre = r.estrategia or "Sin estrategia"
+        mes = int(r.mes)
+        total = round(float(r.total), 2)
+        meses_map[mes][nombre] = round(meses_map[mes].get(nombre, 0) + total, 2)
+        if nombre not in totales:
+            totales[nombre] = {"cantidad": 0, "total": 0}
+        totales[nombre]["cantidad"] += int(r.cantidad)
+        totales[nombre]["total"] = round(totales[nombre]["total"] + total, 2)
+
+    totales_list = [
+        {"estrategia": k, "cantidad": v["cantidad"], "total": v["total"]}
+        for k, v in sorted(totales.items(), key=lambda x: -x[1]["total"])
+    ]
+    estrategias = [t["estrategia"] for t in totales_list]
+    meses = [{"mes": m, "por_estrategia": meses_map[m]} for m in range(1, 13)]
+
+    return jsonify({
+        "anio": year,
+        "estrategias": estrategias,
+        "meses": meses,
+        "totales": totales_list,
+    })
 
 
 # ── TRATAMIENTOS REALIZADOS (réplica hoja TRATAMIENTOS del EDR) ──
