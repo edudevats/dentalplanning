@@ -478,8 +478,11 @@ def reenviar(ticket_id):
         db.session.commit()
         
         if not t.email_enviado:
+            current_app.logger.error(
+                "Reenvío de factura del ticket %s: el correo no se envió (SMTP)", ticket_id)
             return jsonify({"error": "No se pudo enviar el correo. Verifique la configuración de SMTP."}), 500
     except Exception as e:
+        current_app.logger.exception("Error al reenviar factura del ticket %s", ticket_id)
         return jsonify({"error": f"Error al reenviar factura: {str(e)}"}), 500
 
     return jsonify(TicketSchema().dump(t))

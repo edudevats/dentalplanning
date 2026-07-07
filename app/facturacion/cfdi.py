@@ -209,6 +209,7 @@ def timbrar_ticket(ticket, receptor):
         cfdi_obj, xml_str = _generar_cfdi(ticket, receptor, cfg, signer)
         result = _timbrar(cfdi_obj)
     except Exception as e:  # noqa: BLE001
+        logger.exception("Falló el timbrado del ticket %s", ticket.id)
         ticket.estado = TICKET_ERROR
         ticket.error_timbrado = str(e)[:500]
         db.session.commit()
@@ -218,6 +219,8 @@ def timbrar_ticket(ticket, receptor):
         ticket.estado = TICKET_ERROR
         ticket.error_timbrado = (result.get("message") or "Error de timbrado")[:500]
         db.session.commit()
+        logger.error("PAC rechazó el timbrado del ticket %s: %s",
+                     ticket.id, ticket.error_timbrado)
         raise TimbradoError(ticket.error_timbrado)
 
     xml_timbrado = result.get("xml") or xml_str
@@ -245,8 +248,8 @@ def timbrar_ticket(ticket, receptor):
         pdf = result.get("pdf") or generar_pdf_de_xml(xml_timbrado, logo=cfg.logo)
         ticket.email_enviado = bool(enviar_factura_email(ticket, pdf, xml_timbrado))
         db.session.commit()
-    except Exception as e:  # noqa: BLE001
-        logger.error("Factura timbrada %s pero falló PDF/correo: %s", ticket.uuid, e)
+    except Exception:  # noqa: BLE001
+        logger.exception("Factura timbrada %s pero falló PDF/correo", ticket.uuid)
         ticket.email_enviado = False
         db.session.commit()
 
@@ -279,9 +282,13 @@ def cancelar_ticket(ticket, motivo, uuid_sustitucion=None):
         )
         result = svc.cancelar_factura(ticket.xml, motivo, uuid_sustitucion)
     except Exception as e:  # noqa: BLE001
+        logger.exception("Falló la cancelación del ticket %s (uuid=%s)",
+                         ticket.id, ticket.uuid)
         raise TimbradoError(f"Falló la cancelación: {e}")
 
     if not result.get("success"):
+        logger.error("PAC rechazó la cancelación del ticket %s (uuid=%s): %s",
+                     ticket.id, ticket.uuid, result.get("message"))
         raise TimbradoError(result.get("message") or "Error al cancelar")
 
     ticket.estado = TICKET_CANCELADA
