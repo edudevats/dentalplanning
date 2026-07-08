@@ -99,6 +99,13 @@ const Auth = {
 };
 
 // ── API Client ────────────────────────────────────────────────────────────────
+// Modo mentoría: si la página se abrió con ?as_tenant=<id> (solo superadmin),
+// cada GET propaga el parámetro para leer los datos de esa clínica.
+const AS_TENANT = (() => {
+  const v = new URLSearchParams(window.location.search).get('as_tenant');
+  return v && /^\d+$/.test(v) ? v : null;
+})();
+
 const API = {
   async request(url, options = {}, _retry = true) {
     const token = Auth.getToken();
@@ -108,7 +115,12 @@ const API = {
       ...(options.headers || {}),
     };
 
-    const res = await fetch('/api/v1' + url, { ...options, headers });
+    const method = (options.method || 'GET').toUpperCase();
+    let finalUrl = url;
+    if (AS_TENANT && method === 'GET') {
+      finalUrl += (finalUrl.includes('?') ? '&' : '?') + 'as_tenant=' + AS_TENANT;
+    }
+    const res = await fetch('/api/v1' + finalUrl, { ...options, headers });
 
     // Un 401 de /auth/login o /auth/refresh es un error de credenciales que el
     // llamador debe manejar; no es una sesión expirada. El resto de los 401 sí
@@ -927,3 +939,32 @@ function populateSelect(el, options, selectedVal, placeholder) {
     el.appendChild(opt);
   });
 }
+
+// ── Modo mentoría (superadmin viendo reportes de una clínica) ────────────────
+(function () {
+  if (!AS_TENANT) return;
+  document.addEventListener('DOMContentLoaded', async () => {
+    // Los links de reportes del sidebar conservan el contexto as_tenant
+    document.querySelectorAll('a[data-nav-path^="/reportes/"]').forEach(a => {
+      const href = a.getAttribute('href');
+      a.href = href + (href.includes('?') ? '&' : '?') + 'as_tenant=' + AS_TENANT;
+    });
+
+    if (!window.location.pathname.startsWith('/reportes/')) return;
+
+    let nombre = 'clínica #' + AS_TENANT;
+    try {
+      const t = await API.get('/superadmin/tenants/' + AS_TENANT);
+      if (t && t.name) nombre = t.name;
+    } catch (e) {
+      // Sin permiso o tenant inexistente: se deja el id como etiqueta
+    }
+    const bar = document.createElement('div');
+    bar.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:100;' +
+      'background:#b45309;color:#fff;text-align:center;font-size:13px;' +
+      'font-weight:600;padding:6px 12px;';
+    bar.textContent = 'Modo mentoría — viendo reportes de ' + nombre + ' (solo lectura)';
+    document.body.prepend(bar);
+    document.body.style.paddingTop = '32px';
+  });
+})();

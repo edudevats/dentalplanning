@@ -63,6 +63,10 @@
       actions.appendChild(headerBtn('Reactivar', 'play', 'primary', onActivate));
     }
 
+    actions.appendChild(headerBtn('Ver reportes', 'bar-chart-3', 'neutral', () => {
+      window.open(`/reportes/resumen?as_tenant=${tenantId}`, '_blank');
+    }));
+
     if (typeof lucide !== 'undefined') lucide.createIcons();
   }
 

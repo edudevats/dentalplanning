@@ -67,6 +67,16 @@ def require_auth(f):
         if user.is_superuser:
             g.current_user = user
             g.tenant_id = user.tenant_id
+            # Modo mentoría: un superadmin puede LEER datos de otra clínica con
+            # ?as_tenant=<id> (o header X-As-Tenant). Restringido a GET como
+            # señal de intención de lectura — OJO: no es garantía dura de "sin
+            # escrituras" (algunos GET hacen lazy-create, p.ej.
+            # /facturacion/configuracion crea la config si no existe).
+            if request.method == "GET":
+                override = (request.args.get("as_tenant")
+                            or request.headers.get("X-As-Tenant", ""))
+                if override and override.isascii() and override.isdigit():
+                    g.tenant_id = int(override)
             return f(*args, **kwargs)
         if not user.is_active:
             return jsonify({"error": "Usuario deshabilitado"}), 403
