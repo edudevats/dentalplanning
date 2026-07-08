@@ -1,3 +1,4 @@
+import base64
 import calendar
 import secrets
 from io import BytesIO
@@ -132,6 +133,14 @@ def _procesar_logo(raw):
     out = BytesIO()
     img.save(out, format="PNG", optimize=True)
     return out.getvalue()
+
+
+def _logo_b64(cfg):
+    """Logo del consultorio como base64 (PNG) para enviarlo al agente de impresión.
+    Devuelve None si no hay logo; el agente térmico lo pinta arriba del nombre."""
+    if not cfg or not cfg.logo:
+        return None
+    return base64.b64encode(bytes(cfg.logo)).decode("ascii")
 
 
 @facturacion_bp.route("/configuracion/logo", methods=["POST"])
@@ -366,6 +375,7 @@ def ticket_impresion(ticket_id):
     facturable_hasta = date(t.fecha.year, t.fecha.month, ultimo) + timedelta(days=3)
 
     return jsonify({
+        "logo": _logo_b64(cfg),
         "empresa": (cfg.razon_social if cfg and cfg.razon_social else (tenant.name if tenant else "")),
         "rfc": cfg.rfc if cfg else None,
         "regimen": cfg.regimen_fiscal if cfg else None,
@@ -404,6 +414,7 @@ def ticket_simple(ingreso_id):
         ).first()
     return jsonify({
         "facturable": False,
+        "logo": _logo_b64(cfg),
         "empresa": empresa,
         "sucursal": suc.nombre if suc else None,
         "direccion": suc.direccion if suc else None,
