@@ -225,8 +225,12 @@ function renderTable_() {
     { key: 'estrategia_id', label: 'Estrategia', render: v => findName(estrategias, v) },
     { key: 'id', label: '', align: 'right', render: (_, row) => {
       const div = domEl('div', 'flex items-center justify-end gap-1');
+      const pBtn = domEl('button', 'rounded-lg p-1.5 text-text-muted hover:bg-primary-50 hover:text-primary-700 transition-colors cursor-pointer');
+      pBtn.type = 'button'; pBtn.title = 'Reimprimir ticket'; pBtn.appendChild(domIcon('printer'));
+      pBtn.addEventListener('click', () => row.ticket_id ? imprimirTicket(row.ticket_id) : imprimirSimple(row.id));
+      div.appendChild(pBtn);
       const eBtn = domEl('button', 'rounded-lg p-1.5 text-text-muted hover:bg-primary-50 hover:text-primary-700 transition-colors cursor-pointer');
-      eBtn.type = 'button'; eBtn.appendChild(domIcon('pencil')); eBtn.addEventListener('click', () => openEdit(row));
+      eBtn.type = 'button'; eBtn.title = 'Editar'; eBtn.appendChild(domIcon('pencil')); eBtn.addEventListener('click', () => openEdit(row));
       div.appendChild(eBtn);
       if (window.__userRole !== 'recepcionista') {
         const dBtn = domEl('button', 'rounded-lg p-1.5 text-text-muted hover:bg-danger-50 hover:text-danger-600 transition-colors cursor-pointer');
