@@ -10,6 +10,9 @@
   <style>
     /* 16px en los campos evita el zoom automático de iOS al enfocar */
     input, select { font-size: 16px; }
+    .fx-spinner{width:44px;height:44px;border:4px solid #dbeafe;border-top-color:#2563eb;border-radius:9999px;animation:fx-spin .8s linear infinite;margin:0 auto;}
+    @keyframes fx-spin{to{transform:rotate(360deg)}}
+    .fux-invalid{border-color:#ef4444 !important;box-shadow:0 0 0 1px #ef4444;}
     /* Respeta el área segura (notch) en móviles */
     body { padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
   </style>
@@ -65,16 +68,19 @@
           <label class="block text-sm font-medium text-gray-600 mb-1">RFC</label>
           <input id="f-rfc" autocomplete="off" autocapitalize="characters" spellcheck="false"
             class="w-full border border-gray-300 rounded-xl px-4 py-3 uppercase outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+          <p id="err-rfc" class="text-xs text-red-600 mt-1 hidden"></p>
         </div>
         <div>
           <label class="block text-sm font-medium text-gray-600 mb-1">Nombre / Razón social</label>
           <input id="f-nombre"
             class="w-full border border-gray-300 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+          <p id="err-nombre" class="text-xs text-red-600 mt-1 hidden"></p>
         </div>
         <div>
           <label class="block text-sm font-medium text-gray-600 mb-1">Código postal</label>
           <input id="f-cp" inputmode="numeric" maxlength="5"
             class="w-full border border-gray-300 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+          <p id="err-cp" class="text-xs text-red-600 mt-1 hidden"></p>
         </div>
         <div>
           <label class="block text-sm font-medium text-gray-600 mb-1">Régimen fiscal</label>
@@ -101,12 +107,13 @@
           <label class="block text-sm font-medium text-gray-600 mb-1">Correo (recibirás tu factura)</label>
           <input id="f-email" type="email" inputmode="email" autocapitalize="off" spellcheck="false"
             class="w-full border border-gray-300 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+          <p id="err-email" class="text-xs text-red-600 mt-1 hidden"></p>
         </div>
         <button id="btn-facturar"
           class="w-full bg-blue-600 active:bg-blue-700 hover:bg-blue-700 text-white font-semibold rounded-xl py-3.5 text-base transition-colors disabled:opacity-60">
           Generar factura
         </button>
-        <p id="facturar-error" class="text-sm text-red-600 hidden"></p>
+        <p id="facturar-error" class="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2 hidden"></p>
       </div>
 
       <!-- Paso 3: éxito -->
@@ -120,6 +127,14 @@
     <p class="text-center text-xs text-gray-400 mt-4">Powered by Dental Planning</p>
   </div>
 
+  <div id="fx-overlay" class="hidden fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl shadow-xl px-8 py-7 text-center max-w-xs w-full">
+      <div class="fx-spinner mb-4"></div>
+      <p id="fx-step" class="text-sm font-medium text-gray-700">Generando tu factura…</p>
+    </div>
+  </div>
+
+<script src="{{ url_for('static', filename='js/factura_ux.js') }}"></script>
 <script>
 const SLUG = {{ slug|tojson }};
 const LOGO_VER = {{ logo_ver|tojson }};
@@ -178,8 +193,17 @@ $("btn-buscar").addEventListener("click", async () => {
   catch (e) { $("buscar-error").textContent = e.message; show("buscar-error"); }
 });
 
+const PASOS_FACTURA = ["Validando datos…", "Timbrando ante el SAT…", "Enviando tu correo…"];
+const fieldMap = {
+  rfc: { input: $("f-rfc"), errorEl: $("err-rfc") },
+  nombre: { input: $("f-nombre"), errorEl: $("err-nombre") },
+  cp: { input: $("f-cp"), errorEl: $("err-cp") },
+  email: { input: $("f-email"), errorEl: $("err-email") },
+};
+
 $("btn-facturar").addEventListener("click", async () => {
-  $("facturar-error").classList.add("hidden");
+  FacturaUX.limpiar(fieldMap);
+  hide("facturar-error");
   const receptor = {
     rfc: $("f-rfc").value.trim().toUpperCase(),
     nombre: $("f-nombre").value.trim(),
@@ -188,19 +212,37 @@ $("btn-facturar").addEventListener("click", async () => {
     uso_cfdi: $("f-uso").value,
     email: $("f-email").value.trim(),
   };
-  $("btn-facturar").disabled = true; $("btn-facturar").textContent = "Generando...";
+  const v = FacturaUX.validar(receptor);
+  if (!v.ok) {
+    const resto = FacturaUX.marcarCampos(fieldMap, v.campos);
+    if (resto.length) { $("facturar-error").textContent = resto.join(" "); show("facturar-error"); }
+    return;
+  }
+
+  $("btn-facturar").disabled = true;
+  show("fx-overlay");
+  const stop = FacturaUX.progreso(PASOS_FACTURA, (txt) => { $("fx-step").textContent = txt; });
   try {
     const r = await fetch(API + "/facturar", {
       method: "POST", headers: {"Content-Type": "application/json"},
       body: JSON.stringify({...lookupPayload, receptor}),
     });
-    const data = await r.json();
-    if (!r.ok) throw new Error(data.error || "No se pudo generar la factura");
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) {
+      const n = FacturaUX.normalizarError(r.status, data);
+      const resto = FacturaUX.marcarCampos(fieldMap, n.campos);
+      const msg = [n.general].concat(resto).filter(Boolean).join(" ");
+      if (msg) { $("facturar-error").textContent = msg; show("facturar-error"); }
+      return;
+    }
     $("r-uuid").textContent = "UUID: " + (data.uuid || "");
     hide("paso-datos"); show("paso-exito");
   } catch (e) {
-    $("facturar-error").textContent = e.message; show("facturar-error");
-    $("btn-facturar").disabled = false; $("btn-facturar").textContent = "Generar factura";
+    $("facturar-error").textContent = "No se pudo conectar. Revisa tu internet e inténtalo de nuevo.";
+    show("facturar-error");
+  } finally {
+    stop(); hide("fx-overlay"); $("btn-facturar").disabled = false;
+    $("btn-facturar").textContent = "Generar factura";
   }
 });
 
