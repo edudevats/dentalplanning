@@ -13,7 +13,7 @@ import os
 import time
 import uuid
 from lxml import etree
-from app.facturacion.timezone_helper import now_mexico, to_mexico_time
+from app.facturacion.timezone_helper import now_mexico
 
 logger = logging.getLogger(__name__)
 
@@ -410,7 +410,8 @@ class CFDIGenerator:
             comprobante.sign(signer)
 
             # Generar XML - ahora incluye Sello y Certificado
-            from lxml import etree
+            # (etree se importa a nivel de módulo; reimportarlo aquí lo volvía local
+            # y el except de abajo daría UnboundLocalError si algo fallaba antes.)
             xml_element = comprobante.to_xml()
 
             # --- Manual Injection of Global Impuestos ---

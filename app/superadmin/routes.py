@@ -951,7 +951,7 @@ def sync_clip_payments():
     look up its subscription in Clip and reconcile invoice statuses.
     Used as a fallback when webhooks were missed.
     """
-    from app.clip.service import get_subscription, get_invoice
+    from app.clip.service import get_invoice
 
     pending = Payment.query.filter(
         Payment.metodo == "clip",
@@ -963,7 +963,6 @@ def sync_clip_payments():
     updated = []
     errors = []
     unchanged = 0
-    checked_subs = set()
 
     for p in pending:
         try:

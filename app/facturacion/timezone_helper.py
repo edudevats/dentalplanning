@@ -3,13 +3,7 @@ Timezone helper utilities for the SAT application.
 Ensures all datetime operations use Mexico City timezone.
 """
 from datetime import datetime
-import sys
-
-# Handle Python version compatibility for timezone support
-if sys.version_info >= (3, 9):
-    from zoneinfo import ZoneInfo
-else:
-    from backports.zoneinfo import ZoneInfo
+from zoneinfo import ZoneInfo
 
 
 # Mexico City timezone

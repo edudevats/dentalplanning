@@ -8,11 +8,8 @@ from satcfdi.pacs import Accept
 from satcfdi.pacs.sat import SAT
 from satcfdi.cfdi import CFDI
 from satcfdi.models import Signer
-from satcfdi.pacs import TaxpayerStatus
 import logging
-from typing import Optional, Dict, Any, Tuple
-from datetime import datetime, date
-import io
+from typing import Optional, Dict, Any
 import os
 import time
 import csv
@@ -335,7 +332,7 @@ class FacturacionService:
             logger.info("Probando conexión con Finkok")
 
             # Intentar inicializar el cliente
-            pac = self._get_finkok_client()
+            self._get_finkok_client()
 
             # Si llegamos aquí, las credenciales son válidas al menos en formato
             return {
