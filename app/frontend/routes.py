@@ -1,4 +1,4 @@
-from flask import render_template, redirect, url_for
+from flask import render_template, redirect, url_for, request
 from . import frontend_bp
 
 
@@ -158,6 +158,23 @@ def admin_tenants():
 @frontend_bp.route("/admin/tenants/<int:tenant_id>")
 def admin_tenant_detail(tenant_id):
     return render_template("admin/tenant_detail.html", tenant_id=tenant_id)
+
+
+@frontend_bp.route("/admin/tenants/<int:tenant_id>/reportes")
+def admin_tenant_reportes(tenant_id):
+    # Garantiza el contexto as_tenant en la URL para que app.js lo propague en cada GET
+    if request.args.get("as_tenant") != str(tenant_id):
+        return redirect(url_for("frontend.admin_tenant_reportes",
+                                tenant_id=tenant_id, as_tenant=tenant_id))
+    return render_template("admin/tenant_reportes.html", tenant_id=tenant_id)
+
+
+@frontend_bp.route("/admin/tenants/<int:tenant_id>/reportes/marketing")
+def admin_tenant_reportes_marketing(tenant_id):
+    if request.args.get("as_tenant") != str(tenant_id):
+        return redirect(url_for("frontend.admin_tenant_reportes_marketing",
+                                tenant_id=tenant_id, as_tenant=tenant_id))
+    return render_template("admin/tenant_reportes_marketing.html", tenant_id=tenant_id)
 
 
 @frontend_bp.route("/admin/pagos")

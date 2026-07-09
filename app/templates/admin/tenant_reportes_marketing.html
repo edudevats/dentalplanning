@@ -1,0 +1,31 @@
+{% extends "admin/_layout_admin.html" %}
+{% block title %}Marketing de clínica — Panel SaaS{% endblock %}
+{% block admin_title %}Reportes de clínica{% endblock %}
+{% block admin_content %}
+
+<div class="space-y-6" data-tenant-reportes="{{ tenant_id }}">
+
+  <a href="/admin/tenants/{{ tenant_id }}" class="inline-flex items-center gap-1.5 text-sm text-cs-on-surface-var hover:text-cs-on-surface transition-colors">
+    <i data-lucide="arrow-left" class="h-4 w-4"></i>
+    Volver a la clínica
+  </a>
+
+  <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+    <h1 id="tenant-reportes-title" class="font-cs-display text-2xl font-bold text-cs-on-surface tracking-tight">Clínica #{{ tenant_id }}</h1>
+    <div class="inline-flex items-center gap-1 bg-cs-surface-container rounded-lg p-1 w-fit">
+      <a href="/admin/tenants/{{ tenant_id }}/reportes?as_tenant={{ tenant_id }}"
+         class="px-4 py-1.5 rounded-md text-sm font-semibold text-cs-on-surface-var hover:text-cs-on-surface">Reportes</a>
+      <a href="/admin/tenants/{{ tenant_id }}/reportes/marketing?as_tenant={{ tenant_id }}"
+         class="px-4 py-1.5 rounded-md text-sm font-semibold bg-cs-surface-bright text-cs-on-surface shadow-sm">Marketing</a>
+    </div>
+  </div>
+
+  {% include "reportes/_marketing_body.html" %}
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+{% include "reportes/_marketing_scripts.html" %}
+<script src="/static/js/admin/admin_tenant_reportes.js"></script>
+{% endblock %}

@@ -1,0 +1,94 @@
+<div class="space-y-6">
+
+  <!-- Tab toggle -->
+  <div class="flex items-center gap-1 bg-surface-alt rounded-xl p-1 w-fit border border-border shadow-sm">
+    <button id="tab-mensual" onclick="switchTab('mensual')"
+      class="px-5 py-2 rounded-lg text-sm font-semibold font-body bg-surface shadow-sm text-text-primary border border-border transition-all">
+      Mensual
+    </button>
+    <button id="tab-anual" onclick="switchTab('anual')"
+      class="px-5 py-2 rounded-lg text-sm font-semibold font-body text-text-secondary hover:text-text-primary transition-all">
+      Anual
+    </button>
+  </div>
+
+  <!-- ════════════════ PANEL MENSUAL ════════════════ -->
+  <div id="panel-mensual" class="space-y-6">
+  <div class="flex flex-wrap gap-3 items-end">
+    <div class="w-40">
+      <label class="block text-sm font-medium text-text-secondary mb-1 font-body">Mes</label>
+      <select id="sel-month" class="block w-full rounded-lg border border-border px-3 py-2.5 text-sm font-body min-h-[44px] bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-500"></select>
+    </div>
+    <div class="w-28">
+      <label class="block text-sm font-medium text-text-secondary mb-1 font-body">Anio</label>
+      <select id="sel-year" class="block w-full rounded-lg border border-border px-3 py-2.5 text-sm font-body min-h-[44px] bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-500"></select>
+    </div>
+  </div>
+
+  <!-- Stats -->
+  <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+    <div class="bg-surface rounded-xl border border-border p-5 shadow-sm">
+      <div class="flex items-center justify-between">
+        <p class="text-sm font-medium text-text-secondary font-body">Estrategias Activas</p>
+        <div class="h-9 w-9 rounded-lg bg-primary-50 flex items-center justify-center"><i data-lucide="megaphone" class="h-4 w-4 text-primary-600"></i></div>
+      </div>
+      <p class="mt-3 text-2xl font-bold font-heading tabular-nums text-text-primary" id="stat-estrategias">-</p>
+    </div>
+    <div class="bg-surface rounded-xl border border-border p-5 shadow-sm">
+      <div class="flex items-center justify-between">
+        <p class="text-sm font-medium text-text-secondary font-body">Total Pacientes</p>
+        <div class="h-9 w-9 rounded-lg bg-primary-50 flex items-center justify-center"><i data-lucide="users" class="h-4 w-4 text-primary-600"></i></div>
+      </div>
+      <p class="mt-3 text-2xl font-bold font-heading tabular-nums text-text-primary" id="stat-pacientes">-</p>
+    </div>
+    <div class="bg-surface rounded-xl border border-border p-5 shadow-sm">
+      <div class="flex items-center justify-between">
+        <p class="text-sm font-medium text-text-secondary font-body">Ingreso Total</p>
+        <div class="h-9 w-9 rounded-lg bg-primary-50 flex items-center justify-center"><i data-lucide="dollar-sign" class="h-4 w-4 text-primary-600"></i></div>
+      </div>
+      <p class="mt-3 text-2xl font-bold font-heading tabular-nums text-text-primary" id="stat-monto">-</p>
+    </div>
+  </div>
+
+  <!-- Content: chart + table or empty state -->
+  <div id="content-area"></div>
+  </div><!-- /panel-mensual -->
+
+  <!-- ════════════════ PANEL ANUAL ════════════════ -->
+  <div id="panel-anual" class="space-y-6 hidden">
+    <div class="flex flex-wrap gap-3 items-end">
+      <div class="w-28">
+        <label class="block text-sm font-medium text-text-secondary mb-1 font-body">Anio</label>
+        <select id="a-sel-year" class="block w-full rounded-lg border border-border px-3 py-2.5 text-sm font-body min-h-[44px] bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-500"></select>
+      </div>
+    </div>
+
+    <!-- Stats anuales -->
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div class="bg-surface rounded-xl border border-border p-5 shadow-sm">
+        <div class="flex items-center justify-between">
+          <p class="text-sm font-medium text-text-secondary font-body">Estrategias Activas</p>
+          <div class="h-9 w-9 rounded-lg bg-primary-50 flex items-center justify-center"><i data-lucide="megaphone" class="h-4 w-4 text-primary-600"></i></div>
+        </div>
+        <p class="mt-3 text-2xl font-bold font-heading tabular-nums text-text-primary" id="a-stat-estrategias">-</p>
+      </div>
+      <div class="bg-surface rounded-xl border border-border p-5 shadow-sm">
+        <div class="flex items-center justify-between">
+          <p class="text-sm font-medium text-text-secondary font-body">Total Pacientes</p>
+          <div class="h-9 w-9 rounded-lg bg-primary-50 flex items-center justify-center"><i data-lucide="users" class="h-4 w-4 text-primary-600"></i></div>
+        </div>
+        <p class="mt-3 text-2xl font-bold font-heading tabular-nums text-text-primary" id="a-stat-pacientes">-</p>
+      </div>
+      <div class="bg-surface rounded-xl border border-border p-5 shadow-sm">
+        <div class="flex items-center justify-between">
+          <p class="text-sm font-medium text-text-secondary font-body">Ingreso Total</p>
+          <div class="h-9 w-9 rounded-lg bg-primary-50 flex items-center justify-center"><i data-lucide="dollar-sign" class="h-4 w-4 text-primary-600"></i></div>
+        </div>
+        <p class="mt-3 text-2xl font-bold font-heading tabular-nums text-text-primary" id="a-stat-monto">-</p>
+      </div>
+    </div>
+
+    <div id="a-content-area"></div>
+  </div>
+
+</div>

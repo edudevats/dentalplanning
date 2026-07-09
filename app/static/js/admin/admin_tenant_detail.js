@@ -64,7 +64,7 @@
     }
 
     actions.appendChild(headerBtn('Ver reportes', 'bar-chart-3', 'neutral', () => {
-      window.open(`/reportes/resumen?as_tenant=${tenantId}`, '_blank');
+      window.location.href = `/admin/tenants/${tenantId}/reportes?as_tenant=${tenantId}`;
     }));
 
     if (typeof lucide !== 'undefined') lucide.createIcons();

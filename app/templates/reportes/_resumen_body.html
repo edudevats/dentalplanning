@@ -1,0 +1,541 @@
+<div class="space-y-6">
+
+  <!-- Tab toggle -->
+  <div class="flex items-center gap-1 bg-surface-alt rounded-xl p-1 w-fit border border-border shadow-sm">
+    <button id="tab-mensual" onclick="switchTab('mensual')"
+      class="px-5 py-2 rounded-lg text-sm font-semibold font-body bg-surface shadow-sm text-text-primary border border-border transition-all">
+      Mensual
+    </button>
+    <button id="tab-trimestral" onclick="switchTab('trimestral')"
+      class="px-5 py-2 rounded-lg text-sm font-semibold font-body text-text-secondary hover:text-text-primary transition-all">
+      Trimestral
+    </button>
+    <button id="tab-reporteanual" onclick="switchTab('reporteanual')"
+      class="px-5 py-2 rounded-lg text-sm font-semibold font-body text-text-secondary hover:text-text-primary transition-all">
+      Anual
+    </button>
+    <button id="tab-comparativa" onclick="switchTab('comparativa')"
+      class="px-5 py-2 rounded-lg text-sm font-semibold font-body text-text-secondary hover:text-text-primary transition-all">
+      Comparativa Mensual
+    </button>
+    <button id="tab-anual" onclick="switchTab('anual')"
+      class="px-5 py-2 rounded-lg text-sm font-semibold font-body text-text-secondary hover:text-text-primary transition-all">
+      Comparativa Anual
+    </button>
+  </div>
+
+  <!-- ════════════════════ MENSUAL PANEL ════════════════════ -->
+  <div id="panel-mensual" class="space-y-6">
+
+    <!-- Filters -->
+    <div class="flex flex-wrap gap-3 items-end">
+      <div class="w-40">
+        <label class="block text-sm font-medium text-text-secondary mb-1 font-body">Mes</label>
+        <select id="m-sel-month" class="block w-full rounded-lg border border-border px-3 py-2.5 text-sm font-body min-h-[44px] bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-500"></select>
+      </div>
+      <div class="w-28">
+        <label class="block text-sm font-medium text-text-secondary mb-1 font-body">Anio</label>
+        <select id="m-sel-year" class="block w-full rounded-lg border border-border px-3 py-2.5 text-sm font-body min-h-[44px] bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-500"></select>
+      </div>
+    </div>
+
+    <!-- Stats -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div class="bg-surface rounded-xl border border-border p-5 shadow-sm">
+        <div class="flex items-center justify-between">
+          <p class="text-sm font-medium text-text-secondary font-body">Total Ingresos</p>
+          <div class="h-9 w-9 rounded-lg bg-primary-50 flex items-center justify-center"><i data-lucide="dollar-sign" class="h-4 w-4 text-primary-600"></i></div>
+        </div>
+        <p class="mt-3 text-2xl font-bold font-heading tabular-nums text-text-primary" id="m-stat-ing">-</p>
+      </div>
+      <div class="bg-surface rounded-xl border border-border p-5 shadow-sm">
+        <div class="flex items-center justify-between">
+          <p class="text-sm font-medium text-text-secondary font-body">Total Gastos</p>
+          <div class="h-9 w-9 rounded-lg bg-primary-50 flex items-center justify-center"><i data-lucide="trending-down" class="h-4 w-4 text-primary-600"></i></div>
+        </div>
+        <p class="mt-3 text-2xl font-bold font-heading tabular-nums text-text-primary" id="m-stat-gas">-</p>
+      </div>
+      <div class="bg-surface rounded-xl border border-border p-5 shadow-sm">
+        <div class="flex items-center justify-between">
+          <p class="text-sm font-medium text-text-secondary font-body">Pagos Doctores</p>
+          <div class="h-9 w-9 rounded-lg bg-primary-50 flex items-center justify-center"><i data-lucide="user-check" class="h-4 w-4 text-primary-600"></i></div>
+        </div>
+        <p class="mt-3 text-2xl font-bold font-heading tabular-nums text-text-primary" id="m-stat-pag">-</p>
+        <p class="mt-1 text-xs text-text-muted font-body" id="m-stat-pag-sub">Salarios + Comisiones</p>
+      </div>
+      <div class="bg-surface rounded-xl border border-border p-5 shadow-sm">
+        <div class="flex items-center justify-between">
+          <p class="text-sm font-medium text-text-secondary font-body">Ganancia Neta</p>
+          <div class="h-9 w-9 rounded-lg bg-primary-50 flex items-center justify-center"><i data-lucide="trending-up" class="h-4 w-4 text-primary-600"></i></div>
+        </div>
+        <p class="mt-3 text-2xl font-bold font-heading tabular-nums" id="m-stat-gan">-</p>
+      </div>
+    </div>
+
+    <!-- Line chart -->
+    <div id="m-chart-card" class="hidden bg-surface rounded-xl border border-border shadow-sm">
+      <div class="px-5 py-4 border-b border-border">
+        <h3 class="text-sm font-semibold font-heading text-text-primary">Ingresos Diarios</h3>
+      </div>
+      <div class="p-4" style="height:288px"><canvas id="m-line-chart"></canvas></div>
+    </div>
+
+    <!-- Desglose tables -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div class="bg-surface rounded-xl border border-border shadow-sm">
+        <div class="px-5 py-4 border-b border-border"><h3 class="text-sm font-semibold font-heading text-text-primary">Desglose de Ingresos</h3></div>
+        <div id="m-tbl-ing"></div>
+      </div>
+      <div class="bg-surface rounded-xl border border-border shadow-sm">
+        <div class="px-5 py-4 border-b border-border"><h3 class="text-sm font-semibold font-heading text-text-primary">Desglose de Gastos</h3></div>
+        <div id="m-tbl-gas"></div>
+      </div>
+    </div>
+
+    <!-- Estado de Resultados + Punto de Equilibrio -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+      <!-- Estado de Resultados -->
+      <div class="bg-surface rounded-xl border border-border shadow-sm">
+        <div class="px-5 py-4 border-b border-border">
+          <h3 class="text-sm font-semibold font-heading text-text-primary">Estado de Resultados</h3>
+        </div>
+        <div class="divide-y divide-border">
+          <div class="flex justify-between px-5 py-3">
+            <span class="text-sm font-body text-text-secondary">Ventas Totales</span>
+            <span class="text-sm font-semibold tabular-nums text-text-primary" id="er-ventas">-</span>
+          </div>
+          <div class="flex justify-between px-5 py-3 bg-danger-50">
+            <span class="text-sm font-body text-danger-700">Gastos Variables</span>
+            <span class="text-sm font-semibold tabular-nums text-danger-700" id="er-gvar">-</span>
+          </div>
+          <div class="flex justify-between px-5 py-3">
+            <span class="text-sm font-body text-text-secondary">Utilidad Bruta</span>
+            <span class="text-sm font-semibold tabular-nums text-text-primary" id="er-ubruta">-</span>
+          </div>
+          <div class="flex justify-between px-5 py-3 bg-surface-alt">
+            <span class="text-sm font-body text-text-muted italic">% Utilidad Bruta</span>
+            <span class="text-sm font-semibold tabular-nums text-text-secondary" id="er-pct-ubruta">-</span>
+          </div>
+          <div class="flex justify-between px-5 py-3 bg-danger-50">
+            <span class="text-sm font-body text-danger-700">Gastos Fijos</span>
+            <span class="text-sm font-semibold tabular-nums text-danger-700" id="er-gfijos">-</span>
+          </div>
+          <div class="flex justify-between px-5 py-3">
+            <span class="text-sm font-body text-text-secondary">Utilidad Antes de Impuestos</span>
+            <span class="text-sm font-semibold tabular-nums text-text-primary" id="er-uai">-</span>
+          </div>
+          <div class="flex justify-between px-5 py-3 bg-danger-50">
+            <span class="text-sm font-body text-danger-700">Impuestos</span>
+            <span class="text-sm font-semibold tabular-nums text-danger-700" id="er-imp">-</span>
+          </div>
+          <div class="flex justify-between px-5 py-3 bg-surface-alt">
+            <span class="text-sm font-body text-text-muted italic">% Utilidad</span>
+            <span class="text-sm font-semibold tabular-nums text-text-secondary" id="er-pct-util">-</span>
+          </div>
+          <div class="flex justify-between px-5 py-3 rounded-b-xl">
+            <span class="text-sm font-semibold font-body text-text-primary">Utilidad Despues de Impuestos</span>
+            <span class="text-sm font-bold tabular-nums" id="er-udi">-</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Punto de Equilibrio -->
+      <div class="space-y-4">
+        <div class="bg-surface rounded-xl border border-border shadow-sm">
+          <div class="px-5 py-4 border-b border-border">
+            <h3 class="text-sm font-semibold font-heading text-text-primary">Punto de Equilibrio</h3>
+            <p class="text-xs text-text-muted mt-0.5 font-body">Ventas minimas para cubrir costos fijos</p>
+          </div>
+          <div class="divide-y divide-border">
+            <div class="flex justify-between px-5 py-4">
+              <span class="text-sm font-body text-text-secondary">Punto de Equilibrio</span>
+              <span class="text-base font-bold tabular-nums text-primary-600" id="pe-valor">-</span>
+            </div>
+            <div class="flex justify-between px-5 py-4 rounded-b-xl">
+              <span class="text-sm font-body text-text-secondary">50% de las Ventas</span>
+              <span class="text-base font-bold tabular-nums text-text-primary" id="pe-50pct">-</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Ingresos desglose -->
+        <div class="bg-surface rounded-xl border border-border shadow-sm">
+          <div class="px-5 py-4 border-b border-border">
+            <h3 class="text-sm font-semibold font-heading text-text-primary">Ingresos por Canal</h3>
+          </div>
+          <div class="divide-y divide-border">
+            <div class="flex justify-between px-5 py-3">
+              <span class="text-sm font-body text-text-secondary">Total de Ingresos</span>
+              <span class="text-sm font-semibold tabular-nums text-text-primary" id="ic-total">-</span>
+            </div>
+            <div class="flex justify-between px-5 py-3">
+              <span class="text-sm font-body text-text-secondary">Comisiones Bancarias</span>
+              <span class="text-sm font-semibold tabular-nums text-danger-700" id="ic-com-banc">-</span>
+            </div>
+            <div class="flex justify-between px-5 py-3">
+              <span class="text-sm font-body text-text-secondary">Comisiones Especialistas</span>
+              <span class="text-sm font-semibold tabular-nums text-danger-700" id="ic-com-esp">-</span>
+            </div>
+            <div class="flex justify-between px-5 py-3">
+              <span class="text-sm font-body text-text-secondary">Ingresos en Efectivo</span>
+              <span class="text-sm font-semibold tabular-nums text-text-primary" id="ic-efectivo">-</span>
+            </div>
+            <div class="flex justify-between px-5 py-3">
+              <span class="text-sm font-body text-text-secondary">Ingresos en Cuentas Bancarias</span>
+              <span class="text-sm font-semibold tabular-nums text-text-primary" id="ic-banco">-</span>
+            </div>
+            <div class="flex justify-between px-5 py-3 rounded-b-xl">
+              <span class="text-sm font-body text-text-secondary">IVA por regresar al SAT</span>
+              <span class="text-sm font-semibold tabular-nums text-text-primary" id="ic-iva-sat">-</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Distribución mensual -->
+    <div class="border-t border-border pt-6">
+      <h2 class="text-base font-semibold font-heading text-text-primary mb-5">Distribucion de Ingresos</h2>
+      <div id="m-dist-neto-card" class="hidden bg-surface rounded-xl border border-border p-5 shadow-sm text-center mb-6">
+        <p class="text-sm text-text-muted mb-1 font-body">Ingreso Neto a Distribuir</p>
+        <p class="text-3xl font-bold tabular-nums text-accent-700 font-heading" id="m-dist-neto">-</p>
+      </div>
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div id="m-dist-chart-card" class="hidden bg-surface rounded-xl border border-border shadow-sm">
+          <div class="px-5 py-4 border-b border-border"><h3 class="text-sm font-semibold font-heading text-text-primary">Distribucion Visual</h3></div>
+          <div class="p-4" style="height:320px"><canvas id="m-pie-chart"></canvas></div>
+        </div>
+        <div class="bg-surface rounded-xl border border-border shadow-sm">
+          <div class="px-5 py-4 border-b border-border"><h3 class="text-sm font-semibold font-heading text-text-primary">Detalle por Categoria</h3></div>
+          <div id="m-dist-tbl"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════════════════════ TRIMESTRAL PANEL ════════════════════ -->
+  <div id="panel-trimestral" class="hidden space-y-6">
+
+    <!-- Filters -->
+    <div class="flex flex-wrap gap-3 items-end">
+      <div class="w-44">
+        <label class="block text-sm font-medium text-text-secondary mb-1 font-body">Trimestre</label>
+        <select id="t-sel-quarter" class="block w-full rounded-lg border border-border px-3 py-2.5 text-sm font-body min-h-[44px] bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-500"></select>
+      </div>
+      <div class="w-28">
+        <label class="block text-sm font-medium text-text-secondary mb-1 font-body">Anio</label>
+        <select id="t-sel-year" class="block w-full rounded-lg border border-border px-3 py-2.5 text-sm font-body min-h-[44px] bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-500"></select>
+      </div>
+    </div>
+
+    <!-- Stats -->
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div class="bg-surface rounded-xl border border-border p-5 shadow-sm">
+        <div class="flex items-center justify-between">
+          <p class="text-sm font-medium text-text-secondary font-body">Promedio Mensual Ingresos</p>
+          <div class="h-9 w-9 rounded-lg bg-primary-50 flex items-center justify-center"><i data-lucide="dollar-sign" class="h-4 w-4 text-primary-600"></i></div>
+        </div>
+        <p class="mt-3 text-2xl font-bold font-heading tabular-nums text-text-primary" id="t-stat-ing">-</p>
+      </div>
+      <div class="bg-surface rounded-xl border border-border p-5 shadow-sm">
+        <div class="flex items-center justify-between">
+          <p class="text-sm font-medium text-text-secondary font-body">Promedio Mensual Gastos</p>
+          <div class="h-9 w-9 rounded-lg bg-primary-50 flex items-center justify-center"><i data-lucide="trending-down" class="h-4 w-4 text-primary-600"></i></div>
+        </div>
+        <p class="mt-3 text-2xl font-bold font-heading tabular-nums text-text-primary" id="t-stat-gas">-</p>
+      </div>
+      <div class="bg-surface rounded-xl border border-border p-5 shadow-sm">
+        <div class="flex items-center justify-between">
+          <p class="text-sm font-medium text-text-secondary font-body">Crecimiento</p>
+          <div class="h-9 w-9 rounded-lg bg-primary-50 flex items-center justify-center"><i data-lucide="trending-up" class="h-4 w-4 text-primary-600"></i></div>
+        </div>
+        <p class="mt-3 text-2xl font-bold font-heading tabular-nums" id="t-stat-crec">-</p>
+      </div>
+    </div>
+
+    <!-- Bar chart -->
+    <div id="t-chart-card" class="hidden bg-surface rounded-xl border border-border shadow-sm">
+      <div class="px-5 py-4 border-b border-border">
+        <h3 class="text-sm font-semibold font-heading text-text-primary">Comparativa Trimestral</h3>
+      </div>
+      <div class="p-4" style="height:320px"><canvas id="t-bar-chart"></canvas></div>
+    </div>
+
+    <!-- Monthly table -->
+    <div class="bg-surface rounded-xl border border-border shadow-sm">
+      <div class="px-5 py-4 border-b border-border"><h3 class="text-sm font-semibold font-heading text-text-primary">Desglose Mensual</h3></div>
+      <div id="t-tbl-meses"></div>
+    </div>
+
+    <!-- Distribución trimestral -->
+    <div class="border-t border-border pt-6">
+      <h2 class="text-base font-semibold font-heading text-text-primary mb-5">Distribucion de Ingresos <span class="text-text-muted font-normal text-sm">(acumulado trimestral)</span></h2>
+      <div id="t-dist-neto-card" class="hidden bg-surface rounded-xl border border-border p-5 shadow-sm text-center mb-6">
+        <p class="text-sm text-text-muted mb-1 font-body">Ingreso Neto a Distribuir</p>
+        <p class="text-3xl font-bold tabular-nums text-accent-700 font-heading" id="t-dist-neto">-</p>
+      </div>
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div id="t-dist-chart-card" class="hidden bg-surface rounded-xl border border-border shadow-sm">
+          <div class="px-5 py-4 border-b border-border"><h3 class="text-sm font-semibold font-heading text-text-primary">Distribucion Visual</h3></div>
+          <div class="p-4" style="height:320px"><canvas id="t-pie-chart"></canvas></div>
+        </div>
+        <div class="bg-surface rounded-xl border border-border shadow-sm">
+          <div class="px-5 py-4 border-b border-border"><h3 class="text-sm font-semibold font-heading text-text-primary">Detalle por Categoria</h3></div>
+          <div id="t-dist-tbl"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════════════════════ COMPARATIVA PANEL ════════════════════ -->
+  <div id="panel-comparativa" class="hidden space-y-6">
+
+    <!-- Agregar mes -->
+    <div class="bg-surface rounded-xl border border-border p-5 shadow-sm">
+      <h3 class="text-sm font-semibold font-heading text-text-primary mb-4">Seleccionar meses a comparar</h3>
+      <div class="flex flex-wrap gap-3 items-end">
+        <div class="w-40">
+          <label class="block text-sm font-medium text-text-secondary mb-1 font-body">Mes</label>
+          <select id="c-add-month" class="block w-full rounded-lg border border-border px-3 py-2.5 text-sm font-body min-h-[44px] bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-500"></select>
+        </div>
+        <div class="w-28">
+          <label class="block text-sm font-medium text-text-secondary mb-1 font-body">Anio</label>
+          <select id="c-add-year" class="block w-full rounded-lg border border-border px-3 py-2.5 text-sm font-body min-h-[44px] bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-500"></select>
+        </div>
+        <button id="c-btn-add" onclick="compAddMes()"
+          class="min-h-[44px] px-5 py-2.5 rounded-lg bg-primary-600 hover:bg-primary-700 text-white text-sm font-semibold font-body transition-colors flex items-center gap-2 cursor-pointer">
+          <i data-lucide="plus" class="h-4 w-4"></i>
+          Agregar mes
+        </button>
+      </div>
+
+      <!-- Chips de meses seleccionados -->
+      <div id="c-chips" class="flex flex-wrap gap-2 mt-4"></div>
+    </div>
+
+    <!-- Empty state -->
+    <div id="c-empty" class="bg-surface rounded-xl border border-border shadow-sm p-12 flex flex-col items-center gap-3 text-center">
+      <div class="h-12 w-12 rounded-full bg-surface-alt flex items-center justify-center">
+        <i data-lucide="git-compare" class="h-6 w-6 text-text-muted"></i>
+      </div>
+      <p class="text-sm font-semibold text-text-primary font-heading">Agrega al menos 2 meses para comparar</p>
+      <p class="text-sm text-text-muted font-body max-w-xs">Selecciona los meses que quieres analizar y pulsa "Agregar mes".</p>
+    </div>
+
+    <!-- Resultados -->
+    <div id="c-results" class="hidden space-y-6">
+
+      <!-- Stats resumen -->
+      <div id="c-stats-grid" class="grid grid-cols-2 lg:grid-cols-4 gap-4"></div>
+
+      <!-- Gráfica comparativa -->
+      <div class="bg-surface rounded-xl border border-border shadow-sm">
+        <div class="px-5 py-4 border-b border-border flex items-center justify-between">
+          <h3 class="text-sm font-semibold font-heading text-text-primary">Comparativa de Periodos</h3>
+          <!-- Dataset toggle -->
+          <div class="flex items-center gap-2">
+            <label class="flex items-center gap-1.5 cursor-pointer select-none">
+              <input type="checkbox" id="c-chk-ing" checked class="rounded accent-primary-600">
+              <span class="text-xs font-medium text-text-secondary font-body">Ingresos</span>
+            </label>
+            <label class="flex items-center gap-1.5 cursor-pointer select-none">
+              <input type="checkbox" id="c-chk-gas" checked class="rounded accent-primary-600">
+              <span class="text-xs font-medium text-text-secondary font-body">Gastos</span>
+            </label>
+            <label class="flex items-center gap-1.5 cursor-pointer select-none">
+              <input type="checkbox" id="c-chk-gan" checked class="rounded accent-primary-600">
+              <span class="text-xs font-medium text-text-secondary font-body">Utilidad</span>
+            </label>
+          </div>
+        </div>
+        <div class="p-4" style="height:320px"><canvas id="c-bar-chart"></canvas></div>
+      </div>
+
+      <!-- Tabla comparativa -->
+      <div class="bg-surface rounded-xl border border-border shadow-sm">
+        <div class="px-5 py-4 border-b border-border"><h3 class="text-sm font-semibold font-heading text-text-primary">Detalle por Mes</h3></div>
+        <div id="c-tbl"></div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ════════════════════ ANUAL PANEL ════════════════════ -->
+  <div id="panel-anual" class="hidden space-y-6">
+
+    <!-- Selector de años -->
+    <div class="bg-surface rounded-xl border border-border p-5 shadow-sm">
+      <h3 class="text-sm font-semibold font-heading text-text-primary mb-4">Seleccionar años a comparar</h3>
+      <div class="flex flex-wrap gap-3 items-end">
+        <div class="w-32">
+          <label class="block text-sm font-medium text-text-secondary mb-1 font-body">Año</label>
+          <select id="a-add-year" class="block w-full rounded-lg border border-border px-3 py-2.5 text-sm font-body min-h-[44px] bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-500"></select>
+        </div>
+        <button id="a-btn-add" onclick="anualAddYear()"
+          class="min-h-[44px] px-5 py-2.5 rounded-lg bg-primary-600 hover:bg-primary-700 text-white text-sm font-semibold font-body transition-colors flex items-center gap-2 cursor-pointer">
+          <i data-lucide="plus" class="h-4 w-4"></i>
+          Agregar año
+        </button>
+      </div>
+      <div id="a-chips" class="flex flex-wrap gap-2 mt-4"></div>
+    </div>
+
+    <!-- Empty state -->
+    <div id="a-empty" class="bg-surface rounded-xl border border-border shadow-sm p-12 flex flex-col items-center gap-3 text-center">
+      <div class="h-12 w-12 rounded-full bg-surface-alt flex items-center justify-center">
+        <i data-lucide="calendar-range" class="h-6 w-6 text-text-muted"></i>
+      </div>
+      <p class="text-sm font-semibold text-text-primary font-heading">Agrega al menos un año para visualizar</p>
+      <p class="text-sm text-text-muted font-body max-w-xs">Selecciona los años que quieres comparar y pulsa "Agregar año".</p>
+    </div>
+
+    <!-- Resultados -->
+    <div id="a-results" class="hidden space-y-6">
+
+      <!-- KPI cards por año -->
+      <div id="a-stats-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+
+      <!-- Gráfica agrupada por mes -->
+      <div class="bg-surface rounded-xl border border-border shadow-sm">
+        <div class="px-5 py-4 border-b border-border flex items-center justify-between">
+          <div>
+            <h3 class="text-sm font-semibold font-heading text-text-primary">Ingresos mensuales por año</h3>
+            <p class="text-xs text-text-muted mt-0.5 font-body">Comparativa mes a mes entre los años seleccionados</p>
+          </div>
+          <div class="flex items-center gap-3">
+            <label class="flex items-center gap-1.5 cursor-pointer select-none">
+              <input type="checkbox" id="a-chk-gas" class="rounded accent-primary-600">
+              <span class="text-xs font-medium text-text-secondary font-body">Mostrar gastos</span>
+            </label>
+          </div>
+        </div>
+        <div class="p-4" style="height:340px"><canvas id="a-bar-chart"></canvas></div>
+      </div>
+
+      <!-- Tabla mensual -->
+      <div class="bg-surface rounded-xl border border-border shadow-sm overflow-x-auto">
+        <div class="px-5 py-4 border-b border-border">
+          <h3 class="text-sm font-semibold font-heading text-text-primary">Desglose mensual</h3>
+        </div>
+        <div id="a-tbl-wrap"></div>
+      </div>
+
+      <!-- Resumen totales anuales -->
+      <div class="bg-surface rounded-xl border border-border shadow-sm overflow-x-auto">
+        <div class="px-5 py-4 border-b border-border">
+          <h3 class="text-sm font-semibold font-heading text-text-primary">Totales anuales</h3>
+        </div>
+        <div id="a-totales-wrap"></div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ════════════════════ REPORTE ANUAL PANEL (réplica Excel) ════════════════════ -->
+  <div id="panel-reporteanual" class="hidden space-y-6">
+
+    <!-- Filtros -->
+    <div class="flex flex-wrap gap-3 items-end">
+      <div class="w-28">
+        <label class="block text-sm font-medium text-text-secondary mb-1 font-body">Anio</label>
+        <select id="ra-sel-year" class="block w-full rounded-lg border border-border px-3 py-2.5 text-sm font-body min-h-[44px] bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-500"></select>
+      </div>
+    </div>
+
+    <!-- Stats anuales -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div class="bg-surface rounded-xl border border-border p-5 shadow-sm">
+        <div class="flex items-center justify-between">
+          <p class="text-sm font-medium text-text-secondary font-body">Total Anual</p>
+          <div class="h-9 w-9 rounded-lg bg-primary-50 flex items-center justify-center"><i data-lucide="dollar-sign" class="h-4 w-4 text-primary-600"></i></div>
+        </div>
+        <p class="mt-3 text-2xl font-bold font-heading tabular-nums text-text-primary" id="ra-stat-total">-</p>
+      </div>
+      <div class="bg-surface rounded-xl border border-border p-5 shadow-sm">
+        <div class="flex items-center justify-between">
+          <p class="text-sm font-medium text-text-secondary font-body">Promedio Mensual</p>
+          <div class="h-9 w-9 rounded-lg bg-primary-50 flex items-center justify-center"><i data-lucide="bar-chart-2" class="h-4 w-4 text-primary-600"></i></div>
+        </div>
+        <p class="mt-3 text-2xl font-bold font-heading tabular-nums text-text-primary" id="ra-stat-prom">-</p>
+      </div>
+      <div class="bg-surface rounded-xl border border-border p-5 shadow-sm">
+        <div class="flex items-center justify-between">
+          <p class="text-sm font-medium text-text-secondary font-body">Mejor Mes</p>
+          <div class="h-9 w-9 rounded-lg bg-accent-50 flex items-center justify-center"><i data-lucide="trending-up" class="h-4 w-4 text-accent-700"></i></div>
+        </div>
+        <p class="mt-3 text-2xl font-bold font-heading tabular-nums text-accent-700" id="ra-stat-best">-</p>
+        <p class="text-xs text-text-muted font-body mt-1" id="ra-stat-best-label">-</p>
+      </div>
+      <div class="bg-surface rounded-xl border border-border p-5 shadow-sm">
+        <div class="flex items-center justify-between">
+          <p class="text-sm font-medium text-text-secondary font-body">Mejor Trimestre</p>
+          <div class="h-9 w-9 rounded-lg bg-accent-50 flex items-center justify-center"><i data-lucide="award" class="h-4 w-4 text-accent-700"></i></div>
+        </div>
+        <p class="mt-3 text-2xl font-bold font-heading tabular-nums text-accent-700" id="ra-stat-bestq">-</p>
+        <p class="text-xs text-text-muted font-body mt-1" id="ra-stat-bestq-label">-</p>
+      </div>
+    </div>
+
+    <!-- Bar chart anual -->
+    <div id="ra-chart-card" class="hidden bg-surface rounded-xl border border-border shadow-sm">
+      <div class="px-5 py-4 border-b border-border">
+        <h3 class="text-sm font-semibold font-heading text-text-primary">Ganancia Neta Mensual</h3>
+      </div>
+      <div class="p-4" style="height:320px"><canvas id="ra-bar-chart"></canvas></div>
+    </div>
+
+    <!-- PROMEDIOS TRIMESTRALES (réplica Excel) -->
+    <div class="bg-surface rounded-xl border border-border shadow-sm">
+      <div class="px-5 py-4 border-b border-border">
+        <h3 class="text-sm font-semibold font-heading text-text-primary">Promedios Trimestrales</h3>
+        <p class="text-xs text-text-muted mt-0.5 font-body">Ventas totales mensual, totales y promedios por trimestre, crecimiento mes-a-mes</p>
+      </div>
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-0">
+        <div class="border-r border-border">
+          <table class="w-full text-sm">
+            <tbody id="ra-tbl-meses" class="divide-y divide-border"></tbody>
+          </table>
+        </div>
+        <div class="border-r border-border">
+          <table class="w-full text-sm">
+            <tbody id="ra-tbl-trims" class="divide-y divide-border"></tbody>
+          </table>
+        </div>
+        <div>
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="bg-surface-alt">
+                <th colspan="2" class="px-4 py-2.5 text-xs font-semibold uppercase tracking-wide text-text-secondary font-body text-center">% de Crecimiento</th>
+              </tr>
+            </thead>
+            <tbody id="ra-tbl-crec" class="divide-y divide-border"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- SISTEMA DE AHORRO (réplica Excel) -->
+    <div class="bg-surface rounded-xl border border-border shadow-sm">
+      <div class="px-5 py-4 border-b border-border">
+        <h3 class="text-sm font-semibold font-heading text-text-primary">Sistema de Ahorro</h3>
+        <p class="text-xs text-text-muted mt-0.5 font-body">Distribución mensual de la ganancia neta según porcentajes configurados (Ajustes › Distribución)</p>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead id="ra-thead-ahorro">
+            <tr class="bg-surface-alt border-b border-border">
+              <th class="px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-text-secondary font-body w-28"></th>
+              <th class="px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-text-secondary font-body">Mes</th>
+              <th class="px-3 py-2.5 text-right text-xs font-semibold uppercase tracking-wide text-text-secondary font-body">Ganancia Neta</th>
+              <!-- category headers injected dynamically by loadReporteAnual() -->
+            </tr>
+          </thead>
+          <tbody id="ra-tbl-ahorro" class="divide-y divide-border"></tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+
+</div>
