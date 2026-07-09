@@ -9,22 +9,39 @@ class EmailError(Exception):
     pass
 
 
+def _smtp_server(cfg):
+    """Abre y devuelve una conexión SMTP ya autenticada (SSL directo o STARTTLS,
+    según config). El llamador es responsable de garantizar que SMTP_HOST existe
+    y de cerrar el server (usar `with`)."""
+    host = cfg.get("SMTP_HOST", "")
+    port = cfg.get("SMTP_PORT", 587)
+    user = cfg.get("SMTP_USER", "")
+    password = cfg.get("SMTP_PASS", "")
+    use_tls = cfg.get("SMTP_USE_TLS", True)
+    use_ssl = cfg.get("SMTP_USE_SSL", False) or port == 465
+
+    if use_ssl:
+        server = smtplib.SMTP_SSL(host, port, timeout=20)
+    else:
+        server = smtplib.SMTP(host, port, timeout=20)
+        server.ehlo()
+        if use_tls:
+            server.starttls()
+            server.ehlo()
+    if user and password:
+        server.login(user, password)
+    return server
+
+
 def send_email(to_address, subject, html_body, text_body=None):
     """Send an email via SMTP. Returns True on success, raises EmailError on failure."""
     cfg = current_app.config
-    host = cfg.get("SMTP_HOST", "")
-    if not host:
+    if not cfg.get("SMTP_HOST", ""):
         current_app.logger.warning("Email skipped (SMTP_HOST not configured): to=%s subject=%s",
                                    to_address, subject)
         return False
 
-    port = cfg.get("SMTP_PORT", 587)
-    user = cfg.get("SMTP_USER", "")
-    password = cfg.get("SMTP_PASS", "")
-    from_addr = cfg.get("SMTP_FROM", "no-reply@dentalplanning.mx")
-    use_tls = cfg.get("SMTP_USE_TLS", True)
-    use_ssl = cfg.get("SMTP_USE_SSL", False) or port == 465
-
+    from_addr = cfg.get("SMTP_FROM") or "no-reply@dentalplanning.mx"
     msg = MIMEMultipart("alternative")
     msg["Subject"] = subject
     msg["From"] = from_addr
@@ -34,18 +51,7 @@ def send_email(to_address, subject, html_body, text_body=None):
     msg.attach(MIMEText(html_body, "html", "utf-8"))
 
     try:
-        if use_ssl:
-            server_conn = smtplib.SMTP_SSL(host, port, timeout=20)
-        else:
-            server_conn = smtplib.SMTP(host, port, timeout=20)
-            server_conn.ehlo()
-            if use_tls:
-                server_conn.starttls()
-                server_conn.ehlo()
-
-        with server_conn as server:
-            if user and password:
-                server.login(user, password)
+        with _smtp_server(cfg) as server:
             server.sendmail(from_addr, [to_address], msg.as_string())
         current_app.logger.info("Email sent to=%s subject=%s", to_address, subject)
         return True
@@ -61,20 +67,13 @@ def send_email_with_attachments(to_address, subject, html_body, attachments,
     Retorna True si se envió, False si SMTP no está configurado; lanza EmailError si falla.
     """
     cfg = current_app.config
-    host = cfg.get("SMTP_HOST", "")
-    if not host:
+    if not cfg.get("SMTP_HOST", ""):
         current_app.logger.warning(
             "Email (con adjuntos) omitido (SMTP_HOST no configurado): to=%s subject=%s",
             to_address, subject)
         return False
 
-    port = cfg.get("SMTP_PORT", 587)
-    user = cfg.get("SMTP_USER", "")
-    password = cfg.get("SMTP_PASS", "")
-    from_addr = cfg.get("SMTP_FROM", "no-reply@dentalplanning.mx")
-    use_tls = cfg.get("SMTP_USE_TLS", True)
-    use_ssl = cfg.get("SMTP_USE_SSL", False) or port == 465
-
+    from_addr = cfg.get("SMTP_FROM") or "no-reply@dentalplanning.mx"
     msg = MIMEMultipart("mixed")
     msg["Subject"] = subject
     msg["From"] = from_addr
@@ -93,18 +92,7 @@ def send_email_with_attachments(to_address, subject, html_body, attachments,
         msg.attach(part)
 
     try:
-        if use_ssl:
-            server_conn = smtplib.SMTP_SSL(host, port, timeout=20)
-        else:
-            server_conn = smtplib.SMTP(host, port, timeout=20)
-            server_conn.ehlo()
-            if use_tls:
-                server_conn.starttls()
-                server_conn.ehlo()
-
-        with server_conn as server:
-            if user and password:
-                server.login(user, password)
+        with _smtp_server(cfg) as server:
             server.sendmail(from_addr, [to_address], msg.as_string())
         current_app.logger.info("Email con adjuntos enviado to=%s subject=%s",
                                 to_address, subject)

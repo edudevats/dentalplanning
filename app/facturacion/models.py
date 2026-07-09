@@ -113,6 +113,11 @@ class Ticket(db.Model):
     email = db.Column(db.String(255))
     # CFDI — Fase 4
     uuid = db.Column(db.String(36))
+    # Fecha de emisión del CFDI, fijada en el primer intento de timbrado. Al
+    # reintentar un ticket en 'error' se reutiliza para regenerar un comprobante
+    # byte-idéntico (mismo sello): si el intento previo sí timbró pero se perdió
+    # la respuesta, Finkok lo deduplica en vez de emitir un segundo UUID.
+    cfdi_fecha = db.Column(db.DateTime)
     fecha_timbrado = db.Column(db.DateTime)
     xml = db.Column(db.Text)
     forma_pago = db.Column(db.String(5))

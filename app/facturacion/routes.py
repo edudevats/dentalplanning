@@ -265,21 +265,17 @@ def eliminar_sucursal(sucursal_id):
     suc = Sucursal.query.filter_by(
         id=sucursal_id, tenant_id=g.tenant_id
     ).first_or_404()
-    # Check for related tickets (FK NOT NULL → would cause integrity error)
-    ticket_count = Ticket.query.filter_by(sucursal_id=suc.id).count()
-    if ticket_count > 0:
-        return jsonify({
-            "error": f"No se puede eliminar: la sucursal tiene {ticket_count} ticket(s) asociado(s). "
-                     "Puedes desactivarla en su lugar."
-        }), 409
-    # Check for related ingresos (FK NULLABLE but still a reference)
+    # Bloquea el borrado si hay filas que referencian la sucursal (FK). Se filtra
+    # por tenant_id además de sucursal_id para no contar datos de otros tenants.
     from app.edr.models import Ingreso
-    ingreso_count = Ingreso.query.filter_by(sucursal_id=suc.id).count()
-    if ingreso_count > 0:
-        return jsonify({
-            "error": f"No se puede eliminar: la sucursal tiene {ingreso_count} ingreso(s) asociado(s). "
-                     "Puedes desactivarla en su lugar."
-        }), 409
+    referencias = ((Ticket, "ticket"), (Ingreso, "ingreso"))
+    for modelo, nombre in referencias:
+        n = modelo.query.filter_by(tenant_id=g.tenant_id, sucursal_id=suc.id).count()
+        if n > 0:
+            return jsonify({
+                "error": f"No se puede eliminar: la sucursal tiene {n} {nombre}(s) asociado(s). "
+                         "Puedes desactivarla en su lugar."
+            }), 409
     db.session.delete(suc)
     db.session.commit()
     return jsonify({"message": "Sucursal eliminada"})
@@ -468,33 +464,34 @@ def reenviar(ticket_id):
         return jsonify({"error": "Solo se pueden reenviar facturas timbradas."}), 400
 
     data = request.get_json() or {}
-    dest_email = data.get("email") or t.email
+    dest_email = (data.get("email") or t.email or "").strip()
 
     if not dest_email:
         return jsonify({"error": "Debe proporcionar una dirección de correo."}), 400
-
-    # Actualizar el correo en el ticket si cambió
-    if dest_email != t.email:
-        t.email = dest_email
-        db.session.commit()
 
     cfg = ConfiguracionFiscal.query.filter_by(tenant_id=g.tenant_id).first()
     if not cfg:
         return jsonify({"error": "Configuración fiscal no encontrada."}), 400
 
+    # El correo del ticket solo se sobreescribe si el envío tiene éxito: si el
+    # usuario escribió un email con typo y el envío falla, no queremos perder la
+    # dirección buena. Lo asignamos en memoria y confirmamos con commit al final.
+    t.email = dest_email
     try:
         from app.facturacion.cfdi import generar_pdf_de_xml, enviar_factura_email
         pdf = generar_pdf_de_xml(t.xml, logo=cfg.logo)
         t.email_enviado = bool(enviar_factura_email(t, pdf, t.xml))
-        db.session.commit()
-        
-        if not t.email_enviado:
-            current_app.logger.error(
-                "Reenvío de factura del ticket %s: el correo no se envió (SMTP)", ticket_id)
-            return jsonify({"error": "No se pudo enviar el correo. Verifique la configuración de SMTP."}), 500
     except Exception as e:
+        db.session.rollback()  # descarta el cambio de email
         current_app.logger.exception("Error al reenviar factura del ticket %s", ticket_id)
         return jsonify({"error": f"Error al reenviar factura: {str(e)}"}), 500
 
+    if not t.email_enviado:
+        db.session.rollback()  # descarta el cambio de email
+        current_app.logger.error(
+            "Reenvío de factura del ticket %s: el correo no se envió (SMTP)", ticket_id)
+        return jsonify({"error": "No se pudo enviar el correo. Verifique la configuración de SMTP."}), 500
+
+    db.session.commit()
     return jsonify(TicketSchema().dump(t))
 

@@ -597,7 +597,10 @@ def _sync_plan_to_clip(plan, app_base_url):
     if plan.clip_price_id and plan.clip_subscription_link:
         return False
 
-    base = (app_base_url or current_app.config.get("APP_BASE_URL", "")).rstrip("/")
+    # `or` encadenado: APP_BASE_URL puede existir con valor None; un base vacío
+    # mandaría URLs relativas rotas a Clip, así que caemos al dominio de producción.
+    base = (app_base_url or current_app.config.get("APP_BASE_URL")
+            or "http://www.dentalplanning.mx").rstrip("/")
     result = create_price(
         name=plan.nombre,
         description=plan.descripcion or plan.nombre,

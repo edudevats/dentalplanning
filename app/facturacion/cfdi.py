@@ -94,14 +94,19 @@ def desglose_ticket(ticket):
             "total": round(subtotal + iva_total, 2), "conceptos": conceptos}
 
 
-def _generar_cfdi(ticket, receptor, cfg, signer):
-    """Devuelve (cfdi_obj, xml_str) usando el CFDIGenerator probado."""
+def _generar_cfdi(ticket, receptor, cfg, signer, fecha=None):
+    """Devuelve (cfdi_obj, xml_str) usando el CFDIGenerator probado.
+
+    `fecha` (aware) fija la emisión del comprobante; si es None el generador usa
+    la hora actual. Se pasa para que los reintentos produzcan el mismo sello.
+    """
     from app.facturacion.cfdi_generator import CFDIGenerator
     gen = CFDIGenerator(signer=signer)
     suc = ticket.sucursal
     return gen.crear_factura(
         serie=ticket.serie or None,
         folio=str(ticket.folio),
+        fecha=fecha,
         forma_pago="01",
         metodo_pago="PUE",
         lugar_expedicion=(suc.codigo_postal if suc else ""),
@@ -192,7 +197,11 @@ def timbrar_ticket(ticket, receptor):
 
     Lanza TimbradoError ante reglas de negocio o fallo del PAC (deja estado='error').
     """
-    # 'error' es re-intentable: un timbrado fallido no deja la factura emitida.
+    # 'error' es re-intentable, pero OJO con las facturas duplicadas: si un intento
+    # previo timbró y solo se perdió la respuesta (timeout), reintentar NO debe
+    # emitir un segundo CFDI. Fijamos la fecha del comprobante en el primer intento
+    # y la reutilizamos, para que el reintento genere un XML byte-idéntico (mismo
+    # sello) que Finkok deduplica en lugar de asignar un UUID nuevo.
     if ticket.estado not in (TICKET_SIN_TIMBRAR, TICKET_ERROR):
         raise TimbradoError("El ticket ya fue timbrado o cancelado.")
     if _ventana_vencida(ticket):
@@ -204,9 +213,19 @@ def timbrar_ticket(ticket, receptor):
     if not cfg.regimen_fiscal:
         raise TimbradoError("Falta el régimen fiscal del emisor.")
 
+    # Bloquea la fecha de emisión la primera vez (aware UTC, con la tolerancia de
+    # 5 min del SAT) y persístela antes de timbrar para que sobreviva a un crash.
+    if ticket.cfdi_fecha is None:
+        from datetime import timedelta
+        ticket.cfdi_fecha = datetime.now(timezone.utc) - timedelta(minutes=5)
+        db.session.commit()
+    fecha_cfdi = ticket.cfdi_fecha
+    if fecha_cfdi.tzinfo is None:  # la BD la devuelve naive → es UTC
+        fecha_cfdi = fecha_cfdi.replace(tzinfo=timezone.utc)
+
     try:
         signer = cargar_signer(cfg)
-        cfdi_obj, xml_str = _generar_cfdi(ticket, receptor, cfg, signer)
+        cfdi_obj, xml_str = _generar_cfdi(ticket, receptor, cfg, signer, fecha=fecha_cfdi)
         result = _timbrar(cfdi_obj)
     except Exception as e:  # noqa: BLE001
         logger.exception("Falló el timbrado del ticket %s", ticket.id)

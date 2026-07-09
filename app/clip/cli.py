@@ -112,7 +112,8 @@ def sync_prices(dry_run):
     Para cada Plan sin clip_price_id, crea un precio recurrente mensual en Clip
     anclado al dia del primer pago. Guarda el clip_price_id y subscription_link.
     """
-    base_url = current_app.config.get("APP_BASE_URL", "http://localhost:5000").rstrip("/")
+    # `or` (no el default de .get): la clave puede existir con valor None.
+    base_url = (current_app.config.get("APP_BASE_URL") or "http://localhost:5000").rstrip("/")
     webhook_url = f"{base_url}/api/v1/clip/webhook"
     success_url = f"{base_url}/registro-exitoso"
     error_url = f"{base_url}/registro-error"

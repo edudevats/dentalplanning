@@ -15,17 +15,8 @@ else:
 # Mexico City timezone
 MEXICO_TIMEZONE = ZoneInfo("America/Mexico_City")
 
-
-# Monkeypatch satcfdi's incorrect timezone mappings
-# satcfdi maps 'Tiempo del Pacífico' to 'America/La_Paz' (Bolivia, UTC-4!)
-# and 'Tiempo del Noroeste' to 'America/Matamoros' (UTC-6)
-try:
-    import satcfdi.transform as _sat_transform
-    _sat_transform.HUSO_HORARIOS['Tiempo del Pacífico'] = 'America/Mazatlan'
-    _sat_transform.HUSO_HORARIOS['Tiempo del Noroeste'] = 'America/Tijuana'
-except Exception:
-    pass
-
+# El monkeypatch de satcfdi.HUSO_HORARIOS (mapeos de huso incorrectos) vive en
+# app/facturacion/__init__.py, que Python ejecuta antes que este submódulo.
 
 
 def now_mexico():

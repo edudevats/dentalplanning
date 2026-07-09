@@ -42,7 +42,10 @@ def _auth_headers():
 
 
 def _base_url():
-    return current_app.config["CLIP_BASE_URL"].rstrip("/")
+    # CLIP_BASE_URL puede venir sin definir (config sin default); cae al endpoint
+    # de producción de Clip para no crashear con None.rstrip().
+    base = current_app.config.get("CLIP_BASE_URL") or "https://api.payclip.com"
+    return base.rstrip("/")
 
 
 def create_checkout_link(amount, description, webhook_url=None, redirection_url=None,
