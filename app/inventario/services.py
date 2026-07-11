@@ -1,5 +1,5 @@
 from datetime import datetime, date, timedelta
-from sqlalchemy import asc, nullslast
+from sqlalchemy import asc
 from app.extensions import db
 from app.catalogo.models import Material
 from app.configuracion.models import ConfigConsultorio
@@ -195,7 +195,14 @@ def _lotes_disponibles(tenant_id, material_id, operatorio_id):
         )
     )
     if material.expira:
-        q = q.order_by(nullslast(asc(Lote.fecha_caducidad)), asc(Lote.fecha_surtido))
+        # NULLS LAST portable: MySQL no soporta la sintaxis NULLS LAST, así que
+        # ordenamos primero por "fecha_caducidad IS NULL" (0 = tiene fecha, 1 = NULL),
+        # empujando los lotes sin caducidad al final. Funciona igual en SQLite.
+        q = q.order_by(
+            asc(Lote.fecha_caducidad.is_(None)),
+            asc(Lote.fecha_caducidad),
+            asc(Lote.fecha_surtido),
+        )
     else:
         q = q.order_by(asc(Lote.fecha_surtido))
     return q.all()
