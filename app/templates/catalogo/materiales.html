@@ -286,8 +286,19 @@ async function confirmDelete() {
 
 async function loadMis() {
   try {
-    const res = await API.get('/materiales');
-    myMaterials = res.materiales ?? res ?? [];
+    // El backend pagina (per_page maximo 200). Recorremos todas las paginas
+    // para que la busqueda/filtrado client-side opere sobre el total.
+    const first = await API.get('/materiales?page=1&per_page=200');
+    if (Array.isArray(first)) {
+      myMaterials = first;
+    } else {
+      myMaterials = first.materiales ?? [];
+      const totalPages = first.pages ?? 1;
+      for (let p = 2; p <= totalPages; p++) {
+        const res = await API.get('/materiales?page=' + p + '&per_page=200');
+        myMaterials = myMaterials.concat(res.materiales ?? []);
+      }
+    }
   } catch { Toast.error('Error al cargar materiales'); }
   if (activeTab === 'mis') renderMis();
 }
