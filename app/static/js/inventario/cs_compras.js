@@ -30,6 +30,7 @@
     input: matSearchInput,
     getItems: () => materialsList,
     getLabel: m => m.nombre,
+    getMeta: m => currency(m.costo_unitario || 0) + "/u",
     onSelect: (m) => { matHidden.value = String(m.id); matSearchInput.value = m.nombre; },
     clearOnSelect: false,
     emptyText: "Sin materiales",

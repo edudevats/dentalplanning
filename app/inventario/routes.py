@@ -273,6 +273,7 @@ def _serializar_lista(m, total_global):
     return {
         "id": m.id, "nombre": m.nombre,
         "expira": m.expira, "unidad_inventario": m.unidad_inventario,
+        "costo_unitario": m.costo_unitario,
         "categorias": [c.nombre for c in m.categorias],
         "total_global": int(total_global),
     }
