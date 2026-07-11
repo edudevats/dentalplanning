@@ -18,7 +18,30 @@
   // Caches
   let materialsMap = {};
   let operatoriesMap = {};
+  let materialsList = [];
   let allData = [];
+
+  // Material picker (autocompletado)
+  const matSearchInput = document.getElementById("compra-mat-search");
+  const matHidden = form.querySelector('[name="material_id"]');
+  // Al teclear se invalida la seleccion previa hasta elegir de la lista.
+  matSearchInput.addEventListener("input", () => { matHidden.value = ""; });
+  Combobox({
+    input: matSearchInput,
+    getItems: () => materialsList,
+    getLabel: m => m.nombre,
+    onSelect: (m) => { matHidden.value = String(m.id); matSearchInput.value = m.nombre; },
+    clearOnSelect: false,
+    emptyText: "Sin materiales",
+    classes: {
+      menu: "absolute z-50 left-0 right-0 mt-1 max-h-64 overflow-y-auto rounded-md bg-cs-surface-container-lowest shadow-lg",
+      item: "px-4 py-2.5 text-sm cursor-pointer flex items-center justify-between gap-3",
+      itemBase: "text-cs-on-surface hover:bg-cs-surface-container",
+      itemActive: "bg-cs-surface-container text-cs-on-surface",
+      meta: "text-xs text-cs-on-surface-var tabular-nums shrink-0",
+      empty: "px-4 py-2.5 text-sm text-cs-on-surface-var",
+    },
+  });
 
   async function loadLookups() {
     try {
@@ -169,9 +192,7 @@
       invApi.get("/materiales"),
       invApi.get("/operatorios"),
     ]);
-    const selM = form.querySelector('[name="material_id"]');
-    clearChildren(selM);
-    mats.forEach(m => selM.appendChild(makeOption(m.id, m.nombre)));
+    materialsList = mats;
 
     const selO = form.querySelector('[name="operatorio_destino_id"]');
     [...selO.querySelectorAll('option:not([value=""])')].forEach(o => o.remove());
@@ -182,6 +203,19 @@
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
     const fd = new FormData(form);
+
+    if (!fd.get("material_id")) {
+      let errP = form.querySelector(".cs-form-error");
+      if (!errP) {
+        errP = document.createElement("p");
+        errP.className = "cs-form-error text-xs font-medium text-cs-error text-center mt-2";
+        form.querySelector('[type="submit"]').parentElement.appendChild(errP);
+      }
+      errP.textContent = "Selecciona un material de la lista.";
+      matSearchInput.focus();
+      return;
+    }
+
     const body = {
       material_id: parseInt(fd.get("material_id")),
       cantidad: parseInt(fd.get("cantidad")),
@@ -204,6 +238,8 @@
       await invApi.post("/compras", body);
       closeModal();
       form.reset();
+      matSearchInput.value = "";
+      matHidden.value = "";
       await cargar();
     } catch (err) {
       // Show inline error

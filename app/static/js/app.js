@@ -13,6 +13,133 @@ function domIcon(name, cls) {
   return i;
 }
 
+// ── Combobox (autocompletado) ─────────────────────────────────────────────────
+// Convierte un <input type="text"> en un buscador con lista desplegable filtrada.
+// Pensado para elegir de listas largas (ej. 200+ materiales) sin scrollear un
+// <select> gigante. Soporta teclado (ArrowUp/Down, Enter, Escape) y click.
+//
+// opts:
+//   input         : HTMLInputElement (requerido). Su contenedor debe poder
+//                   posicionar el menu absoluto (se fuerza position:relative).
+//   getItems      : () => Array<item>  (se evalua en cada render; permite datos
+//                   que cambian, ej. ocultar ya-seleccionados)
+//   getLabel      : (item) => string   (texto principal; default item.nombre)
+//   getMeta       : (item) => string|null (texto secundario a la derecha, ej. costo)
+//   isDisabled    : (item) => bool     (excluye el item de los resultados)
+//   onSelect      : (item) => void     (callback al elegir)
+//   clearOnSelect : bool  (default true) — limpia el input tras elegir
+//   limit         : number (default 50) — maximo de resultados mostrados
+//   emptyText     : string (default 'Sin resultados')
+//   classes       : overrides de clases para adaptar el tema (menu/item/…)
+//
+// Devuelve { open, close, refresh }.
+function Combobox(opts) {
+  const input = opts.input;
+  const getLabel = opts.getLabel || (m => m.nombre || '');
+  const getMeta = opts.getMeta || (() => null);
+  const isDisabled = opts.isDisabled || (() => false);
+  const limit = opts.limit || 50;
+  const clearOnSelect = opts.clearOnSelect !== false;
+  const emptyText = opts.emptyText || 'Sin resultados';
+  const cls = Object.assign({
+    menu: 'absolute z-50 left-0 right-0 mt-1 max-h-64 overflow-y-auto rounded-lg border border-border bg-surface shadow-lg',
+    item: 'px-3 py-2 text-sm cursor-pointer flex items-center justify-between gap-3',
+    itemBase: 'text-text-primary hover:bg-surface-hover',
+    itemActive: 'bg-primary-50 text-primary-700',
+    meta: 'text-xs text-text-muted tabular-nums shrink-0',
+    empty: 'px-3 py-2 text-sm text-text-muted',
+  }, opts.classes || {});
+
+  const parent = input.parentElement;
+  if (parent && getComputedStyle(parent).position === 'static') {
+    parent.style.position = 'relative';
+  }
+
+  const menu = domEl('ul', cls.menu);
+  menu.style.display = 'none';
+  parent.appendChild(menu);
+
+  let filtered = [];
+  let activeIdx = -1;
+  let isOpen = false;
+
+  function compute() {
+    const all = (opts.getItems ? opts.getItems() : []) || [];
+    const q = input.value.trim().toLowerCase();
+    const usable = all.filter(m => !isDisabled(m));
+    const matched = q ? usable.filter(m => getLabel(m).toLowerCase().includes(q)) : usable;
+    return matched.slice(0, limit);
+  }
+
+  function highlight() {
+    [...menu.children].forEach((li, i) => {
+      if (li.dataset.idx === undefined) return;
+      li.className = cls.item + ' ' + (i === activeIdx ? cls.itemActive : cls.itemBase);
+    });
+    if (activeIdx >= 0 && menu.children[activeIdx]) {
+      menu.children[activeIdx].scrollIntoView({ block: 'nearest' });
+    }
+  }
+
+  function render() {
+    filtered = compute();
+    activeIdx = filtered.length ? 0 : -1;
+    menu.replaceChildren();
+    if (!filtered.length) {
+      menu.appendChild(domEl('li', cls.empty, emptyText));
+    } else {
+      filtered.forEach((m, i) => {
+        const li = domEl('li', cls.item + ' ' + (i === activeIdx ? cls.itemActive : cls.itemBase));
+        li.dataset.idx = String(i);
+        li.appendChild(domEl('span', 'min-w-0 truncate', getLabel(m)));
+        const meta = getMeta(m);
+        if (meta != null) li.appendChild(domEl('span', cls.meta, meta));
+        // mousedown (no click) para elegir antes de que el input pierda foco
+        li.addEventListener('mousedown', (e) => { e.preventDefault(); choose(m); });
+        li.addEventListener('mouseenter', () => { activeIdx = i; highlight(); });
+        menu.appendChild(li);
+      });
+    }
+    menu.style.display = '';
+    isOpen = true;
+  }
+
+  function close() {
+    menu.style.display = 'none';
+    isOpen = false;
+    activeIdx = -1;
+  }
+
+  function choose(m) {
+    if (clearOnSelect) input.value = '';
+    close();
+    if (opts.onSelect) opts.onSelect(m);
+  }
+
+  input.setAttribute('autocomplete', 'off');
+  input.addEventListener('input', render);
+  input.addEventListener('focus', render);
+  input.addEventListener('keydown', (e) => {
+    if (!isOpen && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) { render(); return; }
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      if (filtered.length) { activeIdx = (activeIdx + 1) % filtered.length; highlight(); }
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (filtered.length) { activeIdx = (activeIdx - 1 + filtered.length) % filtered.length; highlight(); }
+    } else if (e.key === 'Enter') {
+      if (isOpen && activeIdx >= 0 && filtered[activeIdx]) { e.preventDefault(); choose(filtered[activeIdx]); }
+    } else if (e.key === 'Escape') {
+      close();
+    }
+  });
+  document.addEventListener('click', (e) => {
+    if (isOpen && !menu.contains(e.target) && e.target !== input) close();
+  });
+
+  return { open: render, close, refresh: () => { if (isOpen) render(); } };
+}
+
 // ── Escape HTML ───────────────────────────────────────────────────────────────
 function esc(s) {
   if (s == null) return '';

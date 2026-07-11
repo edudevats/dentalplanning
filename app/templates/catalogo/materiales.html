@@ -170,7 +170,8 @@ function renderMis() {
   searchIn.type = 'text'; searchIn.placeholder = 'Buscar material...';
   searchIn.value = misSearch;
   searchIn.className = 'block w-full rounded-lg border border-border pl-10 px-3 py-2.5 text-sm font-body text-text-primary placeholder:text-text-muted min-h-[44px] bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-500';
-  searchIn.addEventListener('input', e => { misSearch = e.target.value; renderMis(); });
+  // Solo re-renderiza la tabla en cada tecla; el input persiste y no pierde foco.
+  searchIn.addEventListener('input', e => { misSearch = e.target.value; renderMisTable(); });
   searchWrap.appendChild(searchIcon); searchWrap.appendChild(searchIn);
   const addBtn = domEl('button', 'inline-flex items-center justify-center gap-2 rounded-lg font-medium font-body cursor-pointer bg-accent-500 hover:bg-accent-600 text-white px-4 py-2 text-sm min-h-[38px] shrink-0');
   addBtn.type = 'button';
@@ -180,12 +181,16 @@ function renderMis() {
   toolbar.appendChild(searchWrap); toolbar.appendChild(addBtn);
   wrap.appendChild(toolbar);
 
-  const q = misSearch.trim().toLowerCase();
-  const filtered = q ? myMaterials.filter(m => (m.nombre || '').toLowerCase().includes(q)) : myMaterials;
-
   const tableWrap = domEl('div', '');
   tableWrap.id = 'mis-table';
   wrap.appendChild(tableWrap);
+
+  renderMisTable();
+}
+
+function renderMisTable() {
+  const q = misSearch.trim().toLowerCase();
+  const filtered = q ? myMaterials.filter(m => (m.nombre || '').toLowerCase().includes(q)) : myMaterials;
 
   const cols = [
     { key: 'nombre', label: 'Nombre' },
@@ -318,10 +323,6 @@ function renderMaster() {
   const wrap = document.getElementById('tab-content');
   wrap.replaceChildren();
 
-  const q = masterSearch.trim().toLowerCase();
-  const filtered = q ? masterItems.filter(m => (m.nombre || '').toLowerCase().includes(q) || (m.categoria || '').toLowerCase().includes(q)) : masterItems;
-  const allSel = filtered.length > 0 && filtered.every(m => masterSelected.has(m.id));
-
   const toolbar = domEl('div', 'flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-4');
   const left = domEl('div', 'flex items-center gap-3 w-full sm:w-auto');
   const searchWrap = domEl('div', 'relative w-full sm:w-72');
@@ -330,7 +331,8 @@ function renderMaster() {
   const searchIn = document.createElement('input');
   searchIn.type = 'text'; searchIn.placeholder = 'Buscar en catalogo...'; searchIn.value = masterSearch;
   searchIn.className = 'block w-full rounded-lg border border-border pl-10 px-3 py-2.5 text-sm font-body text-text-primary placeholder:text-text-muted min-h-[44px] bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-500';
-  searchIn.addEventListener('input', e => { masterSearch = e.target.value; renderMaster(); });
+  // Solo re-renderiza la tabla en cada tecla; el input persiste y no pierde foco.
+  searchIn.addEventListener('input', e => { masterSearch = e.target.value; renderMasterTable(); });
   searchWrap.appendChild(si); searchWrap.appendChild(searchIn);
   left.appendChild(searchWrap);
   if (masterSelected.size > 0) left.appendChild(domEl('span', 'text-sm text-text-secondary font-body whitespace-nowrap', masterSelected.size + ' seleccionado' + (masterSelected.size !== 1 ? 's' : '')));
@@ -348,6 +350,15 @@ function renderMaster() {
   tableWrap.id = 'master-table';
   wrap.appendChild(tableWrap);
 
+  renderMasterTable();
+}
+
+function renderMasterTable() {
+  const q = masterSearch.trim().toLowerCase();
+  const filtered = q ? masterItems.filter(m => (m.nombre || '').toLowerCase().includes(q) || (m.categoria || '').toLowerCase().includes(q)) : masterItems;
+  const allSel = filtered.length > 0 && filtered.every(m => masterSelected.has(m.id));
+
+  // Cambiar la seleccion re-renderiza todo (actualiza contador y boton de importar).
   const toggleAll = () => {
     if (allSel) filtered.forEach(m => masterSelected.delete(m.id));
     else filtered.forEach(m => masterSelected.add(m.id));

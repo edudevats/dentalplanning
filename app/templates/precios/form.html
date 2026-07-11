@@ -80,10 +80,13 @@
       </div>
     </div>
     <div class="p-5 space-y-4">
-      <select id="mat-select"
-        class="w-full rounded-lg border border-border px-3 py-2.5 text-sm font-body bg-surface focus:ring-2 focus:ring-primary-300 focus:border-primary-500 outline-none">
-        <option value="">Seleccionar material...</option>
-      </select>
+      <div class="relative">
+        <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
+          <i data-lucide="search" class="h-4 w-4 text-text-muted"></i>
+        </div>
+        <input id="mat-search" type="text" placeholder="Buscar material por nombre..." autocomplete="off"
+          class="w-full rounded-lg border border-border pl-10 pr-3 py-2.5 text-sm font-body bg-surface text-text-primary placeholder:text-text-muted focus:ring-2 focus:ring-primary-300 focus:border-primary-500 outline-none" />
+      </div>
       <div id="mat-table-wrap"></div>
     </div>
   </div>
@@ -183,14 +186,21 @@ function renderMaterials() {
   lucide.createIcons();
 }
 
-document.getElementById('mat-select').addEventListener('change', function() {
-  const id = Number(this.value);
-  if (!id) return;
-  const mat = materiales.find(m => m.id === id);
-  if (!mat || selectedMats.some(m => m.material_id === id)) { this.value = ''; return; }
+let matCombo = null;
+function addMaterial(mat) {
+  if (!mat || selectedMats.some(m => m.material_id === mat.id)) return;
   selectedMats.push({ material_id: mat.id, nombre: mat.nombre, costo_unitario: mat.costo_unitario, cantidad: 1 });
-  this.value = '';
   renderMaterials();
+  if (matCombo) matCombo.refresh();
+}
+
+matCombo = Combobox({
+  input: document.getElementById('mat-search'),
+  getItems: () => materiales,
+  getLabel: m => m.nombre,
+  getMeta: m => fmt(m.costo_unitario) + '/u',
+  isDisabled: m => selectedMats.some(s => s.material_id === m.id),
+  onSelect: addMaterial,
 });
 
 function renderCalculos(c) {
@@ -250,17 +260,19 @@ async function handleSave() {
 }
 
 async function init() {
-  // Load material catalog
+  // Load material catalog (todas las paginas; el backend pagina con per_page max 200)
   try {
-    const res = await API.get('/materiales');
-    materiales = res.materiales ?? res ?? [];
-    const sel = document.getElementById('mat-select');
-    materiales.forEach(m => {
-      const opt = document.createElement('option');
-      opt.value = String(m.id);
-      opt.textContent = m.nombre + ' (' + fmt(m.costo_unitario) + '/u)';
-      sel.appendChild(opt);
-    });
+    const first = await API.get('/materiales?page=1&per_page=200');
+    if (Array.isArray(first)) {
+      materiales = first;
+    } else {
+      materiales = first.materiales ?? [];
+      const totalPages = first.pages ?? 1;
+      for (let p = 2; p <= totalPages; p++) {
+        const res = await API.get('/materiales?page=' + p + '&per_page=200');
+        materiales = materiales.concat(res.materiales ?? []);
+      }
+    }
   } catch {}
 
   if (isEdit) {
