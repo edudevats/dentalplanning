@@ -1,0 +1,164 @@
+{% extends "base.html" %}
+{% block body %}
+
+<!-- Auth gate: hide everything until JWT is verified -->
+<script>
+  if (!Auth.check()) {
+    document.write('');
+    throw new Error('AUTH_REDIRECT');
+  }
+  document.documentElement.style.visibility = 'visible';
+</script>
+
+<div class="min-h-screen bg-cs-surface font-cs-body text-cs-on-surface">
+
+  <div id="sidebar-overlay" class="fixed inset-0 bg-black/30 z-40 lg:hidden hidden"></div>
+
+  <aside class="hidden lg:flex lg:flex-col lg:fixed lg:inset-y-0 lg:left-0 lg:w-64 bg-cs-surface-container-low z-30">
+    <div class="flex flex-col h-full p-4">
+
+      <div class="px-2 mb-6">
+        <h2 class="font-cs-display text-lg font-bold text-cs-on-surface leading-tight">CRM de Pacientes</h2>
+        <p class="text-xs text-cs-on-surface-var mt-0.5" style="letter-spacing: 0.05rem;">Seguimiento y Reactivación</p>
+      </div>
+
+      <nav class="flex-1 space-y-0.5">
+        <a href="/crm" class="cs-nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors duration-200 {% if crm_screen == 'kanban' %}active{% else %}text-cs-on-surface-var{% endif %}">
+          <i data-lucide="kanban" class="h-[18px] w-[18px] shrink-0"></i>
+          Tablero
+        </a>
+        <a href="/crm/pendientes" class="cs-nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors duration-200 {% if crm_screen == 'pendientes' %}active{% else %}text-cs-on-surface-var{% endif %}">
+          <i data-lucide="bell" class="h-[18px] w-[18px] shrink-0"></i>
+          Pendientes
+        </a>
+        <a href="/crm/importar" class="cs-nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors duration-200 {% if crm_screen == 'importar' %}active{% else %}text-cs-on-surface-var{% endif %}">
+          <i data-lucide="upload" class="h-[18px] w-[18px] shrink-0"></i>
+          Importar
+        </a>
+      </nav>
+
+      <div class="mt-auto pt-4 space-y-0.5">
+        <a href="/ajustes" class="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-cs-on-surface-var hover:bg-cs-surface-container transition-colors duration-200">
+          <i data-lucide="settings" class="h-[18px] w-[18px] shrink-0"></i>
+          Configuración
+        </a>
+        <a href="/selector" class="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-cs-on-surface-var hover:bg-cs-surface-container transition-colors duration-200">
+          <i data-lucide="grid-2x2" class="h-[18px] w-[18px] shrink-0"></i>
+          Cambiar de Sistema
+        </a>
+
+        <div class="mt-3 flex items-center gap-3 px-3 py-2.5 rounded-lg bg-cs-surface-container-lowest">
+          <div class="w-9 h-9 rounded-md bg-cs-primary-container text-cs-on-primary-container flex items-center justify-center text-sm font-semibold font-cs-display shrink-0">
+            <span data-user-initials>??</span>
+          </div>
+          <div class="flex-1 min-w-0">
+            <p class="text-sm font-semibold text-cs-on-surface truncate" data-user-name>Usuario</p>
+            <p class="text-xs text-cs-on-surface-var truncate">Ver Perfil</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <style>
+      .cs-nav-link:hover { background-color: var(--color-cs-surface-container); color: var(--color-cs-on-surface); }
+      .cs-nav-link.active {
+        background-color: var(--color-cs-surface-container-lowest);
+        color: var(--color-cs-primary);
+        font-weight: 600;
+        box-shadow: inset 3px 0 0 0 var(--color-cs-primary);
+      }
+    </style>
+  </aside>
+
+  <aside id="mobile-sidebar" class="fixed inset-y-0 left-0 w-64 bg-cs-surface-container-low z-50 flex flex-col transform -translate-x-full transition-transform duration-200 ease-in-out lg:hidden">
+    <div class="flex flex-col h-full p-4">
+
+      <div class="px-2 mb-6">
+        <h2 class="font-cs-display text-lg font-bold text-cs-on-surface leading-tight">CRM de Pacientes</h2>
+        <p class="text-xs text-cs-on-surface-var mt-0.5" style="letter-spacing: 0.05rem;">Seguimiento y Reactivación</p>
+      </div>
+
+      <nav class="flex-1 space-y-0.5">
+        <a href="/crm" class="cs-nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors duration-200 {% if crm_screen == 'kanban' %}active{% else %}text-cs-on-surface-var{% endif %}">
+          <i data-lucide="kanban" class="h-[18px] w-[18px] shrink-0"></i>
+          Tablero
+        </a>
+        <a href="/crm/pendientes" class="cs-nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors duration-200 {% if crm_screen == 'pendientes' %}active{% else %}text-cs-on-surface-var{% endif %}">
+          <i data-lucide="bell" class="h-[18px] w-[18px] shrink-0"></i>
+          Pendientes
+        </a>
+        <a href="/crm/importar" class="cs-nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors duration-200 {% if crm_screen == 'importar' %}active{% else %}text-cs-on-surface-var{% endif %}">
+          <i data-lucide="upload" class="h-[18px] w-[18px] shrink-0"></i>
+          Importar
+        </a>
+      </nav>
+
+      <div class="mt-auto pt-4 space-y-0.5">
+        <a href="/ajustes" class="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-cs-on-surface-var hover:bg-cs-surface-container transition-colors duration-200">
+          <i data-lucide="settings" class="h-[18px] w-[18px] shrink-0"></i>
+          Configuración
+        </a>
+        <a href="/selector" class="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-cs-on-surface-var hover:bg-cs-surface-container transition-colors duration-200">
+          <i data-lucide="grid-2x2" class="h-[18px] w-[18px] shrink-0"></i>
+          Cambiar de Sistema
+        </a>
+
+        <div class="mt-3 flex items-center gap-3 px-3 py-2.5 rounded-lg bg-cs-surface-container-lowest">
+          <div class="w-9 h-9 rounded-md bg-cs-primary-container text-cs-on-primary-container flex items-center justify-center text-sm font-semibold font-cs-display shrink-0">
+            <span data-user-initials>??</span>
+          </div>
+          <div class="flex-1 min-w-0">
+            <p class="text-sm font-semibold text-cs-on-surface truncate" data-user-name>Usuario</p>
+            <p class="text-xs text-cs-on-surface-var truncate">Ver Perfil</p>
+          </div>
+        </div>
+      </div>
+    </div>
+    <button id="sidebar-close" class="absolute top-4 right-4 p-1 rounded-lg text-cs-on-surface-var hover:text-cs-on-surface transition-colors cursor-pointer" aria-label="Cerrar menu">
+      <i data-lucide="x" class="h-5 w-5"></i>
+    </button>
+  </aside>
+
+  <header class="sticky top-0 z-20 h-16 backdrop-blur-xl bg-cs-surface-bright/80 lg:ml-64">
+    <div class="flex items-center justify-between h-full px-4 lg:px-8 gap-4">
+      <div class="flex items-center gap-3 flex-1 max-w-xl">
+        <button id="sidebar-toggle" class="p-2 rounded-lg text-cs-on-surface-var hover:bg-cs-surface-container transition-colors cursor-pointer lg:hidden" aria-label="Abrir menu">
+          <i data-lucide="menu" class="h-5 w-5"></i>
+        </button>
+        <div class="relative flex-1">
+          <i data-lucide="search" class="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-cs-outline"></i>
+          <input id="cs-global-search" type="text" placeholder="Buscar pacientes..." class="w-full pl-10 pr-3 py-2 rounded-lg bg-cs-surface-container text-sm placeholder:text-cs-outline focus:outline-none focus:ring-2 focus:ring-cs-primary/30 transition-all" />
+        </div>
+      </div>
+      <div class="flex items-center gap-2">
+        <span class="hidden md:inline-flex items-center gap-2 text-xs font-medium text-cs-on-surface-var px-3">
+          <span class="w-2 h-2 rounded-full bg-cs-primary animate-cs-pulse"></span>
+          Actualización en Vivo
+        </span>
+      </div>
+    </div>
+  </header>
+
+  <main class="lg:ml-64 p-4 lg:p-10 max-w-7xl mx-auto">
+    {% block cs_content %}{% endblock %}
+  </main>
+</div>
+
+<script src="{{ url_for('static', filename='js/crm/crm_common.js') }}"></script>
+
+{% block scripts %}{% endblock %}
+
+<script>
+  if (typeof lucide !== 'undefined' && typeof lucide.createIcons === 'function') lucide.createIcons();
+  if (typeof initMobileSidebar === 'function') initMobileSidebar();
+  if (typeof loadUserInfo === 'function') loadUserInfo();
+</script>
+
+<style>
+  @keyframes cs-pulse {
+    0%, 100% { opacity: 1.0; }
+    50%      { opacity: 0.4; }
+  }
+  .animate-cs-pulse { animation: cs-pulse 2s ease-in-out infinite; }
+</style>
+{% endblock %}

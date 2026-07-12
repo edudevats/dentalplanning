@@ -6,6 +6,7 @@ from app.auth.models import Tenant
 BLUEPRINT_MODULE_MAP = {
     "inventario": "inventario",
     "finanzas_personales": "finanzas_personales",
+    "crm": "crm",
 }
 
 

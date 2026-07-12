@@ -405,7 +405,7 @@
         modLabel.className = 'text-[10px] font-semibold uppercase tracking-wide text-cs-on-surface-var';
         modLabel.textContent = 'Módulos:';
         modRow.appendChild(modLabel);
-        const MOD_LABELS = { contable: 'Contable', inventario: 'Inventario', finanzas_personales: 'Finanzas' };
+        const MOD_LABELS = { contable: 'Contable', inventario: 'Inventario', finanzas_personales: 'Finanzas', crm: 'CRM' };
         mods.forEach(m => {
           const badge = document.createElement('span');
           badge.className = 'inline-flex px-2 py-0.5 rounded-md text-[10px] font-semibold bg-cs-primary-container text-cs-on-primary-container';

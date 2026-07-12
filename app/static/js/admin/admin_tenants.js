@@ -86,7 +86,7 @@
         if (mods.length > 0) {
           const modWrap = document.createElement('div');
           modWrap.className = 'flex flex-wrap gap-0.5 mt-0.5';
-          const MOD_LABELS = { contable: 'Cont', inventario: 'Inv', finanzas_personales: 'Fin' };
+          const MOD_LABELS = { contable: 'Cont', inventario: 'Inv', finanzas_personales: 'Fin', crm: 'CRM' };
           mods.forEach(m => {
             const badge = document.createElement('span');
             badge.className = 'inline-flex px-1.5 py-0 rounded text-[9px] font-semibold bg-cs-primary-container text-cs-on-primary-container';

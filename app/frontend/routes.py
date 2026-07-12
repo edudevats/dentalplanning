@@ -220,3 +220,20 @@ def finanzas_personales_metas():
 @frontend_bp.route("/finanzas-personales/presupuestos")
 def finanzas_personales_presupuestos():
     return render_template("finanzas_personales/presupuestos.html", fp_screen="presupuestos")
+
+
+# ── CRM de Pacientes ──
+
+@frontend_bp.route("/crm")
+def crm_kanban():
+    return render_template("crm/kanban.html", crm_screen="kanban")
+
+
+@frontend_bp.route("/crm/pendientes")
+def crm_pendientes():
+    return render_template("crm/pendientes.html", crm_screen="pendientes")
+
+
+@frontend_bp.route("/crm/importar")
+def crm_importar():
+    return render_template("crm/importar.html", crm_screen="importar")

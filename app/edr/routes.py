@@ -16,6 +16,9 @@ from app.configuracion.models import ConfigConsultorio
 from app.tratamientos.models import Tratamiento
 # parse_mes y ganancia_tratamiento viven en el núcleo contable unificado
 from app.engine.accounting import parse_mes as _parse_mes, ganancia_tratamiento, filtro_mes
+from app.crm.services import (
+    crm_activo, sincronizar_visita_ingreso, eliminar_visita_ingreso, CrmError,
+)
 
 edr_bp = Blueprint("edr", __name__, url_prefix="/api/v1/edr")
 
@@ -72,6 +75,13 @@ def crear_ingreso():
     db.session.add(ingreso)
     db.session.flush()
 
+    if crm_activo(g.tenant_id) and ingreso.paciente_id:
+        try:
+            sincronizar_visita_ingreso(ingreso)
+        except CrmError as e:
+            db.session.rollback()
+            return jsonify({"error": str(e)}), 400
+
     if ingreso.factura and data.get("sucursal_id"):
         try:
             asignar_ticket(ingreso, data["sucursal_id"], ticket_folio)
@@ -100,6 +110,14 @@ def actualizar_ingreso(ingreso_id):
     data = schema.load(request.get_json() or {})
     for key, value in data.items():
         setattr(ingreso, key, value)
+
+    if crm_activo(g.tenant_id):
+        try:
+            sincronizar_visita_ingreso(ingreso)
+        except CrmError as e:
+            db.session.rollback()
+            return jsonify({"error": str(e)}), 400
+
     if ingreso.ticket:
         recalcular_total(ingreso.ticket)
     db.session.commit()
@@ -123,6 +141,9 @@ def eliminar_ingreso(ingreso_id):
     PagoComisionIngreso.query.filter_by(
         ingreso_id=ingreso.id, tenant_id=g.tenant_id
     ).delete()
+
+    eliminar_visita_ingreso(g.tenant_id, ingreso.id)
+
     db.session.delete(ingreso)
     db.session.flush()
 

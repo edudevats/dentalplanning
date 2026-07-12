@@ -6,8 +6,9 @@
     { slug: 'contable', label: 'Sistema Contable', desc: 'Tratamientos, precios, dashboard, reportes' },
     { slug: 'inventario', label: 'Inventario', desc: 'Materiales, lotes, operatorios' },
     { slug: 'finanzas_personales', label: 'Finanzas Personales', desc: 'Ingresos y gastos personales del dueño' },
+    { slug: 'crm', label: 'CRM de Pacientes', desc: 'Seguimiento de pacientes, Kanban y reactivación' },
   ];
-  const MOD_LABELS = { contable: 'Contable', inventario: 'Inventario', finanzas_personales: 'Finanzas' };
+  const MOD_LABELS = { contable: 'Contable', inventario: 'Inventario', finanzas_personales: 'Finanzas', crm: 'CRM' };
 
   let plans = [];
   let subsCountByPlan = {};

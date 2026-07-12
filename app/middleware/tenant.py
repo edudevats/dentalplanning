@@ -29,6 +29,22 @@ _RECEP_RULES = [
     ("GET", r"/api/v1/ajustes/metodos-pago"),
     ("GET", r"/api/v1/ajustes/estrategias"),
     ("GET", r"/api/v1/tratamientos"),
+    # CRM (todo excepto DELETE paciente y PUT config)
+    ("GET", r"/api/v1/crm/pacientes"),
+    ("POST", r"/api/v1/crm/pacientes"),
+    ("GET", r"/api/v1/crm/pacientes/\d+"),
+    ("PUT", r"/api/v1/crm/pacientes/\d+"),
+    ("PUT", r"/api/v1/crm/pacientes/\d+/estatus"),
+    ("POST", r"/api/v1/crm/pacientes/\d+/visitas"),
+    ("POST", r"/api/v1/crm/pacientes/\d+/seguimientos"),
+    ("POST", r"/api/v1/crm/seguimientos/\d+/completar"),
+    ("POST", r"/api/v1/crm/pacientes/\d+/notas"),
+    ("POST", r"/api/v1/crm/pacientes/importar/preview"),
+    ("POST", r"/api/v1/crm/pacientes/importar/confirmar"),
+    ("GET", r"/api/v1/crm/sugerencias-edr"),
+    ("POST", r"/api/v1/crm/sugerencias-edr/vincular"),
+    ("GET", r"/api/v1/crm/resumen"),
+    ("GET", r"/api/v1/crm/config"),
 ]
 RECEPCIONISTA_ALLOWLIST = [(m, re.compile("^" + p + "/?$")) for m, p in _RECEP_RULES]
 

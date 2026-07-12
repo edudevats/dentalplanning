@@ -100,6 +100,23 @@
         </div>
       </a>
 
+      <!-- CRM de Pacientes -->
+      <a href="/crm" id="btn-crm"
+         class="group relative bg-white/10 backdrop-blur-lg border border-white/20 rounded-2xl p-8 text-center transition-all duration-300 hover:bg-white/20 hover:scale-[1.03] hover:shadow-2xl hover:shadow-violet-900/40 focus:outline-none focus:ring-2 focus:ring-white/40 focus:ring-offset-2 focus:ring-offset-transparent">
+        <div class="absolute inset-0 rounded-2xl bg-gradient-to-br from-violet-400/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+        <div class="relative z-10">
+          <div class="w-16 h-16 mx-auto mb-5 rounded-2xl bg-gradient-to-br from-violet-400 to-violet-600 flex items-center justify-center shadow-lg group-hover:shadow-violet-500/40 transition-shadow duration-300">
+            <i data-lucide="heart-handshake" class="h-8 w-8 text-white"></i>
+          </div>
+          <h2 class="text-xl font-bold font-heading text-white mb-2">CRM de Pacientes</h2>
+          <p class="text-sm text-primary-200 leading-relaxed mb-6">Seguimiento y reactivación</p>
+          <span class="inline-flex items-center gap-2 text-sm font-semibold text-white/80 group-hover:text-white transition-colors duration-200">
+            Acceder
+            <i data-lucide="arrow-right" class="h-4 w-4 transition-transform duration-200 group-hover:translate-x-1"></i>
+          </span>
+        </div>
+      </a>
+
     </div>
 
     <!-- Logout -->
@@ -129,7 +146,7 @@
 
       const mods = (user.tenant && user.tenant.allowed_modules) || [];
       const isSuperuser = user.is_superuser;
-      const gated = { 'btn-inventario': 'inventario', 'btn-finanzas-personales': 'finanzas_personales' };
+      const gated = { 'btn-inventario': 'inventario', 'btn-finanzas-personales': 'finanzas_personales', 'btn-crm': 'crm' };
       let hasLocked = false;
       Object.entries(gated).forEach(([id, slug]) => {
         if (isSuperuser || mods.includes(slug)) return;

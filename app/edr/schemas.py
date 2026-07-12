@@ -10,6 +10,7 @@ class IngresoSchema(Schema):
     tratamiento_id = fields.Int(allow_none=True)
     nombre_tratamiento = fields.Str()
     paciente = fields.Str()
+    paciente_id = fields.Int(allow_none=True)  # FK opcional al CRM
     especialista_id = fields.Int(allow_none=True)
     metodo_pago_id = fields.Int(allow_none=True)
     monto = fields.Float(required=True, validate=validate.Range(min=0))

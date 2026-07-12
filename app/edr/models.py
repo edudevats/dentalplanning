@@ -14,6 +14,9 @@ class Ingreso(db.Model):
     )
     nombre_tratamiento = db.Column(db.String(200))
     paciente = db.Column(db.String(200))
+    # FK opcional al CRM. El string `paciente` se llena SIEMPRE (snapshot):
+    # el EDR nunca depende del módulo CRM.
+    paciente_id = db.Column(db.Integer, db.ForeignKey("pacientes.id"), nullable=True)
     especialista_id = db.Column(
         db.Integer, db.ForeignKey("especialistas.id"), nullable=True
     )
