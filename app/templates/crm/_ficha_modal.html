@@ -1,0 +1,66 @@
+<div id="modal-ficha" class="hidden fixed inset-0 z-50 overflow-y-auto">
+  <div class="flex min-h-full items-end sm:items-center justify-center p-4">
+    <div class="fixed inset-0 bg-black/40" onclick="Modal.close('modal-ficha')"></div>
+    <div class="relative bg-surface rounded-2xl shadow-xl w-full max-w-3xl">
+      <div class="flex items-center justify-between px-6 py-4 border-b border-border">
+        <h2 id="ficha-titulo" class="text-base font-semibold font-heading text-text-primary">Paciente</h2>
+        <button type="button" onclick="Modal.close('modal-ficha')"
+                class="p-2 rounded-lg text-text-muted hover:bg-surface-hover cursor-pointer">
+          <i data-lucide="x" class="h-4 w-4"></i>
+        </button>
+      </div>
+      <div class="px-6 py-5 grid grid-cols-1 md:grid-cols-2 gap-6">
+        <!-- Columna izquierda: datos -->
+        <div class="space-y-3">
+          <div><label class="block text-sm font-medium text-text-secondary mb-1 font-body">Nombre *</label>
+            <input id="fp-nombre" type="text" class="block w-full rounded-lg border border-border px-3 py-2 text-sm font-body bg-surface min-h-[40px]" /></div>
+          <div class="grid grid-cols-2 gap-3">
+            <div><label class="block text-sm font-medium text-text-secondary mb-1 font-body">Teléfono</label>
+              <input id="fp-telefono" type="text" class="block w-full rounded-lg border border-border px-3 py-2 text-sm font-body bg-surface min-h-[40px]" /></div>
+            <div><label class="block text-sm font-medium text-text-secondary mb-1 font-body">WhatsApp</label>
+              <input id="fp-whatsapp" type="text" class="block w-full rounded-lg border border-border px-3 py-2 text-sm font-body bg-surface min-h-[40px]" /></div>
+          </div>
+          <div><label class="block text-sm font-medium text-text-secondary mb-1 font-body">Email</label>
+            <input id="fp-email" type="email" class="block w-full rounded-lg border border-border px-3 py-2 text-sm font-body bg-surface min-h-[40px]" /></div>
+          <div class="grid grid-cols-2 gap-3">
+            <div><label class="block text-sm font-medium text-text-secondary mb-1 font-body">Estatus</label>
+              <select id="fp-estatus" class="block w-full rounded-lg border border-border px-3 py-2 text-sm font-body bg-surface min-h-[40px]">
+                <option value="prospecto">Prospecto</option>
+                <option value="activo">Activo</option>
+                <option value="alta">Alta</option>
+                <option value="baja">Baja</option>
+              </select></div>
+            <div><label class="block text-sm font-medium text-text-secondary mb-1 font-body">Doctor</label>
+              <select id="fp-doctor" class="block w-full rounded-lg border border-border px-3 py-2 text-sm font-body bg-surface min-h-[40px]">
+                <option value="">Sin asignar</option>
+              </select></div>
+          </div>
+          <label class="inline-flex items-center gap-2 text-sm font-body text-text-secondary cursor-pointer">
+            <input id="fp-problematico" type="checkbox" class="rounded border-border" />
+            Paciente problemático (excluir de envíos futuros)
+          </label>
+          <div><label class="block text-sm font-medium text-text-secondary mb-1 font-body">Notas generales</label>
+            <textarea id="fp-notas" rows="2" class="block w-full rounded-lg border border-border px-3 py-2 text-sm font-body bg-surface"></textarea></div>
+          <div class="flex gap-2 pt-1">
+            <button type="button" onclick="Ficha.guardar()"
+                    class="flex-1 rounded-lg bg-primary-500 hover:bg-primary-600 text-white px-4 py-2 text-sm font-medium cursor-pointer">Guardar</button>
+            <button type="button" id="fp-btn-eliminar" onclick="Ficha.eliminar()"
+                    class="rounded-lg border border-red-200 text-red-600 hover:bg-red-50 px-3 py-2 text-sm cursor-pointer">Eliminar</button>
+          </div>
+        </div>
+        <!-- Columna derecha: acciones + timeline -->
+        <div class="space-y-3" id="fp-panel-derecho">
+          <div class="flex gap-2">
+            <button type="button" onclick="Ficha.registrarVisita()"
+                    class="flex-1 rounded-lg border border-border hover:bg-surface-hover px-3 py-2 text-xs font-medium cursor-pointer">+ Visita</button>
+            <button type="button" onclick="Ficha.programarSeguimiento()"
+                    class="flex-1 rounded-lg border border-border hover:bg-surface-hover px-3 py-2 text-xs font-medium cursor-pointer">+ Seguimiento</button>
+            <button type="button" onclick="Ficha.agregarNota()"
+                    class="flex-1 rounded-lg border border-border hover:bg-surface-hover px-3 py-2 text-xs font-medium cursor-pointer">+ Nota</button>
+          </div>
+          <div id="fp-timeline" class="max-h-80 overflow-y-auto space-y-2 pr-1"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

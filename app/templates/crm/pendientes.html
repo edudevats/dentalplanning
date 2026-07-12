@@ -1,5 +1,115 @@
 {% extends "crm/_layout.html" %}
 {% block title %}Pendientes — CRM de Pacientes{% endblock %}
 {% block cs_content %}
-<h1 class="text-2xl font-bold font-heading text-text-primary">Pendientes</h1>
+<div class="space-y-6">
+  <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+    <h1 class="text-2xl font-bold font-heading text-text-primary">Pendientes de contactar</h1>
+    <div class="flex items-center gap-2 text-sm font-body text-text-secondary">
+      <label for="cfg-meses">Umbral de inactividad (meses):</label>
+      <input id="cfg-meses" type="number" min="1" max="60"
+             class="w-20 rounded-lg border border-border px-2 py-1.5 text-sm bg-surface" />
+      <button type="button" onclick="guardarConfig()"
+              class="rounded-lg bg-primary-500 hover:bg-primary-600 text-white px-3 py-1.5 text-sm cursor-pointer">Guardar</button>
+    </div>
+  </div>
+
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+    <div class="bg-surface rounded-xl border border-border shadow-sm">
+      <div class="px-5 py-3 border-b border-border">
+        <h2 class="text-sm font-semibold font-heading text-text-primary">Seguimientos de hoy y vencidos</h2>
+      </div>
+      <div id="lista-seguimientos" class="p-4 space-y-2"></div>
+    </div>
+    <div class="bg-surface rounded-xl border border-border shadow-sm">
+      <div class="px-5 py-3 border-b border-border">
+        <h2 class="text-sm font-semibold font-heading text-text-primary">Pacientes inactivos</h2>
+      </div>
+      <div id="lista-inactivos" class="p-4 space-y-2"></div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const hoyISO = new Date().toISOString().slice(0, 10);
+
+async function cargarConfig() {
+  try {
+    const cfg = await API.get('/crm/config');
+    document.getElementById('cfg-meses').value = cfg.meses_inactividad;
+  } catch (e) { Toast.error('No se pudo cargar la configuración'); }
+}
+
+async function guardarConfig() {
+  const meses = Number(document.getElementById('cfg-meses').value);
+  try {
+    await API.put('/crm/config', { meses_inactividad: meses });
+    Toast.success('Configuración guardada');
+    cargarTodo();
+  } catch (e) { Toast.error(e.message || 'No se pudo guardar'); }
+}
+
+async function cargarSeguimientos() {
+  try {
+    // El listado trae siguiente_seguimiento por paciente; pendiente = fecha <= hoy
+    const data = await API.get('/crm/pacientes');
+    const cont = document.getElementById('lista-seguimientos');
+    const pendientes = data.pacientes.filter(
+      p => p.siguiente_seguimiento && p.siguiente_seguimiento <= hoyISO
+    );
+    if (!pendientes.length) {
+      cont.innerHTML = '<p class="text-sm text-text-muted font-body">Nada pendiente. 🎉</p>';
+      return;
+    }
+    cont.innerHTML = pendientes.map(p => `
+      <div class="flex items-center gap-3 rounded-lg border border-border p-3">
+        <div class="flex-1 min-w-0">
+          <p class="text-sm font-semibold font-body text-text-primary">${esc(p.nombre)}</p>
+          <p class="text-xs text-text-muted">Programado: ${esc(p.siguiente_seguimiento)}
+            ${p.siguiente_seguimiento < hoyISO ? '· <span class="text-orange-600 font-bold">vencido</span>' : ''}</p>
+        </div>
+        <a href="/crm" class="text-xs font-medium text-primary-600 hover:underline">Ver en tablero</a>
+      </div>`).join('');
+  } catch (e) { Toast.error('No se pudieron cargar los seguimientos'); }
+}
+
+async function cargarInactivos() {
+  try {
+    const data = await API.get('/crm/pacientes?inactivos=true');
+    const cont = document.getElementById('lista-inactivos');
+    if (!data.pacientes.length) {
+      cont.innerHTML = '<p class="text-sm text-text-muted font-body">Sin pacientes inactivos.</p>';
+      return;
+    }
+    cont.innerHTML = data.pacientes.map(p => `
+      <div class="flex items-center gap-3 rounded-lg border border-border p-3">
+        <div class="flex-1 min-w-0">
+          <p class="text-sm font-semibold font-body text-text-primary">${esc(p.nombre)}</p>
+          <p class="text-xs text-text-muted">Última visita: ${esc(p.ultima_visita) || 'nunca'}
+            ${p.telefono ? '· 📞 ' + esc(p.telefono) : ''}</p>
+        </div>
+        <button onclick="crearSeguimiento(${p.id})"
+                class="rounded-lg border border-border hover:bg-surface-hover px-3 py-1.5 text-xs font-medium cursor-pointer">
+          Programar seguimiento
+        </button>
+      </div>`).join('');
+  } catch (e) { Toast.error('No se pudieron cargar los pacientes inactivos'); }
+}
+
+async function crearSeguimiento(pacienteId) {
+  const fecha = prompt('Fecha del seguimiento (YYYY-MM-DD):', hoyISO);
+  if (!fecha) return;
+  try {
+    await API.post(`/crm/pacientes/${pacienteId}/seguimientos`,
+                   { tipo: 'llamada', fecha_programada: fecha,
+                     notas: 'Reactivación: paciente inactivo' });
+    Toast.success('Seguimiento programado');
+    cargarTodo();
+  } catch (e) { Toast.error(e.message || 'No se pudo programar'); }
+}
+
+function cargarTodo() { cargarSeguimientos(); cargarInactivos(); }
+document.addEventListener('DOMContentLoaded', () => { cargarConfig(); cargarTodo(); });
+</script>
 {% endblock %}

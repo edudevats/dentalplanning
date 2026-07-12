@@ -1,5 +1,142 @@
 {% extends "crm/_layout.html" %}
 {% block title %}Importar — CRM de Pacientes{% endblock %}
 {% block cs_content %}
-<h1 class="text-2xl font-bold font-heading text-text-primary">Importar Pacientes</h1>
+<div class="space-y-6">
+  <h1 class="text-2xl font-bold font-heading text-text-primary">Importar pacientes</h1>
+
+  <div class="bg-surface rounded-xl border border-border shadow-sm p-5 space-y-4">
+    <p class="text-sm text-text-secondary font-body">
+      Sube un archivo <strong>.csv</strong> o <strong>.xlsx</strong> con columnas:
+      <code>nombre</code> (obligatoria), <code>telefono</code>, <code>whatsapp</code>,
+      <code>email</code>, <code>estatus</code> (prospecto / activo / alta / baja).
+    </p>
+    <div class="flex items-center gap-3">
+      <input id="imp-archivo" type="file" accept=".csv,.xlsx"
+             class="text-sm font-body" />
+      <button type="button" onclick="previsualizar()"
+              class="rounded-lg bg-primary-500 hover:bg-primary-600 text-white px-4 py-2 text-sm font-medium cursor-pointer">
+        Previsualizar
+      </button>
+    </div>
+    <div id="imp-preview" class="hidden space-y-3">
+      <div id="imp-resumen" class="text-sm font-body text-text-secondary"></div>
+      <div class="overflow-x-auto border border-border rounded-lg">
+        <table class="min-w-full text-sm font-body">
+          <thead class="bg-surface-hover text-left">
+            <tr><th class="px-3 py-2">Nombre</th><th class="px-3 py-2">Teléfono</th>
+                <th class="px-3 py-2">Estatus</th><th class="px-3 py-2">Advertencias</th></tr>
+          </thead>
+          <tbody id="imp-tbody"></tbody>
+        </table>
+      </div>
+      <button type="button" onclick="confirmarImportacion()"
+              class="rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 text-sm font-medium cursor-pointer">
+        Confirmar importación
+      </button>
+    </div>
+  </div>
+
+  <div class="bg-surface rounded-xl border border-border shadow-sm">
+    <div class="px-5 py-3 border-b border-border">
+      <h2 class="text-sm font-semibold font-heading text-text-primary">
+        Sugerencias desde ingresos históricos
+      </h2>
+      <p class="text-xs text-text-muted font-body">
+        Nombres registrados en tus ingresos que aún no existen en el CRM. Al vincular,
+        sus ingresos pasados se convierten en visitas.
+      </p>
+    </div>
+    <div id="sug-lista" class="p-4 space-y-2"></div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let filasPreview = null;
+
+async function previsualizar() {
+  const input = document.getElementById('imp-archivo');
+  if (!input.files.length) { Toast.warning('Selecciona un archivo'); return; }
+  const fd = new FormData();
+  fd.append('archivo', input.files[0]);
+  try {
+    const resp = await fetch('/api/v1/crm/pacientes/importar/preview', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer ' + Auth.getToken() },
+      body: fd,
+    });
+    if (!resp.ok) {
+      let msg = 'Archivo inválido';
+      try { msg = (await resp.json()).error || msg; } catch {}
+      Toast.error(msg);
+      return;
+    }
+    const data = await resp.json();
+    filasPreview = data.filas;
+    document.getElementById('imp-resumen').textContent =
+      `${data.validas} de ${data.total} filas se importarán.`;
+    document.getElementById('imp-tbody').innerHTML = data.filas.map(f => `
+      <tr class="${f.valida ? '' : 'opacity-50 line-through'}">
+        <td class="px-3 py-2">${esc(f.nombre) || '—'}</td>
+        <td class="px-3 py-2">${esc(f.telefono)}</td>
+        <td class="px-3 py-2">${esc(f.estatus) || 'prospecto'}</td>
+        <td class="px-3 py-2 text-amber-700 text-xs">${esc((f.advertencias || []).join('; '))}</td>
+      </tr>`).join('');
+    document.getElementById('imp-preview').classList.remove('hidden');
+  } catch (e) {
+    Toast.error('No se pudo procesar el archivo');
+  }
+}
+
+async function confirmarImportacion() {
+  if (!filasPreview) return;
+  try {
+    const r = await API.post('/crm/pacientes/importar/confirmar', { filas: filasPreview });
+    Toast.success(`${r.creados} pacientes importados`);
+    filasPreview = null;
+    document.getElementById('imp-preview').classList.add('hidden');
+    document.getElementById('imp-archivo').value = '';
+  } catch (e) { Toast.error(e.message || 'No se pudo importar'); }
+}
+
+async function cargarSugerencias() {
+  try {
+    const data = await API.get('/crm/sugerencias-edr');
+    const cont = document.getElementById('sug-lista');
+    if (!data.sugerencias.length) {
+      cont.innerHTML = '<p class="text-sm text-text-muted font-body">No hay nombres por vincular.</p>';
+      return;
+    }
+    cont.innerHTML = data.sugerencias.map((s, i) => `
+      <div class="flex items-center gap-3 rounded-lg border border-border p-3">
+        <div class="flex-1 min-w-0">
+          <p class="text-sm font-semibold font-body text-text-primary">${esc(s.nombre)}</p>
+          <p class="text-xs text-text-muted">${Number(s.num_ingresos)} ingreso(s) · último: ${esc(s.ultima_fecha) || '—'}
+            ${s.paciente_existente_id ? '· ya existe en CRM, solo se ligarán los ingresos' : ''}</p>
+        </div>
+        <button data-idx="${i}"
+                class="btn-vincular rounded-lg border border-border hover:bg-surface-hover px-3 py-1.5 text-xs font-medium cursor-pointer">
+          Vincular
+        </button>
+      </div>`).join('');
+    // El nombre viaja por índice (no por string en onclick) para evitar inyección
+    cont.querySelectorAll('.btn-vincular').forEach(btn => {
+      btn.addEventListener('click', () => vincular(data.sugerencias[Number(btn.dataset.idx)].nombre));
+    });
+  } catch (e) {
+    Toast.error('No se pudieron cargar las sugerencias');
+  }
+}
+
+async function vincular(nombre) {
+  try {
+    const r = await API.post('/crm/sugerencias-edr/vincular', { nombre });
+    Toast.success(`${r.ingresos_vinculados} ingresos vinculados, ${r.visitas_creadas} visitas creadas`);
+    cargarSugerencias();
+  } catch (e) { Toast.error(e.message || 'No se pudo vincular'); }
+}
+
+document.addEventListener('DOMContentLoaded', cargarSugerencias);
+</script>
 {% endblock %}
