@@ -15,8 +15,8 @@
     </div>
   </div>
 
-  <!-- Stats -->
-  <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+  <!-- Stats (admin): oculto por defecto, se revela solo para roles no-recepcionista -->
+  <div id="stats-admin" class="hidden grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
     <div class="bg-surface rounded-xl border border-border p-5 shadow-sm">
       <div class="flex items-center justify-between">
         <p class="text-sm font-medium text-text-secondary font-body">Total Ingresos</p>
@@ -44,6 +44,17 @@
         <div class="h-9 w-9 rounded-lg bg-primary-50 flex items-center justify-center"><i data-lucide="wallet" class="h-4 w-4 text-primary-600"></i></div>
       </div>
       <p class="mt-3 text-2xl font-bold font-heading tabular-nums" id="stat-neto">$0.00</p>
+    </div>
+  </div>
+
+  <!-- Stats (recepcionista): oculto por defecto, se revela solo para el rol recepcionista -->
+  <div id="stats-recepcion" class="hidden grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+    <div class="bg-surface rounded-xl border border-border p-5 shadow-sm">
+      <div class="flex items-center justify-between">
+        <p class="text-sm font-medium text-text-secondary font-body">Ingresos de hoy</p>
+        <div class="h-9 w-9 rounded-lg bg-primary-50 flex items-center justify-center"><i data-lucide="calendar-check" class="h-4 w-4 text-primary-600"></i></div>
+      </div>
+      <p class="mt-3 text-2xl font-bold font-heading tabular-nums text-text-primary" id="stat-diario">$0.00</p>
     </div>
   </div>
 
@@ -201,6 +212,32 @@ let selMonth = String(now.getMonth() + 1);
 let selYear = String(now.getFullYear());
 let tableData = [], especialistas = [], metodosPago = [], tratamientos = [], estrategias = [], sucursales = [];
 let editingId = null;
+let userRole = null; // se resuelve en init() vía /auth/me
+
+// Fecha de hoy en hora local (YYYY-MM-DD), sin toISOString para no desfasar a medianoche.
+function todayLocalISO() {
+  const d = new Date();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return d.getFullYear() + '-' + mm + '-' + dd;
+}
+
+// Total bruto de los ingresos registrados hoy. Ignora el selector de mes/año:
+// consulta el mes actual y filtra a la fecha de hoy. Solo para recepcionista.
+async function updateDailyStat() {
+  const el = document.getElementById('stat-diario');
+  if (!el) return;
+  const hoy = todayLocalISO();
+  const mesActual = hoy.slice(0, 7); // YYYY-MM
+  try {
+    const res = await API.get('/edr/ingresos?mes=' + mesActual);
+    const rows = Array.isArray(res) ? res : (res.ingresos || []);
+    const total = rows
+      .filter(r => String(r.fecha || '').slice(0, 10) === hoy)
+      .reduce((s, r) => s + Number(r.monto || 0), 0);
+    el.textContent = fmt(total);
+  } catch { el.textContent = fmt(0); }
+}
 
 async function imprimirTicket(ticketId) {
   try {
@@ -305,6 +342,7 @@ async function fetchData() {
     tableData = Array.isArray(res) ? res : (res.ingresos || []);
   } catch { Toast.error('Error al cargar ingresos'); tableData = []; }
   updateStats(); renderTable_();
+  if (userRole === 'recepcionista') updateDailyStat();
 }
 
 function openCreate() {
@@ -484,14 +522,28 @@ document.getElementById('f-monto').addEventListener('input', e => {
   }
 });
 
+function applyStatsRole() {
+  // Fail-closed: ambos contenedores parten ocultos; se revela el que corresponde.
+  const admin = document.getElementById('stats-admin');
+  const recepcion = document.getElementById('stats-recepcion');
+  if (userRole === 'recepcionista') {
+    if (recepcion) recepcion.classList.remove('hidden');
+    updateDailyStat();
+  } else {
+    if (admin) admin.classList.remove('hidden');
+  }
+}
+
 async function init() {
   try {
-    const [esp, mp, trat, est, sucs] = await Promise.all([
+    const [esp, mp, trat, est, sucs, me] = await Promise.all([
       API.get('/ajustes/especialistas'), API.get('/ajustes/metodos-pago'),
       API.get('/tratamientos'), API.get('/ajustes/estrategias'),
-      API.get('/facturacion/sucursales'),
+      API.get('/facturacion/sucursales'), API.get('/auth/me'),
     ]);
     especialistas = esp ?? []; metodosPago = mp ?? []; tratamientos = Array.isArray(trat) ? trat : (trat.tratamientos || []); estrategias = est ?? []; sucursales = sucs ?? [];
+    userRole = (me && (me.user || me) || {}).role || null;
+    applyStatsRole();
     populateDatalist(document.getElementById('dl-especialistas'), especialistas);
     populateDatalist(document.getElementById('dl-tratamientos'), tratamientos);
     populateSelect(document.getElementById('f-metodo'), metodosPago.map(m => ({ value: String(m.id), label: m.nombre })), '', 'Seleccionar metodo');
