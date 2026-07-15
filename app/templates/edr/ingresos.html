@@ -222,21 +222,19 @@ function todayLocalISO() {
   return d.getFullYear() + '-' + mm + '-' + dd;
 }
 
-// Total bruto de los ingresos registrados hoy. Ignora el selector de mes/año:
-// consulta el mes actual y filtra a la fecha de hoy. Solo para recepcionista.
-async function updateDailyStat() {
+// Ingresos de hoy (a partir de tableData, que para recepcionista está fijo al mes actual
+// porque los selectores de mes/año se ocultan). Única fuente de verdad para tabla y tarjeta.
+function rowsHoy() {
+  const hoy = todayLocalISO();
+  return tableData.filter(r => String(r.fecha || '').slice(0, 10) === hoy);
+}
+
+// Total bruto de los ingresos registrados hoy. Solo para recepcionista.
+function updateDailyStat() {
   const el = document.getElementById('stat-diario');
   if (!el) return;
-  const hoy = todayLocalISO();
-  const mesActual = hoy.slice(0, 7); // YYYY-MM
-  try {
-    const res = await API.get('/edr/ingresos?mes=' + mesActual);
-    const rows = Array.isArray(res) ? res : (res.ingresos || []);
-    const total = rows
-      .filter(r => String(r.fecha || '').slice(0, 10) === hoy)
-      .reduce((s, r) => s + Number(r.monto || 0), 0);
-    el.textContent = fmt(total);
-  } catch { el.textContent = fmt(0); }
+  const total = rowsHoy().reduce((s, r) => s + Number(r.monto || 0), 0);
+  el.textContent = fmt(total);
 }
 
 async function imprimirTicket(ticketId) {
@@ -330,7 +328,10 @@ function renderTable_() {
       return div;
     }},
   ];
-  renderTable('table-wrap', cols, tableData, 'No hay ingresos registrados', false);
+  // La recepcionista solo ve los ingresos de hoy; el resto de roles ve todo el mes.
+  const rows = (userRole === 'recepcionista') ? rowsHoy() : tableData;
+  const empty = (userRole === 'recepcionista') ? 'No hay ingresos registrados hoy' : 'No hay ingresos registrados';
+  renderTable('table-wrap', cols, rows, empty, false);
   lucide.createIcons();
 }
 
@@ -528,6 +529,11 @@ function applyStatsRole() {
   const recepcion = document.getElementById('stats-recepcion');
   if (userRole === 'recepcionista') {
     if (recepcion) recepcion.classList.remove('hidden');
+    // La recepcionista solo ve el día de hoy: se ocultan los filtros de mes/año.
+    ['sel-month', 'sel-year'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.classList.add('hidden');
+    });
     updateDailyStat();
   } else {
     if (admin) admin.classList.remove('hidden');
