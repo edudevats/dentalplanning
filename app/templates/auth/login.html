@@ -98,6 +98,8 @@ lucide.createIcons();
   try { user = JSON.parse(localStorage.getItem('user') || 'null'); } catch (e) { user = null; }
   if (user && user.is_superuser === true) {
     window.location.href = '/admin';
+  } else if (user && user.role === 'recepcionista') {
+    window.location.href = '/ingresos';
   } else {
     window.location.href = '/selector';
   }
@@ -147,6 +149,9 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
     } else if (data.user && data.user.must_change_password) {
       // Contrasena temporal: ir a una pagina con layout para forzar el cambio.
       window.location.href = '/dashboard';
+    } else if (data.user && data.user.role === 'recepcionista') {
+      // La recepcionista no usa el selector de sistema: directo a Registro de Ingresos.
+      window.location.href = '/ingresos';
     } else {
       window.location.href = '/selector';
     }
