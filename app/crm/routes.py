@@ -64,9 +64,10 @@ def _query_listado(tenant_id):
 
 def _dump_paciente_enriquecido(paciente_id):
     corte = services.fecha_corte_inactividad(g.tenant_id)
-    p, ultima, siguiente = _query_listado(g.tenant_id).filter(
-        Paciente.id == paciente_id
-    ).first()
+    fila = _query_listado(g.tenant_id).filter(Paciente.id == paciente_id).first()
+    if not fila:
+        raise CrmNotFound("Paciente no encontrado")
+    p, ultima, siguiente = fila
     return _dump_paciente(p, ultima, siguiente, corte)
 
 

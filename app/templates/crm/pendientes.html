@@ -98,12 +98,21 @@ async function cargarInactivos() {
 }
 
 async function crearSeguimiento(pacienteId) {
-  const fecha = prompt('Fecha del seguimiento (YYYY-MM-DD):', hoyISO);
-  if (!fecha) return;
+  const res = await Prompt.show({
+    title: 'Programar seguimiento',
+    confirmText: 'Programar',
+    fields: [
+      { name: 'fecha', label: 'Fecha del seguimiento', type: 'date', value: hoyISO, required: true },
+      { name: 'tipo', label: 'Tipo', type: 'select', value: 'llamada',
+        options: [['llamada', 'Llamada'], ['whatsapp', 'WhatsApp'], ['otro', 'Otro']] },
+      { name: 'notas', label: 'Notas', type: 'textarea', value: 'Reactivación: paciente inactivo' },
+    ],
+  });
+  if (!res) return;
   try {
     await API.post(`/crm/pacientes/${pacienteId}/seguimientos`,
-                   { tipo: 'llamada', fecha_programada: fecha,
-                     notas: 'Reactivación: paciente inactivo' });
+                   { tipo: res.tipo, fecha_programada: res.fecha,
+                     notas: res.notas || null });
     Toast.success('Seguimiento programado');
     cargarTodo();
   } catch (e) { Toast.error(e.message || 'No se pudo programar'); }

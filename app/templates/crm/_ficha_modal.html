@@ -51,13 +51,18 @@
         <!-- Columna derecha: acciones + timeline -->
         <div class="space-y-3" id="fp-panel-derecho">
           <div class="flex gap-2">
-            <button type="button" onclick="Ficha.registrarVisita()"
-                    class="flex-1 rounded-lg border border-border hover:bg-surface-hover px-3 py-2 text-xs font-medium cursor-pointer">+ Visita</button>
-            <button type="button" onclick="Ficha.programarSeguimiento()"
-                    class="flex-1 rounded-lg border border-border hover:bg-surface-hover px-3 py-2 text-xs font-medium cursor-pointer">+ Seguimiento</button>
-            <button type="button" onclick="Ficha.agregarNota()"
-                    class="flex-1 rounded-lg border border-border hover:bg-surface-hover px-3 py-2 text-xs font-medium cursor-pointer">+ Nota</button>
+            <button type="button" id="fp-btn-visita" onclick="Ficha.registrarVisita()"
+                    class="flex-1 inline-flex items-center justify-center gap-1.5 rounded-lg border border-border hover:bg-surface-hover px-3 py-2 text-xs font-medium cursor-pointer transition-colors duration-200">
+              <i data-lucide="calendar-check" class="h-3.5 w-3.5"></i> Visita</button>
+            <button type="button" id="fp-btn-seguimiento" onclick="Ficha.programarSeguimiento()"
+                    class="flex-1 inline-flex items-center justify-center gap-1.5 rounded-lg border border-border hover:bg-surface-hover px-3 py-2 text-xs font-medium cursor-pointer transition-colors duration-200">
+              <i data-lucide="phone" class="h-3.5 w-3.5"></i> Seguimiento</button>
+            <button type="button" id="fp-btn-nota" onclick="Ficha.agregarNota()"
+                    class="flex-1 inline-flex items-center justify-center gap-1.5 rounded-lg border border-border hover:bg-surface-hover px-3 py-2 text-xs font-medium cursor-pointer transition-colors duration-200">
+              <i data-lucide="sticky-note" class="h-3.5 w-3.5"></i> Nota</button>
           </div>
+          <!-- Formulario inline de acción (visita / seguimiento / nota) -->
+          <div id="fp-accion" class="hidden"></div>
           <div id="fp-timeline" class="max-h-80 overflow-y-auto space-y-2 pr-1"></div>
         </div>
       </div>

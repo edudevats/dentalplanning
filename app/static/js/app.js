@@ -413,6 +413,217 @@ const Modal = {
   },
 };
 
+// ── Confirm (reemplazo accesible de window.confirm) ───────────────────────────
+const Confirm = {
+  show(opts = {}) {
+    const {
+      title = 'Confirmar',
+      message = '',
+      confirmText = 'Confirmar',
+      cancelText = 'Cancelar',
+      danger = false,
+    } = opts;
+
+    return new Promise((resolve) => {
+      const overlay = document.createElement('div');
+      overlay.className = 'fixed inset-0 z-[90] flex items-center justify-center p-4';
+
+      const backdrop = document.createElement('div');
+      backdrop.className = 'fixed inset-0 bg-black/40';
+
+      const box = document.createElement('div');
+      box.className = 'relative bg-surface rounded-2xl shadow-xl w-full max-w-sm p-6';
+      box.setAttribute('role', 'alertdialog');
+      box.setAttribute('aria-modal', 'true');
+
+      const h = document.createElement('h3');
+      h.className = 'text-base font-semibold font-heading text-text-primary';
+      h.textContent = title;
+
+      const p = document.createElement('p');
+      p.className = 'mt-2 text-sm font-body text-text-secondary leading-snug';
+      p.textContent = message;
+
+      const actions = document.createElement('div');
+      actions.className = 'mt-5 flex justify-end gap-2';
+
+      const cancelBtn = document.createElement('button');
+      cancelBtn.type = 'button';
+      cancelBtn.className =
+        'rounded-lg border border-border hover:bg-surface-hover px-4 py-2 text-sm font-medium cursor-pointer transition-colors duration-200';
+      cancelBtn.textContent = cancelText;
+
+      const okBtn = document.createElement('button');
+      okBtn.type = 'button';
+      okBtn.className = danger
+        ? 'rounded-lg bg-red-600 hover:bg-red-700 text-white px-4 py-2 text-sm font-medium cursor-pointer transition-colors duration-200'
+        : 'rounded-lg bg-primary-500 hover:bg-primary-600 text-white px-4 py-2 text-sm font-medium cursor-pointer transition-colors duration-200';
+      okBtn.textContent = confirmText;
+
+      let done = false;
+      const finish = (val) => {
+        if (done) return;
+        done = true;
+        document.removeEventListener('keydown', onKey);
+        overlay.remove();
+        resolve(val);
+      };
+      const onKey = (e) => {
+        if (e.key === 'Escape') finish(false);
+        else if (e.key === 'Enter') finish(true);
+      };
+
+      backdrop.addEventListener('click', () => finish(false));
+      cancelBtn.addEventListener('click', () => finish(false));
+      okBtn.addEventListener('click', () => finish(true));
+      document.addEventListener('keydown', onKey);
+
+      actions.appendChild(cancelBtn);
+      actions.appendChild(okBtn);
+      box.appendChild(h);
+      box.appendChild(p);
+      box.appendChild(actions);
+      overlay.appendChild(backdrop);
+      overlay.appendChild(box);
+      document.body.appendChild(overlay);
+      setTimeout(() => okBtn.focus(), 50);
+    });
+  },
+};
+
+// ── Prompt (reemplazo de window.prompt con campos configurables) ──────────────
+// fields: [{ name, label, type='text', value='', placeholder='', required=false,
+//            options=[[val,label],...] (select), rows=3 (textarea) }]
+// Resuelve un objeto { name: value } o null si se cancela.
+const Prompt = {
+  show(opts = {}) {
+    const {
+      title = '',
+      fields = [],
+      confirmText = 'Guardar',
+      cancelText = 'Cancelar',
+    } = opts;
+
+    const INPUT_CLS =
+      'block w-full rounded-lg border border-border px-3 py-2 text-sm font-body bg-surface min-h-[40px]';
+
+    return new Promise((resolve) => {
+      const overlay = document.createElement('div');
+      overlay.className = 'fixed inset-0 z-[90] flex items-center justify-center p-4';
+
+      const backdrop = document.createElement('div');
+      backdrop.className = 'fixed inset-0 bg-black/40';
+
+      const box = document.createElement('div');
+      box.className = 'relative bg-surface rounded-2xl shadow-xl w-full max-w-sm p-6';
+      box.setAttribute('role', 'dialog');
+      box.setAttribute('aria-modal', 'true');
+
+      const form = document.createElement('form');
+      form.className = 'space-y-3';
+
+      if (title) {
+        const h = document.createElement('h3');
+        h.className = 'text-base font-semibold font-heading text-text-primary';
+        h.textContent = title;
+        form.appendChild(h);
+      }
+
+      const controls = {};
+      fields.forEach((f) => {
+        const wrap = document.createElement('div');
+        const label = document.createElement('label');
+        label.className = 'block text-xs font-medium text-text-secondary mb-1 font-body';
+        label.textContent = f.label + (f.required ? ' *' : '');
+        wrap.appendChild(label);
+
+        let ctrl;
+        if (f.type === 'textarea') {
+          ctrl = document.createElement('textarea');
+          ctrl.rows = f.rows || 3;
+          ctrl.className = 'block w-full rounded-lg border border-border px-3 py-2 text-sm font-body bg-surface';
+        } else if (f.type === 'select') {
+          ctrl = document.createElement('select');
+          ctrl.className = INPUT_CLS;
+          (f.options || []).forEach(([val, txt]) => {
+            const o = document.createElement('option');
+            o.value = val; o.textContent = txt;
+            ctrl.appendChild(o);
+          });
+        } else {
+          ctrl = document.createElement('input');
+          ctrl.type = f.type || 'text';
+          ctrl.className = INPUT_CLS;
+          if (f.placeholder) ctrl.placeholder = f.placeholder;
+        }
+        if (f.value != null) ctrl.value = f.value;
+        const id = `prompt-field-${f.name}`;
+        ctrl.id = id;
+        label.setAttribute('for', id);
+        controls[f.name] = ctrl;
+        wrap.appendChild(ctrl);
+        form.appendChild(wrap);
+      });
+
+      const actions = document.createElement('div');
+      actions.className = 'mt-2 flex justify-end gap-2';
+
+      const cancelBtn = document.createElement('button');
+      cancelBtn.type = 'button';
+      cancelBtn.className =
+        'rounded-lg border border-border hover:bg-surface-hover px-4 py-2 text-sm font-medium cursor-pointer transition-colors duration-200';
+      cancelBtn.textContent = cancelText;
+
+      const okBtn = document.createElement('button');
+      okBtn.type = 'submit';
+      okBtn.className =
+        'rounded-lg bg-primary-500 hover:bg-primary-600 text-white px-4 py-2 text-sm font-medium cursor-pointer transition-colors duration-200';
+      okBtn.textContent = confirmText;
+
+      actions.appendChild(cancelBtn);
+      actions.appendChild(okBtn);
+      form.appendChild(actions);
+      box.appendChild(form);
+      overlay.appendChild(backdrop);
+      overlay.appendChild(box);
+      document.body.appendChild(overlay);
+
+      let done = false;
+      const finish = (val) => {
+        if (done) return;
+        done = true;
+        document.removeEventListener('keydown', onKey);
+        overlay.remove();
+        resolve(val);
+      };
+      const submit = () => {
+        const out = {};
+        for (const f of fields) {
+          const v = (controls[f.name].value || '').trim();
+          if (f.required && !v) {
+            Toast.warning(`${f.label} es obligatorio`);
+            controls[f.name].focus();
+            return;
+          }
+          out[f.name] = v;
+        }
+        finish(out);
+      };
+      const onKey = (e) => { if (e.key === 'Escape') finish(null); };
+
+      form.addEventListener('submit', (e) => { e.preventDefault(); submit(); });
+      backdrop.addEventListener('click', () => finish(null));
+      cancelBtn.addEventListener('click', () => finish(null));
+      document.addEventListener('keydown', onKey);
+
+      setTimeout(() => {
+        const first = fields[0] && controls[fields[0].name];
+        (first || okBtn).focus();
+      }, 50);
+    });
+  },
+};
+
 // ── Icons (SVG strings — internal use only, not user data) ────────────────────
 const Icons = {
   eye:      `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>`,

@@ -63,6 +63,10 @@ def crear_ingreso():
     schema = IngresoSchema()
     data = schema.load(body)
 
+    # Sin módulo CRM no se acepta paciente_id (evita FKs cross-tenant sin validar)
+    if data.get("paciente_id") and not crm_activo(g.tenant_id):
+        data["paciente_id"] = None
+
     tipo_servicio = "clinico"
     if data.get("tratamiento_id"):
         _tr = Tratamiento.query.filter_by(
@@ -108,6 +112,8 @@ def actualizar_ingreso(ingreso_id):
 
     schema = IngresoSchema(partial=True)
     data = schema.load(request.get_json() or {})
+    if data.get("paciente_id") and not crm_activo(g.tenant_id):
+        data.pop("paciente_id")
     for key, value in data.items():
         setattr(ingreso, key, value)
 
