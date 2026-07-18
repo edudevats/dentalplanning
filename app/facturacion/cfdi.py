@@ -208,6 +208,10 @@ def timbrar_ticket(ticket, receptor):
         raise TimbradoError("La ventana de facturación de este ticket ya venció.")
 
     cfg = ConfiguracionFiscal.query.filter_by(tenant_id=ticket.tenant_id).first()
+    if not cfg or not cfg.facturacion_activa:
+        raise TimbradoError(
+            "La facturación no está activa. Actívala en Ajustes > Configuración fiscal."
+        )
     if not cfg or not cfg.csd_configurado:
         raise TimbradoError("El consultorio no tiene un CSD configurado.")
     if not cfg.regimen_fiscal:

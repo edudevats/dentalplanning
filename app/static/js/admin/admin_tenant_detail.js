@@ -7,6 +7,7 @@
   const tenantId = parseInt(root.dataset.tenantId, 10);
   let tenant = null;
   let plansCache = null;
+  let billingSnapshot = null;
 
   function buildHead(cols) {
     const thead = document.createElement('thead');
@@ -340,9 +341,96 @@
   }
 
   // ── Tab: Billing ───────────────────────────────────────────────────────
+  function buildMonthlyChargeCard(charge) {
+    const paid = charge.clip_status === 'PAID';
+    const estimated = Boolean(charge.is_estimate);
+    const card = document.createElement('div');
+    card.className = paid
+      ? 'rounded-lg border border-green-500/25 bg-green-500/5 p-6 space-y-4'
+      : 'rounded-lg border border-cs-primary/25 bg-cs-primary/5 p-6 space-y-4';
+
+    const head = document.createElement('div');
+    head.className = 'flex flex-wrap items-start justify-between gap-3';
+    const titleWrap = document.createElement('div');
+    const eyebrow = document.createElement('p');
+    eyebrow.className = 'text-[10px] font-semibold uppercase tracking-wider text-cs-on-surface-var';
+    eyebrow.textContent = estimated ? 'Próximo corte' : 'Corte mensual';
+    const title = document.createElement('h2');
+    title.className = 'font-cs-display text-lg font-semibold text-cs-on-surface';
+    title.textContent = estimated ? 'Total estimado del mes' : 'Total del mes';
+    titleWrap.appendChild(eyebrow);
+    titleWrap.appendChild(title);
+    head.appendChild(titleWrap);
+
+    const status = document.createElement('span');
+    status.className = paid
+      ? 'inline-flex px-2.5 py-1 rounded-full text-[10px] font-semibold bg-green-500/15 text-green-700'
+      : estimated
+        ? 'inline-flex px-2.5 py-1 rounded-full text-[10px] font-semibold bg-cs-surface-container-high text-cs-on-surface-var'
+        : 'inline-flex px-2.5 py-1 rounded-full text-[10px] font-semibold bg-amber-500/15 text-amber-700';
+    status.textContent = paid ? 'Pagado' : estimated ? 'Estimado' : 'Pendiente';
+    head.appendChild(status);
+    card.appendChild(head);
+
+    const total = document.createElement('p');
+    total.className = 'font-cs-display text-3xl font-bold text-cs-on-surface';
+    total.textContent = currency(charge.monto);
+    card.appendChild(total);
+
+    const breakdown = document.createElement('div');
+    breakdown.className = 'grid grid-cols-2 lg:grid-cols-4 gap-3';
+    const rows = [
+      ['Plan', currency(charge.plan_amount)],
+      ['Uso de facturas', currency(charge.invoice_base_fee)],
+      [`Timbres (${charge.stamp_count || 0} × ${currency(charge.stamp_unit_price)})`, currency(charge.stamp_amount)],
+      ['Total', currency(charge.monto)],
+    ];
+    rows.forEach(([label, value], index) => {
+      const cell = document.createElement('div');
+      cell.className = index === rows.length - 1
+        ? 'rounded-md bg-cs-primary/10 px-3 py-2'
+        : 'rounded-md bg-cs-surface-container-lowest px-3 py-2';
+      const lbl = document.createElement('p');
+      lbl.className = 'text-[10px] font-semibold uppercase tracking-wide text-cs-on-surface-var';
+      lbl.textContent = label;
+      const val = document.createElement('p');
+      val.className = 'mt-1 text-sm font-semibold text-cs-on-surface';
+      val.textContent = value;
+      cell.appendChild(lbl);
+      cell.appendChild(val);
+      breakdown.appendChild(cell);
+    });
+    card.appendChild(breakdown);
+
+    const meta = document.createElement('p');
+    meta.className = 'text-xs text-cs-on-surface-var';
+    meta.textContent = `Corte: ${formatDate(charge.billing_cycle_date)} · Fecha límite: ${formatDate(charge.due_date)}`;
+    card.appendChild(meta);
+
+    if (charge.can_mark_paid) {
+      const payBtn = document.createElement('button');
+      payBtn.className = 'inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-cs-primary text-cs-on-primary text-sm font-semibold hover:opacity-90 transition-opacity cursor-pointer';
+      const icon = document.createElement('i');
+      icon.setAttribute('data-lucide', 'badge-check');
+      icon.className = 'h-4 w-4';
+      payBtn.appendChild(icon);
+      payBtn.appendChild(document.createTextNode('Registrar este pago'));
+      payBtn.addEventListener('click', () => openNewPayment(charge));
+      card.appendChild(payBtn);
+    } else if (estimated) {
+      const note = document.createElement('p');
+      note.className = 'text-xs text-cs-on-surface-var';
+      note.textContent = 'El total se actualizará con los timbres acumulados y podrá marcarse como pagado al llegar la fecha de corte.';
+      card.appendChild(note);
+    }
+    return card;
+  }
+
   async function renderBilling() {
     const panel = document.querySelector('[data-panel="billing"]');
     invDom.clearChildren(panel);
+    const pays = await adminApi.get(`/payments?tenant_id=${tenantId}`);
+    billingSnapshot = pays;
 
     const subCard = document.createElement('div');
     subCard.className = 'rounded-lg bg-cs-surface-container-lowest p-6 space-y-3';
@@ -439,10 +527,14 @@
     }
     panel.appendChild(subCard);
 
+    if (pays.monthly_charge) {
+      panel.appendChild(buildMonthlyChargeCard(pays.monthly_charge));
+    }
+
     const payCard = document.createElement('div');
     payCard.className = 'rounded-lg bg-cs-surface-container-lowest p-6 space-y-3';
     const pH = document.createElement('div');
-    pH.className = 'flex items-center justify-between';
+    pH.className = 'flex flex-wrap items-center justify-between gap-2';
     const pTitle = document.createElement('h2');
     pTitle.className = 'font-cs-display text-lg font-semibold text-cs-on-surface';
     pTitle.textContent = 'Historial de pagos';
@@ -452,7 +544,10 @@
     const ic = document.createElement('i'); ic.setAttribute('data-lucide', 'plus'); ic.className = 'h-3 w-3';
     newBtn.appendChild(ic);
     newBtn.appendChild(document.createTextNode('Registrar pago'));
-    newBtn.addEventListener('click', openNewPayment);
+    newBtn.addEventListener('click', () => {
+      const charge = billingSnapshot && billingSnapshot.monthly_charge;
+      openNewPayment(charge && charge.can_mark_paid ? charge : null);
+    });
     pH.appendChild(newBtn);
 
     if (tenant.subscription) {
@@ -467,7 +562,6 @@
 
     payCard.appendChild(pH);
 
-    const pays = await adminApi.get(`/payments?tenant_id=${tenantId}`);
     if (!pays.payments || pays.payments.length === 0) {
       const empty = document.createElement('p');
       empty.className = 'text-sm text-cs-on-surface-var';
@@ -492,7 +586,7 @@
           { v: formatDate(p.fecha) },
           { v: currency(p.monto) },
           { v: p.metodo },
-          { v: p.clip_status || '—', isClip: p.metodo === 'clip' && p.clip_status },
+          { v: p.clip_status || '—', isClip: Boolean(p.clip_status) },
           { v: periodo },
           { v: p.comentarios || '—' },
         ];
@@ -541,8 +635,9 @@
     if (typeof lucide !== 'undefined') lucide.createIcons();
   }
 
-  async function openNewPayment() {
-    const plans = (await loadPlans()).filter(p => p.activo);
+  async function openNewPayment(monthlyCharge = null) {
+    const isMonthlyCharge = Boolean(monthlyCharge && monthlyCharge.can_mark_paid);
+    const plans = isMonthlyCharge ? [] : (await loadPlans()).filter(p => p.activo);
     const plansById = {};
     plans.forEach(p => { plansById[p.id] = p; });
 
@@ -555,22 +650,43 @@
     if (currentPlanId && plansById[currentPlanId]) planSel.value = String(currentPlanId);
 
     const fecha = inputEl('date', 'fecha', today);
-    const monto = inputEl('number', 'monto', '');
+    const monto = inputEl('number', 'monto', isMonthlyCharge ? monthlyCharge.monto : '');
     monto.step = '0.01'; monto.min = '0';
-    const metodo = selectEl('metodo', [
+    if (isMonthlyCharge) {
+      monto.readOnly = true;
+      monto.classList.add('opacity-75', 'cursor-not-allowed');
+    }
+    const methodOptions = [
       { value: 'transferencia', label: 'Transferencia' },
       { value: 'efectivo', label: 'Efectivo' },
       { value: 'tarjeta', label: 'Tarjeta' },
-      { value: 'clip', label: 'Clip' },
       { value: 'otro', label: 'Otro' },
-    ]);
-    const pIni = inputEl('date', 'periodo_inicio', today);
-    const pFin = inputEl('date', 'periodo_fin', '');
-    const comen = textareaEl('comentarios', '', 2);
+    ];
+    if (!isMonthlyCharge) methodOptions.splice(3, 0, { value: 'clip', label: 'Clip' });
+    const metodo = selectEl('metodo', methodOptions);
+    const pIni = inputEl(
+      'date', 'periodo_inicio',
+      isMonthlyCharge ? monthlyCharge.periodo_inicio : today,
+    );
+    const pFin = inputEl(
+      'date', 'periodo_fin',
+      isMonthlyCharge ? monthlyCharge.periodo_fin : '',
+    );
+    const comen = textareaEl(
+      'comentarios',
+      isMonthlyCharge ? `Pago manual del corte ${monthlyCharge.billing_cycle_date}` : '',
+      2,
+    );
+    if (isMonthlyCharge) {
+      pIni.readOnly = true;
+      pFin.readOnly = true;
+      pIni.classList.add('opacity-75', 'cursor-not-allowed');
+      pFin.classList.add('opacity-75', 'cursor-not-allowed');
+    }
 
     // Al elegir un plan se autollenan monto y periodo (editables).
-    let montoTouched = false;
-    let finTouched = false;
+    let montoTouched = isMonthlyCharge;
+    let finTouched = isMonthlyCharge;
     function selectedPlan() { return plansById[parseInt(planSel.value, 10)]; }
     function refreshFromPlan() {
       const plan = selectedPlan();
@@ -583,7 +699,19 @@
     monto.addEventListener('input', () => { montoTouched = true; });
     pFin.addEventListener('input', () => { finTouched = true; });
 
-    if (plans.length > 0) {
+    if (isMonthlyCharge) {
+      const summary = document.createElement('div');
+      summary.className = 'md:col-span-2 rounded-lg border border-cs-primary/25 bg-cs-primary/5 p-4 space-y-2';
+      const summaryTitle = document.createElement('p');
+      summaryTitle.className = 'text-sm font-semibold text-cs-on-surface';
+      summaryTitle.textContent = `Total del mes: ${currency(monthlyCharge.monto)}`;
+      const summaryBody = document.createElement('p');
+      summaryBody.className = 'text-xs text-cs-on-surface-var';
+      summaryBody.textContent = `Plan ${currency(monthlyCharge.plan_amount)} + facturación ${currency(monthlyCharge.invoice_base_fee)} + ${monthlyCharge.stamp_count || 0} timbres (${currency(monthlyCharge.stamp_amount)}).`;
+      summary.appendChild(summaryTitle);
+      summary.appendChild(summaryBody);
+      wrap.appendChild(summary);
+    } else if (plans.length > 0) {
       const planCol = document.createElement('div');
       planCol.className = 'md:col-span-2';
       planCol.appendChild(buildField('Plan', planSel));
@@ -599,18 +727,22 @@
     fullCol.appendChild(buildField('Comentarios', comen));
     wrap.appendChild(fullCol);
 
-    if (plans.length > 0) refreshFromPlan();
+    if (!isMonthlyCharge && plans.length > 0) refreshFromPlan();
 
     const note = document.createElement('div');
     note.className = 'md:col-span-2 flex items-start gap-2 p-3 rounded-md bg-cs-primary/10 text-cs-on-surface text-xs';
     const noteIc = document.createElement('i'); noteIc.setAttribute('data-lucide', 'info'); noteIc.className = 'h-4 w-4 shrink-0 text-cs-primary mt-0.5';
     note.appendChild(noteIc);
-    note.appendChild(document.createTextNode('Al registrar un pago con "Periodo hasta" la suscripción se activará y la cuenta quedará habilitada hasta esa fecha.'));
+    note.appendChild(document.createTextNode(
+      isMonthlyCharge
+        ? 'Se liquidará el corte mensual existente sin crear un pago duplicado. La clínica quedará activa y el próximo cobro avanzará un mes.'
+        : 'Al registrar un pago con "Periodo hasta" la suscripción se activará y la cuenta quedará habilitada hasta esa fecha.'
+    ));
     wrap.appendChild(note);
 
     openModal({
-      title: 'Registrar pago', content: wrap,
-      primary: { label: 'Registrar', onClick: async () => {
+      title: isMonthlyCharge ? 'Marcar corte como pagado' : 'Registrar pago', content: wrap,
+      primary: { label: isMonthlyCharge ? 'Marcar como pagado' : 'Registrar', onClick: async () => {
         if (!fecha.value || !monto.value || parseFloat(monto.value) <= 0) {
           throw new Error('Fecha y monto son obligatorios.');
         }
@@ -622,8 +754,15 @@
           periodo_inicio: pIni.value || undefined,
           periodo_fin: pFin.value || undefined,
           comentarios: comen.value || undefined,
+          pending_payment_id: isMonthlyCharge && monthlyCharge.id
+            ? monthlyCharge.id : undefined,
+          billing_cycle_date: isMonthlyCharge && !monthlyCharge.id
+            ? monthlyCharge.billing_cycle_date : undefined,
         });
-        Toast.show('Pago registrado', 'success');
+        Toast.show(
+          isMonthlyCharge ? 'Corte mensual marcado como pagado' : 'Pago registrado',
+          'success',
+        );
         await refreshAll();
       } },
     });
@@ -637,8 +776,8 @@
     const planName = tenant.subscription.plan_nombre || tenant.plan || '';
     const ok = await confirmAction({
       title: `Cobrar con Clip — ${tenant.name}`,
-      message: `Se generará un link de pago por el monto del plan ${planName}. El cliente recibirá un link para pagar con tarjeta.`,
-      confirmLabel: 'Generar link de pago',
+      message: `Se cerrará el periodo de ${planName} y se generará un link por el plan, la cuota de facturación y los timbres acumulados. Solo puede hacerse al llegar la fecha de corte.`,
+      confirmLabel: 'Generar cobro variable',
     });
     if (!ok) return;
 

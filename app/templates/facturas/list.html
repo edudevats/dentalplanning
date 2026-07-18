@@ -13,6 +13,12 @@
     <h1 class="text-2xl font-bold font-heading text-text-primary">Facturas</h1>
   </div>
 
+  <div id="facturacion-inactiva" class="hidden rounded-xl border border-warning-200 bg-warning-50 p-4 text-sm text-warning-700 font-body">
+    <p class="font-semibold">La facturación electrónica está desactivada.</p>
+    <p class="mt-1">Actívala para timbrar CFDI. El servicio cuesta $100 MXN al mes más $2 MXN por cada timbre.</p>
+    <a href="/ajustes?tab=fiscal" class="inline-flex mt-3 font-semibold text-primary-700 hover:underline">Ir a Configuración fiscal</a>
+  </div>
+
   <!-- Tickets / Facturas -->
   <section class="bg-surface border border-border rounded-xl p-5 shadow-sm">
     <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
@@ -237,6 +243,7 @@ const ESTADO_BADGE = {
   cancelada: ['Cancelada', 'bg-danger-50 text-danger-700'],
   error: ['Error de timbrado', 'bg-danger-50 text-danger-700'],
 };
+let facturacionActiva = false;
 
 function mesActualInput() {
   const n = new Date();
@@ -294,7 +301,7 @@ async function cargarTickets() {
     const monto = (Number(t.total) || 0).toLocaleString('es-MX', { style: 'currency', currency: 'MXN' });
     let acciones = `<button data-ver="${t.id}" title="Ver ticket" aria-label="Ver ticket" class="inline-flex items-center align-middle text-text-secondary hover:text-primary-600 cursor-pointer"><i data-lucide="eye" class="h-4 w-4 pointer-events-none"></i></button>`;
     acciones += ` · <button data-reprint="${t.id}" class="text-text-secondary hover:text-text-primary font-semibold text-sm cursor-pointer">Reimprimir</button>`;
-    if (t.estado === 'sin_timbrar' || t.estado === 'error') {
+    if (facturacionActiva && (t.estado === 'sin_timbrar' || t.estado === 'error')) {
       const lbl = t.estado === 'error' ? 'Reintentar' : 'Facturar';
       acciones += ` · <button data-facturar="${t.id}" class="text-primary-600 hover:text-primary-700 font-semibold text-sm cursor-pointer">${lbl}</button>`;
     } else if (t.estado === 'timbrada' || t.estado === 'en_proceso_cancelacion') {
@@ -426,6 +433,15 @@ document.getElementById('re-enviar').addEventListener('click', async () => {
 });
 
 // Initial load
-cargarTickets();
+(async function initFacturas() {
+  try {
+    const cfg = await API.get('/facturacion/configuracion');
+    facturacionActiva = Boolean(cfg.facturacion_activa);
+    document.getElementById('facturacion-inactiva').classList.toggle('hidden', facturacionActiva);
+  } catch (e) {
+    console.error('No se pudo consultar el estado de facturación', e);
+  }
+  cargarTickets();
+})();
 </script>
 {% endblock %}

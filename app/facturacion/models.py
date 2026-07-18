@@ -39,6 +39,13 @@ class ConfiguracionFiscal(db.Model):
     fiel_valido_hasta = db.Column(db.DateTime)
     # Portal de autofacturación
     ventana_facturacion = db.Column(db.String(20), default="fin_de_mes")
+    # Activación comercial del módulo. Al activarlo se cobra una cuota mensual
+    # y cada CFDI timbrado se contabiliza por separado en el siguiente corte.
+    facturacion_activa = db.Column(db.Boolean, default=False, nullable=False)
+    facturacion_activada_at = db.Column(db.DateTime)
+    # Conserva el cargo de uso aunque el tenant desactive el módulo antes del
+    # corte. Se limpia únicamente cuando el cobro mensual queda generado.
+    facturacion_cargo_pendiente = db.Column(db.Boolean, default=False, nullable=False)
     # API key compartida con el agente de impresión local (cifrada con Fernet)
     print_agent_key_cifrada = db.Column(db.LargeBinary)
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))

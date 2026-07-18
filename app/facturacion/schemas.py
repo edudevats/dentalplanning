@@ -54,6 +54,8 @@ class ConfiguracionFiscalSchema(Schema):
     ventana_facturacion = fields.Str(
         load_default="fin_de_mes", validate=validate.OneOf(["fin_de_mes"])
     )
+    facturacion_activa = fields.Bool(load_default=False)
+    facturacion_activada_at = fields.DateTime(dump_only=True)
     # Estado del CSD (solo lectura)
     csd_no_certificado = fields.Str(dump_only=True)
     csd_valido_desde = fields.DateTime(dump_only=True)

@@ -58,6 +58,8 @@ def create_checkout_link(amount, description, webhook_url=None, redirection_url=
     }
     if redirection_url:
         body["redirection_url"] = redirection_url
+    if webhook_url:
+        body["webhook_url"] = webhook_url
     if metadata:
         body["metadata"] = metadata
     if expires_at:

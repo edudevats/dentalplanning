@@ -88,9 +88,26 @@ class Payment(db.Model):
     )
     clip_payment_id = db.Column(db.String(100), nullable=True)  # invoice_id (recurring) or payment_request_id (legacy)
     clip_status = db.Column(db.String(20), nullable=True)  # PAID | PENDING | OVERDUE | FAILED | EXPIRED | CANCELLED
+    # Datos del corte variable. Los pagos manuales históricos mantienen estos
+    # campos en NULL; los cobros automáticos tienen un solo registro por corte.
+    billing_cycle_date = db.Column(db.Date, nullable=True)
+    due_date = db.Column(db.Date, nullable=True)
+    plan_amount = db.Column(db.Float, nullable=True)
+    invoice_base_fee = db.Column(db.Float, nullable=True)
+    stamp_count = db.Column(db.Integer, nullable=True)
+    stamp_unit_price = db.Column(db.Float, nullable=True)
+    stamp_amount = db.Column(db.Float, nullable=True)
+    clip_payment_url = db.Column(db.String(500), nullable=True)
+    paid_at = db.Column(db.DateTime, nullable=True)
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
 
     tenant = db.relationship("Tenant", backref=db.backref("payments", lazy="dynamic"))
+
+    __table_args__ = (
+        db.UniqueConstraint(
+            "tenant_id", "billing_cycle_date", name="uq_payment_tenant_billing_cycle"
+        ),
+    )
 
 
 class TenantNote(db.Model):

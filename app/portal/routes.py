@@ -45,6 +45,17 @@ def _tenant_or_404(slug):
     return tenant
 
 
+def _facturacion_habilitada(tenant_id):
+    cfg = ConfiguracionFiscal.query.filter_by(tenant_id=tenant_id).first()
+    return bool(cfg and cfg.facturacion_activa)
+
+
+def _facturacion_disabled_response():
+    return jsonify({
+        "error": "La clínica no tiene activa la facturación electrónica."
+    }), 403
+
+
 def _resolver_ticket(tenant, data):
     """Resuelve el ticket por token (QR) o por folio+monto+fecha. None si no valida."""
     token = (data.get("token") or "").strip()
@@ -76,6 +87,8 @@ def _resolver_ticket(tenant, data):
 @portal_bp.route("/<slug>")
 def portal_page(slug):
     tenant = _tenant_or_404(slug)
+    if not _facturacion_habilitada(tenant.id):
+        abort(404)
     # Versión del logo (longitud en bytes, sin cargar el BLOB) para cache-busting:
     # cambia cuando el consultorio sube otro logo, así el navegador no muestra el viejo.
     logo_ver = db.session.query(
@@ -118,6 +131,8 @@ def portal_buscar(slug):
     t = _resolver_ticket(tenant, request.get_json() or {})
     if not t:
         return jsonify({"error": "No encontramos ese ticket. Verifica los datos."}), 404
+    if not _facturacion_habilitada(tenant.id):
+        return _facturacion_disabled_response()
     if t.estado not in REFACTURABLE:
         return jsonify({"ya_facturado": True, "estado": t.estado,
                         "folio": t.folio_display,
@@ -144,6 +159,8 @@ def portal_facturar(slug):
     t = _resolver_ticket(tenant, data)
     if not t:
         return jsonify({"error": "No encontramos ese ticket."}), 404
+    if not _facturacion_habilitada(tenant.id):
+        return _facturacion_disabled_response()
     if t.estado not in REFACTURABLE:
         return jsonify({"error": "Este ticket ya fue facturado."}), 400
 

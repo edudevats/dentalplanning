@@ -43,6 +43,14 @@ def asignar_ticket(ingreso, sucursal_id, ticket_folio=None):
     sin timbrar de la misma sucursal; si no, crea un ticket nuevo con folio propio.
     Devuelve el Ticket. No hace commit.
     """
+    from app.facturacion.models import ConfiguracionFiscal
+
+    cfg = ConfiguracionFiscal.query.filter_by(tenant_id=ingreso.tenant_id).first()
+    if not cfg or not cfg.facturacion_activa:
+        raise FacturacionError(
+            "Activa la facturación en Ajustes > Configuración fiscal antes de generar facturas."
+        )
+
     suc = Sucursal.query.filter_by(
         id=sucursal_id, tenant_id=ingreso.tenant_id
     ).first()

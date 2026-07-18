@@ -1,5 +1,4 @@
 import click
-from datetime import date
 from flask.cli import AppGroup
 from flask import current_app
 from app.extensions import db
@@ -8,7 +7,11 @@ from app.superadmin.models import (
     SUBSCRIPTION_ACTIVA, SUBSCRIPTION_GRACIA, SUBSCRIPTION_VENCIDA,
 )
 from app.superadmin.models import ADDON_TIPO_RECEPCIONISTA
-from app.clip.service import create_price, get_price, ClipAPIError
+from app.clip.service import (
+    create_price, get_price, cancel_subscription, ClipAPIError,
+)
+from app.clip.billing import calculate_variable_breakdown, create_variable_charge
+from app.facturacion.timezone_helper import get_today
 
 billing_cli = AppGroup("billing", help="Comandos de facturacion Clip")
 
@@ -56,29 +59,32 @@ DEFAULT_PLANS = [
 @billing_cli.command("cycle")
 @click.option("--dry-run", is_flag=True, help="Solo muestra que haria, sin ejecutar")
 def billing_cycle(dry_run):
-    """Procesa expiraciones diarias.
-
-    Con suscripciones recurrentes de Clip, los cobros mensuales los hace
-    Clip automaticamente. Este job solo se encarga de:
-      - Expirar trials que ya pasaron su fecha
-      - Suspender tenants cuya gracia ya termino (la marca el webhook)
-    """
-    today = date.today()
+    """Cierra mensualidades variables, expira trials y termina la gracia."""
+    today = get_today()
 
     trial_expired = Subscription.query.filter(
         Subscription.estado.in_([SUBSCRIPTION_ACTIVA, SUBSCRIPTION_GRACIA]),
         Subscription.proximo_cobro <= today,
     ).join(Plan).filter(Plan.es_temporal.is_(True)).all()
 
-    grace_expired = Subscription.query.filter(
-        Subscription.estado == SUBSCRIPTION_GRACIA,
-        Subscription.grace_expires_at < today,
-    ).all()
+    due_subscriptions = (
+        Subscription.query.join(Plan)
+        .filter(
+            Subscription.estado.in_([SUBSCRIPTION_ACTIVA, SUBSCRIPTION_GRACIA]),
+            Subscription.proximo_cobro <= today,
+            Plan.es_temporal.is_(False),
+            Plan.precio_mensual > 0,
+            Plan.addon_tipo.is_(None),
+        )
+        .all()
+    )
 
     click.echo(f"Trial vencido:   {len(trial_expired)}")
-    click.echo(f"Gracia expirada: {len(grace_expired)}")
+    click.echo(f"Cortes variables: {len(due_subscriptions)}")
 
     suspended = 0
+    charges = 0
+    errors = 0
 
     for sub in trial_expired:
         tenant_name = sub.tenant.name if sub.tenant else f"tenant#{sub.tenant_id}"
@@ -89,6 +95,42 @@ def billing_cycle(dry_run):
                 sub.tenant.is_active = False
             db.session.commit()
         suspended += 1
+
+    for sub in due_subscriptions:
+        tenant_name = sub.tenant.name if sub.tenant else f"tenant#{sub.tenant_id}"
+        try:
+            if dry_run:
+                detail = calculate_variable_breakdown(sub, sub.proximo_cobro)
+                click.echo(
+                    f"  CHARGE {tenant_name}: ${detail['total']:.2f} "
+                    f"(plan ${detail['plan_amount']:.2f} + facturacion "
+                    f"${detail['invoice_base_fee']:.2f} + "
+                    f"{detail['stamp_count']} timbres)"
+                )
+                charges += 1
+                continue
+            payment, created = create_variable_charge(
+                sub, cycle_date=sub.proximo_cobro, today=today
+            )
+            db.session.commit()
+            if created:
+                click.echo(
+                    f"  CHARGE {tenant_name}: ${payment.monto:.2f}, "
+                    f"vence {payment.due_date}"
+                )
+                charges += 1
+            else:
+                click.echo(f"  SKIP {tenant_name}: corte ya generado")
+        except Exception as exc:  # continuar con los demas tenants
+            db.session.rollback()
+            errors += 1
+            click.echo(f"  ERROR {tenant_name}: {exc}")
+
+    grace_expired = Subscription.query.filter(
+        Subscription.estado == SUBSCRIPTION_GRACIA,
+        Subscription.grace_expires_at < today,
+    ).all()
+    click.echo(f"Gracia expirada: {len(grace_expired)}")
 
     for sub in grace_expired:
         tenant_name = sub.tenant.name if sub.tenant else f"tenant#{sub.tenant_id}"
@@ -101,16 +143,18 @@ def billing_cycle(dry_run):
             db.session.commit()
         suspended += 1
 
-    click.echo(f"\nResultado: {suspended} suspendidos")
+    click.echo(
+        f"\nResultado: {charges} cobros, {suspended} suspendidos, {errors} errores"
+    )
 
 
 @billing_cli.command("sync-prices")
 @click.option("--dry-run", is_flag=True, help="Solo muestra que haria, sin ejecutar")
 def sync_prices(dry_run):
-    """Crea o sincroniza un Clip /prices para cada Plan local activo y de paga.
+    """Sincroniza precios recurrentes solo para addons heredados.
 
-    Para cada Plan sin clip_price_id, crea un precio recurrente mensual en Clip
-    anclado al dia del primer pago. Guarda el clip_price_id y subscription_link.
+    Los planes principales usan checkout normal de monto variable y ya no deben
+    crear precios recurrentes en Clip.
     """
     # `or` (no el default de .get): la clave puede existir con valor None.
     base_url = (current_app.config.get("APP_BASE_URL") or "http://localhost:5000").rstrip("/")
@@ -123,6 +167,7 @@ def sync_prices(dry_run):
         Plan.activo.is_(True),
         Plan.es_temporal.is_(False),
         Plan.precio_mensual > 0,
+        Plan.addon_tipo.isnot(None),
     ).all()
 
     created = synced = skipped = errors = 0
@@ -181,6 +226,54 @@ def sync_prices(dry_run):
 
     click.echo(f"\nResultado: {created} creados, {synced} sincronizados, "
                f"{skipped} sin cambios, {errors} errores")
+
+
+@billing_cli.command("disable-main-recurring")
+@click.option(
+    "--apply", "apply_changes", is_flag=True,
+    help="Cancela realmente las suscripciones principales en Clip.",
+)
+def disable_main_recurring(apply_changes):
+    """Migra suscripciones principales heredadas al cobro variable.
+
+    Sin ``--apply`` solo muestra las suscripciones que se cancelarían. Los
+    addons de recepcionista se conservan sin cambios.
+    """
+    subscriptions = (
+        Subscription.query.join(Plan)
+        .filter(
+            Subscription.clip_subscription_id.isnot(None),
+            Subscription.clip_subscription_id != "",
+            Plan.addon_tipo.is_(None),
+        )
+        .all()
+    )
+    click.echo(f"Suscripciones principales recurrentes: {len(subscriptions)}")
+    errors = 0
+    for sub in subscriptions:
+        tenant_name = sub.tenant.name if sub.tenant else f"tenant#{sub.tenant_id}"
+        click.echo(f"  {tenant_name}: {sub.clip_subscription_id}")
+        if not apply_changes:
+            continue
+        try:
+            cancel_subscription(sub.clip_subscription_id)
+            sub.clip_subscription_id = None
+            db.session.commit()
+        except ClipAPIError as exc:
+            db.session.rollback()
+            errors += 1
+            click.echo(f"    ERROR: {exc}")
+
+    if apply_changes:
+        if errors == 0:
+            Plan.query.filter(Plan.addon_tipo.is_(None)).update(
+                {Plan.clip_price_id: None, Plan.clip_subscription_link: None},
+                synchronize_session=False,
+            )
+            db.session.commit()
+        click.echo(f"Resultado: {len(subscriptions) - errors} canceladas, {errors} errores")
+    else:
+        click.echo("Vista previa; vuelve a ejecutar con --apply para cancelar.")
 
 
 @billing_cli.command("seed-addon")

@@ -50,6 +50,10 @@ class PaymentSchema(Schema):
     periodo_inicio = fields.Date(load_default=None)
     periodo_fin = fields.Date(load_default=None)
     comentarios = fields.Str(load_default=None, validate=validate.Length(max=500))
+    # Permite liquidar el mismo corte variable en lugar de insertar un pago
+    # duplicado. ``billing_cycle_date`` se usa cuando el corte se crea manual.
+    pending_payment_id = fields.Int(load_default=None)
+    billing_cycle_date = fields.Date(load_default=None)
     clip_payment_id = fields.Str(dump_only=True)
     clip_status = fields.Str(dump_only=True)
 

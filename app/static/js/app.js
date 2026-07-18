@@ -931,6 +931,12 @@ const SubscriptionPopup = {
     const nag = data.billing_nag;
     if (!nag) return;
 
+    if (nag.tipo === 'cobro_variable') {
+      if (!nag.vencido && this._isDismissed(`charge_${nag.cobro_id}`)) return;
+      this._showVariableCharge(nag);
+      return;
+    }
+
     if (nag.no_suscrito) {
       this._showNotSubscribed(nag);
     } else if (nag.en_gracia || nag.dias_hasta_cobro < 0) {
@@ -1063,6 +1069,55 @@ const SubscriptionPopup = {
   },
 
   // ── Popup 1: Trial expired (BLOCKING) ───────────────────────────────────────
+  _showVariableCharge(nag) {
+    const blocking = Boolean(nag.vencido);
+    const overlay = this._buildOverlay(blocking);
+    const card = this._buildCard(blocking ? 'red' : 'blue');
+    const days = Number(nag.dias_restantes || 0);
+    const intro = nag.vencido
+      ? 'El plazo de pago terminó. Realiza el pago para regularizar el acceso de tu clínica.'
+      : `Tu mensualidad ya fue calculada. Tienes ${days} ${days === 1 ? 'día' : 'días'} para pagarla.`;
+
+    this._addBody(card, nag.vencido ? 'Pago mensual vencido' : 'Tu mensualidad está lista', [intro]);
+
+    const info = [
+      ['Plan ' + (nag.plan_nombre || ''), this._fmtMoney(nag.plan_monto)],
+    ];
+    if (Number(nag.facturacion_monto || 0) > 0) {
+      info.push(['Uso de facturas', this._fmtMoney(nag.facturacion_monto)]);
+    }
+    if (Number(nag.timbres_cantidad || 0) > 0) {
+      info.push([
+        `${nag.timbres_cantidad} timbre${Number(nag.timbres_cantidad) === 1 ? '' : 's'} × ${this._fmtMoney(nag.timbre_precio)}`,
+        this._fmtMoney(nag.timbres_monto),
+      ]);
+    }
+    info.push(['Total a pagar', this._fmtMoney(nag.monto)]);
+    info.push(['Fecha límite', this._fmtDate(nag.fecha_limite)]);
+    this._addInfoBox(card.lastChild, info);
+
+    const buttons = blocking
+      ? [{ label: 'Cerrar sesión', primary: false, onClick: () => Auth.logout() }]
+      : [{
+          label: 'Pagar después',
+          primary: false,
+          onClick: () => this._dismiss(`charge_${nag.cobro_id}`),
+        }];
+    if (nag.payment_url) {
+      buttons.push({ label: 'Pagar ahora', primary: true, href: nag.payment_url });
+    } else {
+      buttons.push({
+        label: 'Contactar soporte',
+        primary: true,
+        href: 'mailto:soporte@dentalplanning.mx?subject=Cobro mensual',
+      });
+    }
+    this._addActions(card, buttons);
+
+    overlay.appendChild(card);
+    this._container().appendChild(overlay);
+  },
+
   _showTrialExpired(trial) {
     const overlay = this._buildOverlay(true);
     const card = this._buildCard('amber');

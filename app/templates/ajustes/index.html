@@ -128,6 +128,23 @@
     <!-- CONFIGURACION FISCAL (CSD) -->
     <div id="panel-fiscal" class="hidden space-y-6">
       <div class="bg-surface rounded-xl border border-border shadow-sm">
+        <div class="p-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div class="max-w-2xl">
+            <h3 class="text-sm font-semibold font-heading text-text-primary">Facturación electrónica</h3>
+            <p class="mt-1 text-sm text-text-muted font-body">
+              Activa la emisión de CFDI para la clínica. Se agregarán $100 MXN al mes y $2 MXN por cada factura timbrada.
+            </p>
+            <p id="facturacion-activa-estado" class="mt-2 text-xs font-semibold text-text-muted font-body">Consultando estado…</p>
+          </div>
+          <label class="inline-flex items-center gap-3 cursor-pointer select-none shrink-0">
+            <span class="text-sm font-semibold text-text-secondary font-body">Activar facturas</span>
+            <input id="facturacion-activa-toggle" type="checkbox" class="peer sr-only" />
+            <span class="relative w-12 h-7 rounded-full bg-gray-300 peer-checked:bg-primary-600 transition-colors after:content-[''] after:absolute after:top-1 after:left-1 after:w-5 after:h-5 after:rounded-full after:bg-white after:shadow after:transition-transform peer-checked:after:translate-x-5"></span>
+          </label>
+        </div>
+      </div>
+
+      <div class="bg-surface rounded-xl border border-border shadow-sm">
         <div class="px-5 py-4 border-b border-border">
           <h3 class="text-sm font-semibold font-heading text-text-primary">Datos fiscales del emisor</h3>
         </div>
@@ -1194,9 +1211,33 @@
   });
 
   // ── CONFIGURACION FISCAL (CSD) ────────────────────────────
+  let facturacionConfigActual = null;
+
+  function moneyBilling(value) {
+    return Number(value || 0).toLocaleString('es-MX', {
+      style: 'currency', currency: 'MXN', minimumFractionDigits: 2,
+    });
+  }
+
+  function pintarEstadoFacturacion(cfg) {
+    facturacionConfigActual = cfg;
+    const toggle = document.getElementById('facturacion-activa-toggle');
+    const estado = document.getElementById('facturacion-activa-estado');
+    if (!toggle || !estado) return;
+    toggle.checked = Boolean(cfg.facturacion_activa);
+    const tarifas = cfg.tarifas_facturacion || { cuota_mensual: 100, costo_por_timbre: 2 };
+    estado.textContent = cfg.facturacion_activa
+      ? `Activa · ${moneyBilling(tarifas.cuota_mensual)} al mes + ${moneyBilling(tarifas.costo_por_timbre)} por timbre`
+      : 'Inactiva · no se pueden timbrar facturas';
+    estado.className = cfg.facturacion_activa
+      ? 'mt-2 text-xs font-semibold text-accent-700 font-body'
+      : 'mt-2 text-xs font-semibold text-text-muted font-body';
+  }
+
   async function cargarConfigFiscal() {
     try {
       const cfg = await API.get('/facturacion/configuracion');
+      pintarEstadoFacturacion(cfg);
       const form = document.getElementById('form-config');
       for (const k of ['rfc', 'razon_social', 'regimen_fiscal', 'clave_prod_serv_default', 'clave_unidad_default', 'naturaleza_juridica']) {
         const el = form.querySelector(`[name=${k}]`);
@@ -1225,6 +1266,47 @@
       console.error('Error al cargar configuración', e);
     }
   }
+
+  document.getElementById('facturacion-activa-toggle').addEventListener('change', async (e) => {
+    const toggle = e.currentTarget;
+    const previous = Boolean(facturacionConfigActual && facturacionConfigActual.facturacion_activa);
+    const activar = toggle.checked;
+    const tarifas = (facturacionConfigActual && facturacionConfigActual.tarifas_facturacion)
+      || { cuota_mensual: 100, costo_por_timbre: 2 };
+
+    const accepted = activar
+      ? await Confirm.show({
+          title: 'Activar facturación electrónica',
+          message: `Al activarla se cobrarán ${moneyBilling(tarifas.cuota_mensual)} extra en cada mensualidad, además de ${moneyBilling(tarifas.costo_por_timbre)} por cada factura timbrada. El timbre se cobra aunque la factura se cancele después.`,
+          confirmText: 'Acepto y activar',
+          cancelText: 'Cancelar',
+        })
+      : await Confirm.show({
+          title: 'Desactivar facturación electrónica',
+          message: 'Ya no podrás generar nuevas facturas. Los timbres emitidos y la cuota de uso acumulada antes del próximo corte se cobrarán normalmente.',
+          confirmText: 'Desactivar',
+          cancelText: 'Conservar activa',
+          danger: true,
+        });
+
+    if (!accepted) {
+      toggle.checked = previous;
+      return;
+    }
+    toggle.disabled = true;
+    try {
+      const cfg = await API.put('/facturacion/configuracion', {
+        facturacion_activa: activar,
+      });
+      pintarEstadoFacturacion(cfg);
+      Toast.success(activar ? 'Facturación activada' : 'Facturación desactivada');
+    } catch (err) {
+      toggle.checked = previous;
+      Toast.error(err.message || 'No se pudo actualizar la facturación');
+    } finally {
+      toggle.disabled = false;
+    }
+  });
 
   // ── Autocompletado de catálogos SAT (Régimen / ClaveProdServ / ClaveUnidad) ──
   function catItemHTML(it) {

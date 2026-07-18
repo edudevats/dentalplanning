@@ -20,7 +20,11 @@ from app.superadmin.models import (
     SUBSCRIPTION_ACTIVA, SUBSCRIPTION_GRACIA, SUBSCRIPTION_VENCIDA,
 )
 from app.auth import seats_service
-from app.clip.service import create_checkout_link, ClipAPIError
+from app.clip.service import ClipAPIError
+from app.clip.billing import (
+    add_one_month, calculate_variable_breakdown, create_variable_charge,
+)
+from app.facturacion.timezone_helper import get_today
 from app.superadmin.schemas import (
     PlanSchema, ApproveTenantSchema, RejectTenantSchema,
     TenantUpdateSchema, PaymentSchema, TenantNoteSchema,
@@ -114,6 +118,9 @@ def _serialize_plan(p):
         "clip_price_id": p.clip_price_id,
         "clip_subscription_link": p.clip_subscription_link,
         "clip_synced": bool(p.clip_price_id and p.clip_subscription_link),
+        "cobro_variable": bool(
+            not p.addon_tipo and not p.es_temporal and p.precio_mensual > 0
+        ),
         "cupo_maximo": p.cupo_maximo,
         "cupo_usados": p.cupo_usados or 0,
         "cupo_disponible": (p.cupo_maximo - (p.cupo_usados or 0)) if p.cupo_maximo is not None else None,
@@ -149,8 +156,132 @@ def _serialize_payment(p):
         "registrado_por_id": p.registrado_por_id,
         "clip_payment_id": p.clip_payment_id,
         "clip_status": p.clip_status,
+        "clip_payment_url": p.clip_payment_url,
+        "billing_cycle_date": p.billing_cycle_date.isoformat() if p.billing_cycle_date else None,
+        "due_date": p.due_date.isoformat() if p.due_date else None,
+        "plan_amount": p.plan_amount,
+        "invoice_base_fee": p.invoice_base_fee,
+        "stamp_count": p.stamp_count,
+        "stamp_unit_price": p.stamp_unit_price,
+        "stamp_amount": p.stamp_amount,
+        "paid_at": p.paid_at.isoformat() if p.paid_at else None,
         "created_at": p.created_at.isoformat() if p.created_at else None,
     }
+
+
+def _latest_variable_payment(tenant_id):
+    return (
+        Payment.query.filter(
+            Payment.tenant_id == tenant_id,
+            Payment.billing_cycle_date.isnot(None),
+        )
+        .order_by(Payment.billing_cycle_date.desc(), Payment.id.desc())
+        .first()
+    )
+
+
+def _monthly_charge_summary(tenant_id):
+    """Devuelve el corte real más reciente o una estimación del próximo."""
+    today = get_today()
+    latest = _latest_variable_payment(tenant_id)
+    sub = Subscription.query.filter_by(tenant_id=tenant_id).first()
+
+    latest_pending = latest and latest.clip_status != "PAID"
+    next_cut_is_future = bool(
+        sub and sub.proximo_cobro and sub.proximo_cobro > today
+    )
+    if latest and (latest_pending or next_cut_is_future or not sub):
+        summary = _serialize_payment(latest)
+        summary.update({
+            "is_estimate": False,
+            "can_mark_paid": latest.clip_status != "PAID",
+        })
+        return summary
+
+    if (
+        not sub
+        or not sub.plan
+        or sub.plan.es_temporal
+        or sub.plan.precio_mensual <= 0
+        or not sub.proximo_cobro
+    ):
+        return None
+
+    try:
+        detail = calculate_variable_breakdown(sub, sub.proximo_cobro)
+    except (TypeError, ValueError):
+        return None
+
+    next_cycle = add_one_month(sub.proximo_cobro)
+    return {
+        "id": None,
+        "tenant_id": tenant_id,
+        "subscription_id": sub.id,
+        "fecha": sub.proximo_cobro.isoformat(),
+        "monto": detail["total"],
+        "metodo": None,
+        "periodo_inicio": sub.proximo_cobro.isoformat(),
+        "periodo_fin": (next_cycle - timedelta(days=1)).isoformat(),
+        "comentarios": "Estimación del próximo corte mensual",
+        "clip_payment_id": None,
+        "clip_status": "ESTIMATED",
+        "clip_payment_url": None,
+        "billing_cycle_date": sub.proximo_cobro.isoformat(),
+        "due_date": _grace_after(sub.proximo_cobro).isoformat(),
+        "plan_amount": detail["plan_amount"],
+        "invoice_base_fee": detail["invoice_base_fee"],
+        "stamp_count": detail["stamp_count"],
+        "stamp_unit_price": detail["stamp_unit_price"],
+        "stamp_amount": detail["stamp_amount"],
+        "paid_at": None,
+        "is_estimate": True,
+        "can_mark_paid": sub.proximo_cobro <= today,
+    }
+
+
+def _append_manual_comment(existing, supplied):
+    note = supplied or "Pago manual confirmado por superadministrador"
+    prefix = f"{existing} | " if existing else ""
+    return f"{prefix}{note}"[:500]
+
+
+def _settle_variable_payment(payment, sub, tenant, data):
+    """Marca un corte variable como pagado y reactiva el siguiente periodo."""
+    method = data.get("metodo") or "transferencia"
+    if method == "clip":
+        raise ValueError(
+            "Los pagos por Clip se concilian con su webhook; selecciona un método manual."
+        )
+
+    payment.fecha = data["fecha"]
+    payment.metodo = method
+    payment.clip_status = "PAID"
+    payment.paid_at = datetime.now(timezone.utc)
+    payment.clip_payment_url = None
+    payment.comentarios = _append_manual_comment(
+        payment.comentarios, data.get("comentarios")
+    )
+
+    if sub:
+        sub.estado = SUBSCRIPTION_ACTIVA
+        sub.grace_expires_at = None
+        if payment.billing_cycle_date:
+            next_cycle = add_one_month(payment.billing_cycle_date)
+            if not sub.proximo_cobro or sub.proximo_cobro <= payment.billing_cycle_date:
+                sub.proximo_cobro = next_cycle
+        elif payment.periodo_fin:
+            sub.proximo_cobro = payment.periodo_fin + timedelta(days=1)
+        if sub.clip_checkout_id == payment.clip_payment_id:
+            sub.clip_checkout_id = None
+        if sub.plan and sub.plan.cupo_maximo is not None and not sub.counted_in_cupo:
+            sub.plan.cupo_usados = (sub.plan.cupo_usados or 0) + 1
+            sub.counted_in_cupo = True
+
+    tenant.status = TENANT_STATUS_ACTIVE
+    tenant.is_active = True
+    if not tenant.approved_at:
+        tenant.approved_at = datetime.now(timezone.utc)
+        tenant.approved_by_id = g.current_user.id
 
 
 def _serialize_note(n):
@@ -592,7 +723,9 @@ def _sync_plan_to_clip(plan, app_base_url):
     """
     from app.clip.service import create_price
 
-    if plan.es_temporal or plan.precio_mensual <= 0:
+    # Los planes principales se cobran con checkout de monto variable. Solo los
+    # addons heredados conservan un precio recurrente independiente.
+    if not plan.addon_tipo or plan.es_temporal or plan.precio_mensual <= 0:
         return False
     if plan.clip_price_id and plan.clip_subscription_link:
         return False
@@ -878,14 +1011,18 @@ def list_payments():
         d = _serialize_payment(p)
         d["tenant_name"] = p.tenant.name if p.tenant else None
         out.append(d)
-    return jsonify({"payments": out})
+    tenant_id = request.args.get("tenant_id")
+    monthly_charge = None
+    if tenant_id:
+        monthly_charge = _monthly_charge_summary(int(tenant_id))
+    return jsonify({"payments": out, "monthly_charge": monthly_charge})
 
 
 @superadmin_bp.route("/payments", methods=["POST"])
 @require_superuser
 def create_payment():
     data = PaymentSchema().load(request.get_json() or {})
-    tenant = Tenant.query.get(data["tenant_id"])
+    tenant = db.session.get(Tenant, data["tenant_id"])
     if not tenant or tenant.slug == SYSTEM_TENANT_SLUG:
         return jsonify({"error": "Tenant inválido"}), 400
 
@@ -896,6 +1033,114 @@ def create_payment():
             return jsonify({"error": "Suscripción no pertenece al tenant"}), 400
     else:
         sub = Subscription.query.filter_by(tenant_id=tenant.id).first()
+
+    pending_payment_id = data.get("pending_payment_id")
+    billing_cycle_date = data.get("billing_cycle_date")
+    if pending_payment_id or billing_cycle_date:
+        if (data.get("metodo") or "transferencia") == "clip":
+            return jsonify({
+                "error": "Los pagos por Clip se concilian con su webhook; "
+                         "selecciona un método manual."
+            }), 400
+        payment = None
+        created = False
+
+        if pending_payment_id:
+            payment = db.session.get(Payment, pending_payment_id)
+            if (
+                not payment
+                or payment.tenant_id != tenant.id
+                or not payment.billing_cycle_date
+            ):
+                return jsonify({"error": "Corte mensual inválido"}), 400
+            if payment.clip_status == "PAID":
+                return jsonify({"error": "Este corte mensual ya está pagado"}), 409
+            if payment.subscription_id:
+                payment_sub = db.session.get(Subscription, payment.subscription_id)
+                if payment_sub and payment_sub.tenant_id == tenant.id:
+                    sub = payment_sub
+            expected_amount = float(payment.monto or 0)
+        else:
+            if not sub or not sub.plan:
+                return jsonify({"error": "Tenant no tiene una suscripción válida"}), 400
+            if sub.proximo_cobro != billing_cycle_date:
+                return jsonify({
+                    "error": "La fecha no corresponde al próximo corte de la suscripción"
+                }), 409
+            if billing_cycle_date > get_today():
+                return jsonify({
+                    "error": "El corte mensual todavía no puede marcarse como pagado"
+                }), 409
+            existing = Payment.query.filter_by(
+                tenant_id=tenant.id, billing_cycle_date=billing_cycle_date
+            ).first()
+            if existing:
+                return jsonify({
+                    "error": "El corte ya existe; actualiza la pantalla para liquidarlo"
+                }), 409
+
+            detail = calculate_variable_breakdown(sub, billing_cycle_date)
+            expected_amount = float(detail["total"])
+            if abs(float(data["monto"]) - expected_amount) > 0.009:
+                return jsonify({
+                    "error": f"El monto debe coincidir con el total del corte: "
+                             f"${expected_amount:.2f}"
+                }), 400
+            next_cycle = add_one_month(billing_cycle_date)
+            payment = Payment(
+                tenant_id=tenant.id,
+                subscription_id=sub.id,
+                fecha=data["fecha"],
+                monto=expected_amount,
+                metodo=data.get("metodo") or "transferencia",
+                periodo_inicio=billing_cycle_date,
+                periodo_fin=next_cycle - timedelta(days=1),
+                comentarios=(
+                    f"Corte manual {billing_cycle_date.isoformat()} — "
+                    f"{detail['stamp_count']} timbres"
+                ),
+                registrado_por_id=g.current_user.id,
+                clip_status="PENDING",
+                billing_cycle_date=billing_cycle_date,
+                due_date=_grace_after(billing_cycle_date),
+                plan_amount=detail["plan_amount"],
+                invoice_base_fee=detail["invoice_base_fee"],
+                stamp_count=detail["stamp_count"],
+                stamp_unit_price=detail["stamp_unit_price"],
+                stamp_amount=detail["stamp_amount"],
+            )
+            db.session.add(payment)
+            if detail["config"]:
+                detail["config"].facturacion_cargo_pendiente = False
+            created = True
+
+        if abs(float(data["monto"]) - expected_amount) > 0.009:
+            return jsonify({
+                "error": f"El monto debe coincidir con el total del corte: ${expected_amount:.2f}"
+            }), 400
+
+        try:
+            _settle_variable_payment(payment, sub, tenant, data)
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 400
+        db.session.flush()
+        log_admin_action(
+            "payment.manual_settle",
+            target_type="payment",
+            target_id=payment.id,
+            tenant_id=tenant.id,
+            summary=f"Marcó manualmente el corte por {payment.monto}",
+            details={
+                "monto": payment.monto,
+                "metodo": payment.metodo,
+                "billing_cycle_date": payment.billing_cycle_date.isoformat(),
+                "created": created,
+            },
+        )
+        db.session.commit()
+        body = _serialize_payment(payment)
+        body["settled_variable_charge"] = True
+        return jsonify(body), (201 if created else 200)
 
     payment = Payment(
         tenant_id=data["tenant_id"],
@@ -951,7 +1196,7 @@ def sync_clip_payments():
     look up its subscription in Clip and reconcile invoice statuses.
     Used as a fallback when webhooks were missed.
     """
-    from app.clip.service import get_invoice
+    from app.clip.service import get_checkout_status, get_invoice
 
     pending = Payment.query.filter(
         Payment.metodo == "clip",
@@ -966,25 +1211,37 @@ def sync_clip_payments():
 
     for p in pending:
         try:
-            invoice = get_invoice(p.clip_payment_id)
+            detail = (
+                get_checkout_status(p.clip_payment_id)
+                if p.billing_cycle_date
+                else get_invoice(p.clip_payment_id)
+            )
         except ClipAPIError as e:
             errors.append({"payment_id": p.id, "error": str(e)})
             continue
-        if not invoice:
-            errors.append({"payment_id": p.id, "error": "invoice not found in Clip"})
+        if not detail:
+            errors.append({"payment_id": p.id, "error": "payment not found in Clip"})
             continue
 
-        clip_status = (invoice.get("status") or "").upper()
+        clip_status = (
+            detail.get("resource_status")
+            or detail.get("payment_status")
+            or detail.get("status")
+            or ""
+        ).upper()
         old_status = p.clip_status
 
-        if clip_status == "PAID":
+        if clip_status in ("PAID", "COMPLETED", "CHECKOUT_COMPLETED"):
             p.clip_status = "PAID"
+            p.paid_at = datetime.now(timezone.utc)
             if p.subscription_id:
                 sub = db.session.get(Subscription, p.subscription_id)
                 if sub:
                     sub.estado = SUBSCRIPTION_ACTIVA
                     sub.grace_expires_at = None
-                    if p.periodo_fin:
+                    if p.billing_cycle_date:
+                        sub.proximo_cobro = add_one_month(p.billing_cycle_date)
+                    elif p.periodo_fin:
                         sub.proximo_cobro = p.periodo_fin + timedelta(days=1)
             tenant = db.session.get(Tenant, p.tenant_id)
             if tenant and tenant.status != TENANT_STATUS_ACTIVE:
@@ -1023,57 +1280,44 @@ def charge_tenant(tenant_id):
     if not sub:
         return jsonify({"error": "Tenant no tiene suscripción"}), 400
 
-    plan = sub.plan
-    if not plan:
+    if not sub.plan:
         return jsonify({"error": "Plan no encontrado"}), 400
 
-    today = date.today()
-    periodo_inicio = today
-    periodo_fin = today + timedelta(days=30)
+    today = get_today()
+    if sub.proximo_cobro and sub.proximo_cobro > today:
+        return jsonify({
+            "error": f"El siguiente corte corresponde al {sub.proximo_cobro.isoformat()}."
+        }), 409
+    cycle_date = sub.proximo_cobro or today
 
     try:
-        result = create_checkout_link(
-            amount=plan.precio_mensual,
-            description=f"Suscripción {plan.nombre} — {t.name}",
-            webhook_url=request.host_url.rstrip("/") + "/api/v1/clip/webhook",
-            redirection_url={
-                "success": request.host_url.rstrip("/") + f"/admin/tenants/{t.id}",
-                "error": request.host_url.rstrip("/") + f"/admin/tenants/{t.id}",
-                "default": request.host_url.rstrip("/") + "/admin/tenants",
-            },
-            metadata={"tenant_id": t.id, "subscription_id": sub.id},
+        payment, created = create_variable_charge(
+            sub,
+            cycle_date=cycle_date,
+            registered_by_id=g.current_user.id,
+            base_url=request.host_url.rstrip("/"),
         )
     except ClipAPIError as e:
         return jsonify({"error": str(e)}), 502
-
-    clip_id = result.get("payment_request_id", "")
-    clip_url = result.get("payment_request_url", "")
-
-    payment = Payment(
-        tenant_id=t.id,
-        subscription_id=sub.id,
-        fecha=today,
-        monto=plan.precio_mensual,
-        metodo="clip",
-        periodo_inicio=periodo_inicio,
-        periodo_fin=periodo_fin,
-        comentarios=f"Cobro Clip — {plan.nombre}",
-        registrado_por_id=g.current_user.id,
-        clip_payment_id=clip_id,
-        clip_status="PENDING",
-    )
-    db.session.add(payment)
-    sub.clip_checkout_id = clip_id
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
     db.session.flush()
-    log_admin_action("payment.charge_clip", target_type="tenant", target_id=t.id,
-                     tenant_id=t.id, summary=f"Generó cobro Clip por {plan.precio_mensual}")
+    if created:
+        log_admin_action(
+            "payment.charge_clip",
+            target_type="tenant",
+            target_id=t.id,
+            tenant_id=t.id,
+            summary=f"Generó cobro variable Clip por {payment.monto}",
+        )
     db.session.commit()
 
     return jsonify({
-        "clip_url": clip_url,
-        "clip_payment_id": clip_id,
+        "clip_url": payment.clip_payment_url,
+        "clip_payment_id": payment.clip_payment_id,
         "payment": _serialize_payment(payment),
-    }), 201
+        "created": created,
+    }), (201 if created else 200)
 
 
 # ── Stats ───────────────────────────────────────────────────────────────────

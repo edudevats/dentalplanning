@@ -24,13 +24,18 @@ class Config:
     CLIP_BASE_URL = os.getenv("CLIP_BASE_URL")
     APP_BASE_URL = os.getenv("APP_BASE_URL")
     SMTP_HOST = os.getenv("SMTP_HOST")
-    SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
+    # Defaults alineados con .env.example: SMTP directo por SSL en el puerto 465.
+    # Si el .env de producción no define estas vars, el correo usa 465/SSL (no
+    # 587/STARTTLS), que es el esquema real del proveedor.
+    SMTP_PORT = int(os.getenv("SMTP_PORT", "465"))
     SMTP_USER = os.getenv("SMTP_USER", "")
     SMTP_PASS = os.getenv("SMTP_PASS", "")
     SMTP_FROM = os.getenv("SMTP_FROM")
-    SMTP_USE_TLS = os.getenv("SMTP_USE_TLS", "true").lower() in ("true", "1", "yes")
-    SMTP_USE_SSL = os.getenv("SMTP_USE_SSL", "false").lower() in ("true", "1", "yes")
+    SMTP_USE_TLS = os.getenv("SMTP_USE_TLS", "false").lower() in ("true", "1", "yes")
+    SMTP_USE_SSL = os.getenv("SMTP_USE_SSL", "true").lower() in ("true", "1", "yes")
     BILLING_GRACE_DAYS = int(os.getenv("BILLING_GRACE_DAYS", "3"))
+    FACTURACION_MONTHLY_FEE = float(os.getenv("FACTURACION_MONTHLY_FEE", "100"))
+    FACTURACION_STAMP_FEE = float(os.getenv("FACTURACION_STAMP_FEE", "2"))
     # Llave maestra (Fernet) para cifrar secretos del CSD. NUNCA en el repo ni en la BD.
     FACTURACION_FERNET_KEY = os.getenv("FACTURACION_FERNET_KEY", "")
     # Finkok (PAC para timbrado de CFDI). FINKOK_PASSWORD es el token/contraseña.

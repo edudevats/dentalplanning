@@ -18,6 +18,9 @@ from app.configuracion.models import ConfigConsultorio
 from app.ajustes.models import DistribucionConfig, ensure_impuesto_concepto
 from app.superadmin.models import Plan, Subscription, Payment, SUBSCRIPTION_ACTIVA
 from app.auth import seats_service
+from app.clip.billing import add_one_month, create_initial_charge
+from app.clip.service import ClipAPIError
+from app.facturacion.timezone_helper import get_today
 
 auth_bp = Blueprint("auth", __name__, url_prefix="/api/v1/auth")
 
@@ -104,17 +107,6 @@ def register():
 
     is_paid = plan.precio_mensual > 0
 
-    # For paid plans we require a pre-synced Clip recurring price.
-    if is_paid and not plan.clip_subscription_link:
-        current_app.logger.error(
-            "Plan %s (id=%s) has no clip_subscription_link. Run `flask billing sync-prices`.",
-            plan.nombre, plan.id,
-        )
-        return jsonify({
-            "error": "Este plan no está disponible para suscripción en este momento. "
-                     "Intenta de nuevo en unos minutos o contacta al soporte."
-        }), 503
-
     initial_status = TENANT_STATUS_ACTIVE if is_paid else TENANT_STATUS_PENDING
     initial_active = is_paid
 
@@ -145,11 +137,11 @@ def register():
     db.session.add(distribucion)
     ensure_impuesto_concepto(db.session, tenant.id)
 
-    today = date.today()
+    today = get_today()
     if plan.es_temporal and plan.dias_expiracion:
         proximo_cobro = today + timedelta(days=plan.dias_expiracion)
     else:
-        proximo_cobro = today + timedelta(days=30)
+        proximo_cobro = add_one_month(today)
 
     sub = Subscription(
         tenant_id=tenant.id,
@@ -161,14 +153,34 @@ def register():
     db.session.add(sub)
     db.session.flush()
 
+    initial_payment = None
+    if is_paid:
+        try:
+            initial_payment, _ = create_initial_charge(
+                sub,
+                registered_by_id=user.id,
+                base_url=request.host_url.rstrip("/"),
+                today=today,
+            )
+        except (ClipAPIError, ValueError) as exc:
+            db.session.rollback()
+            current_app.logger.error(
+                "No se pudo generar el cobro inicial del plan %s: %s",
+                plan.id,
+                exc,
+            )
+            return jsonify({
+                "error": "No se pudo generar el link de pago. Intenta de nuevo en unos minutos."
+            }), 502
+
     db.session.commit()
 
     access_token = create_access_token(identity=str(user.id))
     refresh_token = create_refresh_token(identity=str(user.id))
 
     if is_paid:
-        msg = "Cuenta creada. Suscríbete para activar tu acceso."
-        clip_url = plan.clip_subscription_link
+        msg = "Cuenta creada. Completa el pago inicial de tu mensualidad."
+        clip_url = initial_payment.clip_payment_url
     else:
         msg = "Cuenta creada. Tu acceso será activado por el administrador."
         clip_url = None
@@ -404,30 +416,26 @@ def me():
         }
 
     billing_nag = None
-    if sub and sub.plan and not sub.plan.es_temporal and sub.proximo_cobro and sub.plan.precio_mensual > 0:
-        from app.superadmin.models import SUBSCRIPTION_GRACIA
-        today = date_cls.today()
-        dias_hasta_cobro = (sub.proximo_cobro - today).days
-        is_overdue = sub.estado == SUBSCRIPTION_GRACIA
-        # "no_suscrito" = el tenant no tiene cobro recurrente en Clip NI ningún
-        # pago registrado. Un pago manual capturado por el super-admin cuenta
-        # como suscrito aunque no exista clip_subscription_id.
-        has_payment = db.session.query(
-            Payment.query.filter_by(tenant_id=user.tenant.id).exists()
-        ).scalar()
-        not_subscribed = not sub.clip_subscription_id and not has_payment
-        if dias_hasta_cobro <= 1 or is_overdue or not_subscribed:
-            billing_nag = {
-                "estado": sub.estado,
-                "plan_nombre": sub.plan.nombre,
-                "proximo_cobro": sub.proximo_cobro.isoformat(),
-                "dias_hasta_cobro": dias_hasta_cobro,
-                "monto": sub.plan.precio_mensual,
-                "en_gracia": is_overdue,
-                "gracia_expira": sub.grace_expires_at.isoformat() if sub.grace_expires_at else None,
-                "no_suscrito": not_subscribed,
-                "subscription_link": sub.plan.clip_subscription_link,
-            }
+    pending_charge = (
+        Payment.query.filter(
+            Payment.tenant_id == user.tenant.id,
+            Payment.billing_cycle_date.isnot(None),
+            db.or_(Payment.clip_status != "PAID", Payment.clip_status.is_(None)),
+        )
+        .order_by(Payment.billing_cycle_date.desc(), Payment.id.desc())
+        .first()
+    )
+    if pending_charge:
+        from app.clip.billing import serialize_charge
+
+        billing_nag = serialize_charge(pending_charge)
+        billing_nag.update({
+            "estado": sub.estado if sub else None,
+            "plan_nombre": sub.plan.nombre if sub and sub.plan else None,
+            "proximo_cobro": (
+                sub.proximo_cobro.isoformat() if sub and sub.proximo_cobro else None
+            ),
+        })
 
     return jsonify({
         "id": user.id,

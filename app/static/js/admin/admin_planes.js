@@ -215,6 +215,14 @@
       return wrap;
     }
 
+    if (plan.cobro_variable) {
+      const span = document.createElement('span');
+      span.className = 'inline-flex px-2 py-0.5 rounded-md text-[10px] font-semibold bg-blue-500/15 text-blue-700';
+      span.textContent = 'Cobro variable';
+      wrap.appendChild(span);
+      return wrap;
+    }
+
     if (plan.clip_synced) {
       const row = document.createElement('div');
       row.className = 'flex items-center gap-1';

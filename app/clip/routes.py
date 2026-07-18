@@ -1,5 +1,5 @@
 import json
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 from flask import Blueprint, current_app, request, jsonify
 from app.extensions import db
 from app.superadmin.models import (
@@ -8,6 +8,7 @@ from app.superadmin.models import (
 )
 from app.auth.models import Tenant, User, TENANT_STATUS_ACTIVE, TENANT_STATUS_SUSPENDED
 from app.clip.service import get_invoice, get_subscription, ClipAPIError
+from app.clip.billing import add_one_month
 
 clip_bp = Blueprint("clip", __name__, url_prefix="/api/v1/clip")
 
@@ -67,23 +68,32 @@ def webhook():
 
 
 def _handle_checkout_event(data, status):
-    """Legacy one-time checkout link events (for backward compat)."""
-    clip_id = data.get("payment_request_id") or ""
+    """Eventos de checkout normal (cobros variables y compatibilidad legacy)."""
+    clip_id = data.get("payment_request_id") or data.get("id") or ""
     if not clip_id:
         return
     payment = Payment.query.filter_by(clip_payment_id=clip_id).first()
     if not payment:
         return
 
-    if status == "COMPLETED":
+    if status in ("COMPLETED", "CHECKOUT_COMPLETED", "PAID"):
         payment.clip_status = "PAID"
+        payment.paid_at = datetime.now(timezone.utc)
         if payment.subscription_id:
             sub = db.session.get(Subscription, payment.subscription_id)
             if sub:
                 sub.estado = SUBSCRIPTION_ACTIVA
                 sub.grace_expires_at = None
-                if payment.periodo_fin:
+                if payment.billing_cycle_date:
+                    next_cycle = add_one_month(payment.billing_cycle_date)
+                    if not sub.proximo_cobro or sub.proximo_cobro <= payment.billing_cycle_date:
+                        sub.proximo_cobro = next_cycle
+                elif payment.periodo_fin:
                     sub.proximo_cobro = payment.periodo_fin + timedelta(days=1)
+                plan = sub.plan
+                if plan and plan.cupo_maximo is not None and not sub.counted_in_cupo:
+                    plan.cupo_usados = (plan.cupo_usados or 0) + 1
+                    sub.counted_in_cupo = True
         tenant = db.session.get(Tenant, payment.tenant_id)
         if tenant and tenant.status != TENANT_STATUS_ACTIVE:
             tenant.status = TENANT_STATUS_ACTIVE

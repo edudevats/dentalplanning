@@ -2,7 +2,7 @@ import base64
 import calendar
 import secrets
 from io import BytesIO
-from datetime import date
+from datetime import date, datetime, timezone
 from PIL import Image, UnidentifiedImageError
 from flask import Blueprint, request, jsonify, g, current_app
 from sqlalchemy.orm import joinedload
@@ -35,13 +35,26 @@ def _get_or_create_config():
     return cfg
 
 
+def _config_payload(cfg):
+    data = ConfiguracionFiscalSchema().dump(cfg)
+    data["tarifas_facturacion"] = {
+        "cuota_mensual": float(
+            current_app.config.get("FACTURACION_MONTHLY_FEE", 100)
+        ),
+        "costo_por_timbre": float(
+            current_app.config.get("FACTURACION_STAMP_FEE", 2)
+        ),
+    }
+    return data
+
+
 # ── CONFIGURACIÓN FISCAL ──
 
 @facturacion_bp.route("/configuracion", methods=["GET"])
 @require_auth
 def obtener_configuracion():
     cfg = _get_or_create_config()
-    return jsonify(ConfiguracionFiscalSchema().dump(cfg))
+    return jsonify(_config_payload(cfg))
 
 
 @facturacion_bp.route("/configuracion", methods=["PUT"])
@@ -50,10 +63,16 @@ def obtener_configuracion():
 def actualizar_configuracion():
     cfg = _get_or_create_config()
     data = ConfiguracionFiscalSchema(partial=True).load(request.get_json() or {})
+    requested_active = data.pop("facturacion_activa", None)
     for k, v in data.items():
         setattr(cfg, k, v)
+    if requested_active is not None and bool(requested_active) != bool(cfg.facturacion_activa):
+        cfg.facturacion_activa = bool(requested_active)
+        if cfg.facturacion_activa:
+            cfg.facturacion_activada_at = datetime.now(timezone.utc)
+            cfg.facturacion_cargo_pendiente = True
     db.session.commit()
-    return jsonify(ConfiguracionFiscalSchema().dump(cfg))
+    return jsonify(_config_payload(cfg))
 
 
 @facturacion_bp.route("/configuracion/csd", methods=["POST"])
@@ -85,7 +104,7 @@ def subir_csd():
     if not cfg.razon_social:
         cfg.razon_social = meta["razon_social"]
     db.session.commit()
-    return jsonify(ConfiguracionFiscalSchema().dump(cfg))
+    return jsonify(_config_payload(cfg))
 
 
 @facturacion_bp.route("/configuracion/fiel", methods=["POST"])
@@ -110,7 +129,7 @@ def subir_fiel():
     cfg.fiel_valido_desde = meta["valido_desde"]
     cfg.fiel_valido_hasta = meta["valido_hasta"]
     db.session.commit()
-    return jsonify(ConfiguracionFiscalSchema().dump(cfg))
+    return jsonify(_config_payload(cfg))
 
 
 # Procesamiento del logo al subir: normalizamos a un tamaño/formato controlado
