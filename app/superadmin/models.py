@@ -63,10 +63,15 @@ class Subscription(db.Model):
     clip_subscription_id = db.Column(db.String(100), nullable=True)  # active: Clip /subscriptions id
     grace_expires_at = db.Column(db.Date, nullable=True)
     counted_in_cupo = db.Column(db.Boolean, nullable=False, default=False)
+    # Downgrade programado: el plan más barato entra al terminar el periodo ya
+    # pagado (``plan_programado_desde`` = proximo_cobro al momento de agendarlo).
+    plan_programado_id = db.Column(db.Integer, db.ForeignKey("plans.id"), nullable=True)
+    plan_programado_desde = db.Column(db.Date, nullable=True)
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
 
     tenant = db.relationship("Tenant", backref=db.backref("subscription", uselist=False))
-    plan = db.relationship("Plan")
+    plan = db.relationship("Plan", foreign_keys=[plan_id])
+    plan_programado = db.relationship("Plan", foreign_keys=[plan_programado_id])
 
 
 class Payment(db.Model):

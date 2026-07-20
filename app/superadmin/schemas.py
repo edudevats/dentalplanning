@@ -76,6 +76,18 @@ class FechaCobroSchema(Schema):
     proximo_cobro = fields.Date(required=True)
 
 
+class CambioPlanSchema(Schema):
+    """Upgrade/downgrade entre planes de pago. El monto de la diferencia se
+    calcula en el servidor; el cliente solo elige plan y método de cobro."""
+    class Meta:
+        unknown = EXCLUDE
+
+    plan_id = fields.Int(required=True)
+    metodo = fields.Str(load_default="transferencia",
+                        validate=validate.OneOf(PAYMENT_METODOS))
+    comentarios = fields.Str(load_default=None, validate=validate.Length(max=500))
+
+
 class AssignPlanSchema(Schema):
     plan_id = fields.Int(required=True)
     inicio = fields.Date(load_default=None)

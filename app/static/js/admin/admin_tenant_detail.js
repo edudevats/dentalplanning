@@ -484,6 +484,39 @@
         subCard.appendChild(warn);
       }
 
+      // Cambio de plan programado (downgrade pendiente)
+      if (sub.plan_programado_nombre) {
+        const prog = document.createElement('div');
+        prog.className = 'flex flex-wrap items-center gap-2 p-3 rounded-md bg-cs-primary/10 text-cs-on-surface text-xs';
+        const pIc = document.createElement('i'); pIc.setAttribute('data-lucide', 'calendar-clock'); pIc.className = 'h-4 w-4 shrink-0 text-cs-primary';
+        prog.appendChild(pIc);
+        const pTxt = document.createElement('span');
+        pTxt.appendChild(document.createTextNode('Cambio programado a '));
+        const strong = document.createElement('strong');
+        strong.textContent = sub.plan_programado_nombre;
+        pTxt.appendChild(strong);
+        pTxt.appendChild(document.createTextNode(
+          sub.plan_programado_desde ? ` el ${formatDate(sub.plan_programado_desde)}` : ''
+        ));
+        prog.appendChild(pTxt);
+        const cancelProg = document.createElement('button');
+        cancelProg.className = 'ml-auto px-2 py-1 rounded-md bg-cs-surface-container text-cs-on-surface font-semibold hover:bg-cs-surface-container-high transition-colors cursor-pointer';
+        cancelProg.textContent = 'Cancelar cambio';
+        cancelProg.addEventListener('click', async () => {
+          const ok = await confirmAction({
+            title: 'Cancelar cambio de plan',
+            message: `Se cancelará el cambio programado a ${sub.plan_programado_nombre}.`,
+            confirmLabel: 'Cancelar cambio', destructive: true,
+          });
+          if (!ok) return;
+          await adminApi.del(`/tenants/${tenantId}/plan-programado`);
+          Toast.show('Cambio de plan cancelado', 'success');
+          await refreshAll();
+        });
+        prog.appendChild(cancelProg);
+        subCard.appendChild(prog);
+      }
+
       // Module badges
       const mods = sub.plan_modulos || [];
       if (mods.length > 0) {
@@ -522,6 +555,14 @@
       editDateBtn.appendChild(document.createTextNode('Editar fecha de cobro'));
       editDateBtn.addEventListener('click', () => openEditFechaCobro(sub));
       subActions.appendChild(editDateBtn);
+
+      const upgradeBtn = document.createElement('button');
+      upgradeBtn.className = 'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-cs-primary text-cs-on-primary text-xs font-semibold hover:opacity-90 transition-opacity cursor-pointer';
+      const upIc = document.createElement('i'); upIc.setAttribute('data-lucide', 'trending-up'); upIc.className = 'h-3 w-3';
+      upgradeBtn.appendChild(upIc);
+      upgradeBtn.appendChild(document.createTextNode('Upgrade / Downgrade'));
+      upgradeBtn.addEventListener('click', () => openCambioPlan(sub));
+      subActions.appendChild(upgradeBtn);
 
       subCard.appendChild(subActions);
     } else {
@@ -925,6 +966,84 @@
             proximo_cobro: proximo.value || undefined,
           });
           Toast.show(isNew ? 'Plan asignado. Registra un pago para activar la cuenta.' : 'Plan actualizado', 'success');
+          await refreshAll();
+        },
+      },
+    });
+  }
+
+  async function openCambioPlan(sub) {
+    // cobro_variable = plan principal de pago (excluye addons, free y temporales).
+    const plans = (await loadPlans()).filter(
+      p => p.activo && p.cobro_variable && p.id !== sub.plan_id
+    );
+    const actual = (await loadPlans()).find(p => p.id === sub.plan_id);
+    if (!actual || actual.precio_mensual <= 0 || actual.es_temporal) {
+      Toast.show('El plan actual no es de pago. Usa "Cambiar plan".', 'warning');
+      return;
+    }
+    if (plans.length === 0) { Toast.show('No hay otros planes de pago activos', 'warning'); return; }
+
+    const wrap = document.createElement('div');
+    wrap.className = 'space-y-4';
+
+    const info = document.createElement('p');
+    info.className = 'text-sm text-cs-on-surface-var';
+    info.textContent = `Plan actual: ${actual.nombre} (${currency(actual.precio_mensual)}/mes). `
+      + 'Un plan más caro se aplica ya y cobra la diferencia; uno más barato se '
+      + 'programa para el próximo cobro, sin cargo.';
+    wrap.appendChild(info);
+
+    const planSel = selectEl('plan_id', plans.map(p => ({
+      value: p.id,
+      label: `${p.nombre} — ${currency(p.precio_mensual)}/mes`,
+    })));
+    wrap.appendChild(buildField('Nuevo plan', planSel));
+
+    const metodo = selectEl('metodo', [
+      { value: 'transferencia', label: 'Transferencia' },
+      { value: 'efectivo', label: 'Efectivo' },
+      { value: 'tarjeta', label: 'Tarjeta' },
+      { value: 'otro', label: 'Otro' },
+    ]);
+    const metodoField = buildField('Método de cobro de la diferencia', metodo);
+    wrap.appendChild(metodoField);
+
+    const resumen = document.createElement('div');
+    resumen.className = 'p-3 rounded-md text-xs font-semibold';
+    wrap.appendChild(resumen);
+
+    function selected() { return plans.find(p => p.id === parseInt(planSel.value, 10)); }
+    function refresh() {
+      const p = selected();
+      if (!p) return;
+      const diff = Math.round((p.precio_mensual - actual.precio_mensual) * 100) / 100;
+      const esUpgrade = diff > 0;
+      metodoField.classList.toggle('hidden', !esUpgrade);
+      resumen.className = 'p-3 rounded-md text-xs font-semibold '
+        + (esUpgrade ? 'bg-cs-primary/10 text-cs-on-surface' : 'bg-cs-surface-container text-cs-on-surface-var');
+      resumen.textContent = esUpgrade
+        ? `Upgrade: se cobra la diferencia de ${currency(diff)} y el plan entra de inmediato. La fecha de cobro no cambia.`
+        : `Downgrade: sin cobro. El cambio se aplicará el ${formatDate(sub.proximo_cobro)}.`;
+    }
+    planSel.addEventListener('change', refresh);
+    refresh();
+
+    openModal({
+      title: `Cambio de plan — ${tenant.name}`,
+      content: wrap,
+      primary: {
+        label: 'Aplicar cambio',
+        onClick: async () => {
+          const p = selected();
+          if (!p) throw new Error('Selecciona un plan.');
+          await adminApi.post(`/tenants/${tenantId}/cambio-plan`, {
+            plan_id: p.id,
+            metodo: metodo.value,
+          });
+          const diff = p.precio_mensual - actual.precio_mensual;
+          Toast.show(diff > 0 ? 'Upgrade aplicado y diferencia registrada'
+                              : 'Downgrade programado', 'success');
           await refreshAll();
         },
       },

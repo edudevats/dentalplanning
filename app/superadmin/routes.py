@@ -25,10 +25,12 @@ from app.clip.billing import (
     add_one_month, calculate_variable_breakdown, create_variable_charge,
 )
 from app.facturacion.timezone_helper import get_today
+from app.superadmin.services import aplicar_plan_programado, es_plan_de_pago
 from app.superadmin.schemas import (
     PlanSchema, ApproveTenantSchema, RejectTenantSchema,
     TenantUpdateSchema, PaymentSchema, TenantNoteSchema,
-    SubscriptionUpdateSchema, AssignPlanSchema, FechaCobroSchema, ChangeUserRoleSchema,
+    SubscriptionUpdateSchema, AssignPlanSchema, FechaCobroSchema,
+    CambioPlanSchema, ChangeUserRoleSchema,
     ToggleActiveSchema, RechazarAsientoSchema, ActivarManualSchema,
 )
 from app.catalogo.models import Material
@@ -57,11 +59,6 @@ def _compute_proximo_cobro(plan, inicio):
     if plan.dias_expiracion and plan.dias_expiracion > 0:
         return inicio + timedelta(days=plan.dias_expiracion)
     return _add_one_month(inicio)
-
-
-def _is_paid_plan(plan):
-    """Plan mensual de cobro real (no free, no temporal)."""
-    return bool(plan) and plan.precio_mensual > 0 and not plan.es_temporal
 
 
 def _grace_after(proximo):
@@ -146,6 +143,11 @@ def _serialize_subscription(s):
         "estado": s.estado,
         "clip_checkout_id": s.clip_checkout_id,
         "grace_expires_at": s.grace_expires_at.isoformat() if s.grace_expires_at else None,
+        "plan_programado_id": s.plan_programado_id,
+        "plan_programado_nombre": s.plan_programado.nombre if s.plan_programado else None,
+        "plan_programado_desde": (
+            s.plan_programado_desde.isoformat() if s.plan_programado_desde else None
+        ),
     }
 
 
@@ -389,8 +391,12 @@ def get_tenant(tenant_id):
     t = Tenant.query.get_or_404(tenant_id)
     if t.slug == SYSTEM_TENANT_SLUG:
         return jsonify({"error": "Tenant del sistema"}), 404
-    data = _serialize_tenant(t, with_counts=True)
     sub = Subscription.query.filter_by(tenant_id=t.id).first()
+    # Red de seguridad: sin cron confiable, materializamos aquí el downgrade
+    # programado que ya venció.
+    if sub and aplicar_plan_programado(sub):
+        db.session.commit()
+    data = _serialize_tenant(t, with_counts=True)
     data["subscription"] = _serialize_subscription(sub) if sub else None
     data["notes_count"] = TenantNote.query.filter_by(tenant_id=t.id).count()
     return jsonify(data)
@@ -964,6 +970,109 @@ def update_fecha_cobro(tenant_id):
     return jsonify(out)
 
 
+@superadmin_bp.route("/tenants/<int:tenant_id>/cambio-plan", methods=["POST"])
+@require_superuser
+def cambio_plan(tenant_id):
+    """Mueve la clínica entre planes de pago.
+
+    - Plan más caro (upgrade): se aplica de inmediato conservando el aniversario
+      de cobro y se registra el pago de la diferencia mensual.
+    - Plan más barato (downgrade): no se cobra nada y el cambio queda programado
+      para cuando termine el periodo ya pagado.
+    """
+    t = Tenant.query.get_or_404(tenant_id)
+    if t.slug == SYSTEM_TENANT_SLUG:
+        return jsonify({"error": "Tenant del sistema"}), 400
+
+    sub = Subscription.query.filter_by(tenant_id=t.id).first()
+    if not sub:
+        return jsonify({"error": "El tenant no tiene una suscripción"}), 400
+
+    data = CambioPlanSchema().load(request.get_json() or {})
+    plan = db.session.get(Plan, data["plan_id"])
+    if not plan or not plan.activo or plan.addon_tipo:
+        return jsonify({"error": "Plan inválido o inactivo"}), 400
+    if not es_plan_de_pago(sub.plan) or not es_plan_de_pago(plan):
+        return jsonify({
+            "error": "Ambos planes deben ser de pago. Usa 'Cambiar plan' para "
+                     "planes free o temporales."
+        }), 400
+
+    actual = float(sub.plan.precio_mensual)
+    nuevo = float(plan.precio_mensual)
+    if nuevo == actual:
+        return jsonify({"error": "El plan destino cuesta lo mismo que el actual"}), 400
+
+    payment = None
+    if nuevo > actual:
+        diferencia = round(nuevo - actual, 2)
+        plan_previo = sub.plan.nombre
+        sub.plan_id = plan.id           # conserva inicio y proximo_cobro
+        t.plan = plan.nombre
+        # Un upgrade deja sin efecto cualquier downgrade agendado.
+        sub.plan_programado_id = None
+        sub.plan_programado_desde = None
+        payment = Payment(
+            tenant_id=t.id,
+            subscription_id=sub.id,
+            fecha=get_today(),
+            monto=diferencia,
+            metodo=data.get("metodo") or "transferencia",
+            periodo_inicio=get_today(),
+            # periodo_fin en None a propósito: la ruta de pagos mueve
+            # proximo_cobro cuando hay periodo_fin y aquí debe conservarse.
+            periodo_fin=None,
+            comentarios=data.get("comentarios")
+            or f"Upgrade de {plan_previo} a {plan.nombre} — diferencia",
+            registrado_por_id=g.current_user.id,
+        )
+        db.session.add(payment)
+        db.session.flush()
+        log_admin_action("subscription.upgrade", target_type="subscription",
+                         target_id=sub.id, tenant_id=t.id,
+                         summary=f"Upgrade a {plan.nombre}, diferencia {diferencia}",
+                         details={"plan_id": plan.id, "diferencia": diferencia})
+    else:
+        sub.plan_programado_id = plan.id
+        sub.plan_programado_desde = sub.proximo_cobro
+        log_admin_action("subscription.downgrade_programado",
+                         target_type="subscription", target_id=sub.id, tenant_id=t.id,
+                         summary=f"Downgrade a {plan.nombre} programado",
+                         details={
+                             "plan_id": plan.id,
+                             "desde": sub.plan_programado_desde.isoformat()
+                             if sub.plan_programado_desde else None,
+                         })
+
+    db.session.commit()
+    out = _serialize_tenant(t, with_counts=True)
+    out["subscription"] = _serialize_subscription(sub)
+    out["payment"] = _serialize_payment(payment) if payment else None
+    return jsonify(out)
+
+
+@superadmin_bp.route("/tenants/<int:tenant_id>/plan-programado", methods=["DELETE"])
+@require_superuser
+def cancelar_plan_programado(tenant_id):
+    """Cancela un cambio de plan agendado que aún no se aplica."""
+    t = Tenant.query.get_or_404(tenant_id)
+    sub = Subscription.query.filter_by(tenant_id=t.id).first()
+    if not sub:
+        return jsonify({"error": "El tenant no tiene una suscripción"}), 400
+    if not sub.plan_programado_id:
+        return jsonify({"error": "No hay un cambio de plan programado"}), 400
+
+    sub.plan_programado_id = None
+    sub.plan_programado_desde = None
+    log_admin_action("subscription.cancel_plan_programado",
+                     target_type="subscription", target_id=sub.id, tenant_id=t.id,
+                     summary="Canceló el cambio de plan programado")
+    db.session.commit()
+    out = _serialize_tenant(t, with_counts=True)
+    out["subscription"] = _serialize_subscription(sub)
+    return jsonify(out)
+
+
 @superadmin_bp.route("/tenants/<int:tenant_id>/assign-plan", methods=["POST"])
 @require_superuser
 def assign_plan(tenant_id):
@@ -987,7 +1096,7 @@ def assign_plan(tenant_id):
     # Upgrade entre planes de pago: conservar el aniversario de cobro original
     # en vez de reiniciar el ciclo desde la fecha del cambio. El resto de casos
     # (nueva suscripción, free→pago, pago→free/trial) reinicia como siempre.
-    if sub and _is_paid_plan(sub.plan) and _is_paid_plan(plan):
+    if sub and es_plan_de_pago(sub.plan) and es_plan_de_pago(plan):
         inicio = sub.inicio
         proximo = sub.proximo_cobro or _compute_proximo_cobro(plan, inicio)
     else:
@@ -1090,6 +1199,11 @@ def create_payment():
             return jsonify({"error": "Suscripción no pertenece al tenant"}), 400
     else:
         sub = Subscription.query.filter_by(tenant_id=tenant.id).first()
+
+    # Red de seguridad: al mover dinero materializamos un downgrade ya vencido
+    # para que el corte se calcule con el plan correcto.
+    if sub:
+        aplicar_plan_programado(sub)
 
     pending_payment_id = data.get("pending_payment_id")
     billing_cycle_date = data.get("billing_cycle_date")

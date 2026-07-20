@@ -11,6 +11,7 @@ from app.clip.service import (
     create_price, get_price, cancel_subscription, ClipAPIError,
 )
 from app.clip.billing import calculate_variable_breakdown, create_variable_charge
+from app.superadmin.services import aplicar_plan_programado
 from app.facturacion.timezone_helper import get_today
 
 billing_cli = AppGroup("billing", help="Comandos de facturacion Clip")
@@ -62,13 +63,31 @@ def billing_cycle(dry_run):
     """Cierra mensualidades variables, expira trials y termina la gracia."""
     today = get_today()
 
+    # Downgrades programados que ya vencieron: se aplican antes de evaluar
+    # cortes para que la mensualidad se calcule con el plan nuevo.
+    programados = Subscription.query.filter(
+        Subscription.plan_programado_id.isnot(None),
+        Subscription.plan_programado_desde <= today,
+    ).all()
+    aplicados = 0
+    for sub in programados:
+        nombre = sub.tenant.name if sub.tenant else f"tenant#{sub.tenant_id}"
+        if aplicar_plan_programado(sub, today):
+            click.echo(f"  PLAN {nombre}: cambio programado aplicado -> {sub.plan.nombre}")
+            aplicados += 1
+    if aplicados and not dry_run:
+        db.session.commit()
+    elif aplicados:
+        db.session.rollback()
+    click.echo(f"Cambios de plan aplicados: {aplicados}")
+
     trial_expired = Subscription.query.filter(
         Subscription.estado.in_([SUBSCRIPTION_ACTIVA, SUBSCRIPTION_GRACIA]),
         Subscription.proximo_cobro <= today,
-    ).join(Plan).filter(Plan.es_temporal.is_(True)).all()
+    ).join(Plan, Subscription.plan_id == Plan.id).filter(Plan.es_temporal.is_(True)).all()
 
     due_subscriptions = (
-        Subscription.query.join(Plan)
+        Subscription.query.join(Plan, Subscription.plan_id == Plan.id)
         .filter(
             Subscription.estado.in_([SUBSCRIPTION_ACTIVA, SUBSCRIPTION_GRACIA]),
             Subscription.proximo_cobro <= today,
@@ -240,7 +259,7 @@ def disable_main_recurring(apply_changes):
     addons de recepcionista se conservan sin cambios.
     """
     subscriptions = (
-        Subscription.query.join(Plan)
+        Subscription.query.join(Plan, Subscription.plan_id == Plan.id)
         .filter(
             Subscription.clip_subscription_id.isnot(None),
             Subscription.clip_subscription_id != "",
