@@ -854,10 +854,38 @@
     const proximoLabel = proximoField.querySelector('span');
     wrap.appendChild(proximoField);
 
+    const upgradeNote = document.createElement('p');
+    upgradeNote.className = 'text-xs text-cs-primary hidden';
+    upgradeNote.textContent = 'Se conserva la fecha de cobro actual (upgrade entre planes de pago).';
+    wrap.appendChild(upgradeNote);
+
+    // Un upgrade entre planes de pago conserva el aniversario de cobro (espejo
+    // de la regla autoritativa del backend en assign_plan).
+    const currentPlan = isNew ? null : plansById[sub.plan_id];
+    const isPaidPlan = p => !!(p && p.precio_mensual > 0 && !p.es_temporal);
+    function isUpgrade() { return !isNew && isPaidPlan(currentPlan) && isPaidPlan(selectedPlan()); }
+    function setReadonly(el, ro) {
+      el.readOnly = ro;
+      el.classList.toggle('opacity-75', ro);
+      el.classList.toggle('cursor-not-allowed', ro);
+    }
+
     let proximoTouched = false;
     function selectedPlan() { return plansById[parseInt(planSel.value, 10)]; }
     function refreshProximo() {
       const plan = selectedPlan();
+      if (isUpgrade()) {
+        inicio.value = sub.inicio || inicio.value;
+        proximo.value = sub.proximo_cobro || '';
+        proximoLabel.textContent = 'Próximo cobro (se conserva)';
+        upgradeNote.classList.remove('hidden');
+        setReadonly(inicio, true);
+        setReadonly(proximo, true);
+        return;
+      }
+      upgradeNote.classList.add('hidden');
+      setReadonly(inicio, false);
+      setReadonly(proximo, false);
       const hasVigencia = !!(plan && plan.dias_expiracion && plan.dias_expiracion > 0);
       proximoLabel.textContent = hasVigencia ? 'Fin de vigencia' : 'Próximo cobro';
       if (!proximoTouched) proximo.value = computeProximo(plan, inicio.value);

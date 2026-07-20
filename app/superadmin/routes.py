@@ -59,6 +59,11 @@ def _compute_proximo_cobro(plan, inicio):
     return _add_one_month(inicio)
 
 
+def _is_paid_plan(plan):
+    """Plan mensual de cobro real (no free, no temporal)."""
+    return bool(plan) and plan.precio_mensual > 0 and not plan.es_temporal
+
+
 def _grace_after(proximo):
     """Fecha límite de gracia: proximo_cobro + BILLING_GRACE_DAYS (default 3)."""
     if not proximo:
@@ -933,10 +938,18 @@ def assign_plan(tenant_id):
     if not plan or not plan.activo:
         return jsonify({"error": "Plan inválido o inactivo"}), 400
 
-    inicio = data.get("inicio") or date.today()
-    proximo = data.get("proximo_cobro") or _compute_proximo_cobro(plan, inicio)
-
     sub = Subscription.query.filter_by(tenant_id=t.id).first()
+
+    # Upgrade entre planes de pago: conservar el aniversario de cobro original
+    # en vez de reiniciar el ciclo desde la fecha del cambio. El resto de casos
+    # (nueva suscripción, free→pago, pago→free/trial) reinicia como siempre.
+    if sub and _is_paid_plan(sub.plan) and _is_paid_plan(plan):
+        inicio = sub.inicio
+        proximo = sub.proximo_cobro or _compute_proximo_cobro(plan, inicio)
+    else:
+        inicio = data.get("inicio") or date.today()
+        proximo = data.get("proximo_cobro") or _compute_proximo_cobro(plan, inicio)
+
     if sub:
         sub.plan_id = plan.id
         sub.inicio = inicio
