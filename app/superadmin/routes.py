@@ -28,7 +28,7 @@ from app.facturacion.timezone_helper import get_today
 from app.superadmin.schemas import (
     PlanSchema, ApproveTenantSchema, RejectTenantSchema,
     TenantUpdateSchema, PaymentSchema, TenantNoteSchema,
-    SubscriptionUpdateSchema, AssignPlanSchema, ChangeUserRoleSchema,
+    SubscriptionUpdateSchema, AssignPlanSchema, FechaCobroSchema, ChangeUserRoleSchema,
     ToggleActiveSchema, RechazarAsientoSchema, ActivarManualSchema,
 )
 from app.catalogo.models import Material
@@ -918,6 +918,50 @@ def update_subscription(sub_id):
                      details={"estado": data.get("estado"), "plan_id": data.get("plan_id")})
     db.session.commit()
     return jsonify(_serialize_subscription(s))
+
+
+@superadmin_bp.route("/tenants/<int:tenant_id>/subscription/fecha-cobro", methods=["PUT"])
+@require_superuser
+def update_fecha_cobro(tenant_id):
+    """Corrige manualmente la fecha de próximo cobro de una suscripción.
+
+    No toca el plan ni la fecha de inicio. Si la nueva fecha es futura y la
+    cuenta estaba pendiente de pago (vencida/gracia), la reactiva.
+    """
+    t = Tenant.query.get_or_404(tenant_id)
+    if t.slug == SYSTEM_TENANT_SLUG:
+        return jsonify({"error": "Tenant del sistema"}), 400
+
+    sub = Subscription.query.filter_by(tenant_id=t.id).first()
+    if not sub:
+        return jsonify({"error": "El tenant no tiene una suscripción"}), 400
+
+    data = FechaCobroSchema().load(request.get_json() or {})
+    proximo = data["proximo_cobro"]
+    sub.proximo_cobro = proximo
+    sub.grace_expires_at = _grace_after(proximo)
+
+    # Reactivar si la fecha corregida es futura y estaba pendiente de pago.
+    reactivada = False
+    if proximo > get_today() and sub.estado in (SUBSCRIPTION_VENCIDA, SUBSCRIPTION_GRACIA):
+        sub.estado = SUBSCRIPTION_ACTIVA
+        reactivada = True
+        if not t.is_active:
+            t.status = TENANT_STATUS_ACTIVE
+            t.is_active = True
+            if not t.approved_at:
+                t.approved_at = datetime.now(timezone.utc)
+                t.approved_by_id = g.current_user.id
+
+    log_admin_action("subscription.update_fecha_cobro", target_type="subscription",
+                     target_id=sub.id, tenant_id=t.id,
+                     summary=f"Corrigió el próximo cobro a {proximo.isoformat()}",
+                     details={"proximo_cobro": proximo.isoformat(), "reactivada": reactivada})
+    db.session.commit()
+
+    out = _serialize_tenant(t, with_counts=True)
+    out["subscription"] = _serialize_subscription(sub)
+    return jsonify(out)
 
 
 @superadmin_bp.route("/tenants/<int:tenant_id>/assign-plan", methods=["POST"])

@@ -503,14 +503,27 @@
         subCard.appendChild(modRow);
       }
 
-      // Change plan button
+      // Acciones de suscripción
+      const subActions = document.createElement('div');
+      subActions.className = 'flex flex-wrap gap-2 mt-1';
+
       const changePlanBtn = document.createElement('button');
-      changePlanBtn.className = 'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-cs-surface-container text-cs-on-surface text-xs font-semibold hover:bg-cs-surface-container-high transition-colors cursor-pointer mt-1';
+      changePlanBtn.className = 'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-cs-surface-container text-cs-on-surface text-xs font-semibold hover:bg-cs-surface-container-high transition-colors cursor-pointer';
       const cpIc = document.createElement('i'); cpIc.setAttribute('data-lucide', 'repeat'); cpIc.className = 'h-3 w-3';
       changePlanBtn.appendChild(cpIc);
       changePlanBtn.appendChild(document.createTextNode('Cambiar plan'));
       changePlanBtn.addEventListener('click', () => openAssignPlan(sub));
-      subCard.appendChild(changePlanBtn);
+      subActions.appendChild(changePlanBtn);
+
+      const editDateBtn = document.createElement('button');
+      editDateBtn.className = 'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-cs-surface-container text-cs-on-surface text-xs font-semibold hover:bg-cs-surface-container-high transition-colors cursor-pointer';
+      const edIc = document.createElement('i'); edIc.setAttribute('data-lucide', 'calendar-clock'); edIc.className = 'h-3 w-3';
+      editDateBtn.appendChild(edIc);
+      editDateBtn.appendChild(document.createTextNode('Editar fecha de cobro'));
+      editDateBtn.addEventListener('click', () => openEditFechaCobro(sub));
+      subActions.appendChild(editDateBtn);
+
+      subCard.appendChild(subActions);
     } else {
       const empty = document.createElement('p');
       empty.className = 'text-sm text-cs-on-surface-var';
@@ -912,6 +925,37 @@
             proximo_cobro: proximo.value || undefined,
           });
           Toast.show(isNew ? 'Plan asignado. Registra un pago para activar la cuenta.' : 'Plan actualizado', 'success');
+          await refreshAll();
+        },
+      },
+    });
+  }
+
+  async function openEditFechaCobro(sub) {
+    const today = new Date().toISOString().slice(0, 10);
+    const wrap = document.createElement('div');
+    wrap.className = 'space-y-4';
+
+    const info = document.createElement('p');
+    info.className = 'text-sm text-cs-on-surface-var';
+    info.textContent = 'Corrige la fecha del próximo cobro sin cambiar el plan. '
+      + 'Si la fecha es futura, la cuenta se reactiva.';
+    wrap.appendChild(info);
+
+    const fecha = inputEl('date', 'proximo_cobro', sub.proximo_cobro || today);
+    wrap.appendChild(buildField('Próximo cobro', fecha));
+
+    openModal({
+      title: `Editar fecha de cobro — ${tenant.name}`,
+      content: wrap,
+      primary: {
+        label: 'Guardar',
+        onClick: async () => {
+          if (!fecha.value) throw new Error('Selecciona una fecha.');
+          await adminApi.put(`/tenants/${tenantId}/subscription/fecha-cobro`, {
+            proximo_cobro: fecha.value,
+          });
+          Toast.show('Fecha de cobro actualizada', 'success');
           await refreshAll();
         },
       },
