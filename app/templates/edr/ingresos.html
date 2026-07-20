@@ -151,6 +151,26 @@
     </div>
   </div>
 </div>
+
+<!-- Facturación no activada modal -->
+<div id="modal-factura-inactiva" class="hidden fixed inset-0 z-50 overflow-y-auto">
+  <div class="flex min-h-full items-end sm:items-center justify-center p-4">
+    <div class="fixed inset-0 bg-black/40" onclick="Modal.close('modal-factura-inactiva')"></div>
+    <div class="relative bg-surface rounded-2xl shadow-xl w-full max-w-md">
+      <div class="flex items-center justify-between px-6 py-4 border-b border-border">
+        <h2 class="text-base font-semibold font-heading text-text-primary">Facturación no activada</h2>
+        <button type="button" onclick="Modal.close('modal-factura-inactiva')" class="p-2 rounded-lg text-text-muted hover:bg-surface-hover transition-colors cursor-pointer"><i data-lucide="x" class="h-4 w-4"></i></button>
+      </div>
+      <div class="px-6 py-5">
+        <p class="text-sm text-text-secondary font-body">No puedes emitir facturas hasta activar la facturación electrónica en Ajustes. Puedes guardar el ingreso sin factura, o activar la facturación primero.</p>
+        <div class="flex justify-end gap-3 mt-6 pt-4 border-t border-border">
+          <button type="button" onclick="Modal.close('modal-factura-inactiva')" class="inline-flex items-center justify-center gap-2 rounded-lg font-medium font-body cursor-pointer border border-border bg-surface hover:bg-surface-hover text-text-secondary px-4 py-2 text-sm min-h-[38px]">Entendido</button>
+          <button type="button" onclick="window.location='/ajustes?tab=fiscal'" class="inline-flex items-center justify-center gap-2 rounded-lg font-medium font-body cursor-pointer bg-primary-500 hover:bg-primary-600 text-white px-4 py-2 text-sm min-h-[38px]">Ir a Ajustes</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
@@ -213,6 +233,7 @@ let selYear = String(now.getFullYear());
 let tableData = [], especialistas = [], metodosPago = [], tratamientos = [], estrategias = [], sucursales = [];
 let editingId = null;
 let userRole = null; // se resuelve en init() vía /auth/me
+let facturacionActiva = true; // se resuelve en init() vía /facturacion/configuracion (true por defecto: el backend es la fuente de verdad)
 
 // Fecha de hoy en hora local (YYYY-MM-DD), sin toISOString para no desfasar a medianoche.
 function todayLocalISO() {
@@ -353,7 +374,7 @@ function openCreate() {
   ['f-fecha','f-paciente','f-paciente-id','f-monto','f-com-ban','f-com-doc'].forEach(id => document.getElementById(id).value = '');
   const hintP = document.getElementById('f-paciente-hint');
   if (hintP) hintP.classList.add('hidden');
-  document.getElementById('f-factura').checked = true;  // Factura ON por defecto
+  document.getElementById('f-factura').checked = false;  // Factura OFF por defecto
   document.getElementById('f-ticket-folio').value = '';
   document.getElementById('f-comentarios').value = '';
   // Sucursal: si solo hay una, selecciónala
@@ -410,6 +431,7 @@ async function handleSave() {
   if (!esp) { Toast.warning('Selecciona un especialista de la lista'); return; }
 
   const facturaOn = document.getElementById('f-factura').checked;
+  if (facturaOn && !facturacionActiva) { Modal.open('modal-factura-inactiva'); return; }
   const sucursalId = Number(document.getElementById('f-sucursal').value) || null;
   if (facturaOn && !sucursalId) { Toast.warning('Selecciona una sucursal para facturar (o apaga Factura)'); return; }
   const ticketFolio = Number(document.getElementById('f-ticket-folio').value) || null;
@@ -542,12 +564,14 @@ function applyStatsRole() {
 
 async function init() {
   try {
-    const [esp, mp, trat, est, sucs, me] = await Promise.all([
+    const [esp, mp, trat, est, sucs, me, fcfg] = await Promise.all([
       API.get('/ajustes/especialistas'), API.get('/ajustes/metodos-pago'),
       API.get('/tratamientos'), API.get('/ajustes/estrategias'),
       API.get('/facturacion/sucursales'), API.get('/auth/me'),
+      API.get('/facturacion/configuracion'),
     ]);
     especialistas = esp ?? []; metodosPago = mp ?? []; tratamientos = Array.isArray(trat) ? trat : (trat.tratamientos || []); estrategias = est ?? []; sucursales = sucs ?? [];
+    facturacionActiva = Boolean(fcfg && fcfg.facturacion_activa);
     userRole = (me && (me.user || me) || {}).role || null;
     applyStatsRole();
     populateDatalist(document.getElementById('dl-especialistas'), especialistas);
