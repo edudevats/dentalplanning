@@ -1760,6 +1760,30 @@
     lucide.createIcons();
   }
 
+  // Convierte un error de la API (incluyendo detalles de validación de
+  // marshmallow) en un mensaje legible para el usuario.
+  function mensajeError(e, fallback) {
+    const data = e?.response?.data;
+    const details = data?.details;
+    if (details && typeof details === 'object') {
+      const labels = { name: 'Nombre', email: 'Correo', password: 'Contraseña' };
+      const traducir = (m) => {
+        if (/not a valid email/i.test(m)) return 'No es un correo válido';
+        if (/missing data for required field/i.test(m)) return 'Este campo es obligatorio';
+        if (/shorter than|length must be|longer than/i.test(m)) return 'Longitud no válida';
+        return m;
+      };
+      const msgs = [];
+      for (const [field, errs] of Object.entries(details)) {
+        const arr = Array.isArray(errs) ? errs : [errs];
+        const label = labels[field] || field;
+        arr.forEach(m => msgs.push(`${label}: ${traducir(String(m))}`));
+      }
+      if (msgs.length) return msgs.join(' · ');
+    }
+    return data?.error || e?.error || e?.message || fallback;
+  }
+
   let _savingUsuario = false;
   async function saveUsuario() {
     if (_savingUsuario) return;
@@ -1777,7 +1801,7 @@
       Toast.success('Recepcionista creado');
       Modal.close('modal-crud');
       loadUsuarios();
-    } catch (e) { Toast.error(e?.error || e?.message || 'Error al crear'); }
+    } catch (e) { Toast.error(mensajeError(e, 'Error al crear')); }
     finally { _savingUsuario = false; }
   }
 
