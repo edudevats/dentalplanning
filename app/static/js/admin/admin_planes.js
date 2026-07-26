@@ -7,8 +7,15 @@
     { slug: 'inventario', label: 'Inventario', desc: 'Materiales, lotes, operatorios' },
     { slug: 'finanzas_personales', label: 'Finanzas Personales', desc: 'Ingresos y gastos personales del dueño' },
     { slug: 'crm', label: 'CRM de Pacientes', desc: 'Seguimiento de pacientes, Kanban y reactivación' },
+    { slug: 'cobranza', label: 'Cotizaciones y Cobranza', desc: 'Planes de pago, abonos y estados de cuenta (incluye CRM)' },
   ];
-  const MOD_LABELS = { contable: 'Contable', inventario: 'Inventario', finanzas_personales: 'Finanzas', crm: 'CRM' };
+  const MOD_LABELS = {
+    contable: 'Contable',
+    inventario: 'Inventario',
+    finanzas_personales: 'Finanzas',
+    crm: 'CRM',
+    cobranza: 'Cobranza',
+  };
 
   let plans = [];
   let subsCountByPlan = {};
@@ -406,6 +413,7 @@
     const modsWrap = document.createElement('div');
     modsWrap.className = 'space-y-2';
     const checkboxes = [];
+    const checkboxBySlug = {};
     MODULOS.forEach(m => {
       const label = document.createElement('label');
       label.className = 'flex items-start gap-2.5 p-2.5 rounded-lg bg-cs-surface-container cursor-pointer hover:bg-cs-surface-container-high transition-colors';
@@ -427,7 +435,23 @@
       label.appendChild(txt);
       modsWrap.appendChild(label);
       checkboxes.push(chk);
+      checkboxBySlug[m.slug] = chk;
     });
+    const syncCobranzaDependency = () => {
+      const cobranza = checkboxBySlug.cobranza;
+      const crm = checkboxBySlug.crm;
+      if (!cobranza || !crm) return;
+      if (cobranza.checked) crm.checked = true;
+      crm.disabled = cobranza.checked;
+      crm.closest('label').classList.toggle('opacity-70', cobranza.checked);
+      crm.title = cobranza.checked
+        ? 'CRM es obligatorio para Cotizaciones y Cobranza'
+        : '';
+    };
+    checkboxBySlug.cobranza.addEventListener(
+      'change', syncCobranzaDependency,
+    );
+    syncCobranzaDependency();
     wrap.appendChild(buildField('Módulos incluidos', modsWrap));
 
     // Promotional limits

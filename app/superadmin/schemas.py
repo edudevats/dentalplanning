@@ -1,4 +1,4 @@
-from marshmallow import Schema, fields, validate, EXCLUDE
+from marshmallow import Schema, fields, validate, EXCLUDE, post_load
 from app.superadmin.models import SUBSCRIPTION_ESTADOS, PAYMENT_METODOS
 
 
@@ -19,6 +19,15 @@ class PlanSchema(Schema):
     fecha_inicio_promo = fields.Date(load_default=None, allow_none=True)
     fecha_fin_promo = fields.Date(load_default=None, allow_none=True)
     codigo_invitacion = fields.Str(load_default=None, allow_none=True, validate=validate.Length(max=50))
+
+    @post_load
+    def resolver_dependencias_modulos(self, data, **kwargs):
+        """Cobranza requiere pacientes y visitas del CRM."""
+        modulos = list(dict.fromkeys(data.get("modulos") or []))
+        if "cobranza" in modulos and "crm" not in modulos:
+            modulos.append("crm")
+        data["modulos"] = modulos
+        return data
 
 
 class ApproveTenantSchema(Schema):
