@@ -22,6 +22,49 @@ def _calculados(config):
     }
 
 
+@config_bp.route("/logo", methods=["POST"])
+@require_auth
+@require_role("admin")
+def subir_logo():
+    from app.configuracion.logo import LOGO_MAX_UPLOAD, procesar_logo
+
+    archivo = request.files.get("logo")
+    if not archivo:
+        return jsonify({"error": "Se requiere el archivo del logo"}), 400
+    raw = archivo.read()
+    if len(raw) > LOGO_MAX_UPLOAD:
+        return jsonify({"error": "El logo no debe superar 8MB"}), 400
+    try:
+        procesado = procesar_logo(raw)
+    except ValueError:
+        return jsonify({
+            "error": "El archivo no es una imagen válida (usa PNG o JPG)",
+        }), 400
+
+    config = ConfigConsultorio.query.filter_by(tenant_id=g.tenant_id).first()
+    if not config:
+        config = ConfigConsultorio(tenant_id=g.tenant_id)
+        db.session.add(config)
+    config.logo = procesado
+    db.session.commit()
+    return jsonify({"message": "Logo actualizado"})
+
+
+@config_bp.route("/logo", methods=["GET"])
+@require_auth
+def ver_logo():
+    """Logo guardado, para la vista previa en Ajustes. 404 si no hay."""
+    from flask import Response
+    from app.configuracion.logo import logo_bytes, logo_mime
+
+    data = logo_bytes(g.tenant_id)
+    if not data:
+        return jsonify({"error": "Sin logo"}), 404
+    resp = Response(data, mimetype=logo_mime(data))
+    resp.headers["Cache-Control"] = "no-store"  # siempre muestra el actual
+    return resp
+
+
 @config_bp.route("", methods=["GET"])
 @require_auth
 def obtener():

@@ -1,5 +1,4 @@
 from datetime import datetime, timezone
-from sqlalchemy.dialects.mysql import MEDIUMBLOB
 from app.extensions import db
 
 
@@ -16,9 +15,8 @@ class ConfiguracionFiscal(db.Model):
     razon_social = db.Column(db.String(255))
     regimen_fiscal = db.Column(db.String(5))  # clave SAT, p. ej. "626"
     naturaleza_juridica = db.Column(db.String(20))  # moral_mercantil | fisica_o_civil
-    # MySQL mapea LargeBinary a BLOB (máx 64KB) y trunca logos grandes;
-    # MEDIUMBLOB sube el límite a 16MB. SQLite (tests) ignora la variante.
-    logo = db.Column(db.LargeBinary().with_variant(MEDIUMBLOB(), "mysql"))  # logo de la clínica (bytes)
+    # El logo de la clínica vive en ConfigConsultorio (lo usan también el ticket,
+    # el portal y las cotizaciones). Se lee vía app/configuracion/logo.py.
     # Defaults para los conceptos del CFDI
     clave_prod_serv_default = db.Column(db.String(8), default="85121800")
     clave_unidad_default = db.Column(db.String(3), default="E48")

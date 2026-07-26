@@ -1,14 +1,12 @@
-import base64
 import calendar
 import secrets
-from io import BytesIO
 from datetime import date, datetime, timezone
-from PIL import Image, UnidentifiedImageError
 from flask import Blueprint, request, jsonify, g, current_app
 from sqlalchemy.orm import joinedload
 from app.extensions import db
 from app.middleware.tenant import require_auth, require_role
 from app.auth.models import Tenant
+from app.configuracion.logo import logo_b64, logo_bytes
 from app.facturacion.models import (
     ConfiguracionFiscal, Sucursal, Ticket,
     TICKET_TIMBRADA, TICKET_CANCELADA,
@@ -132,70 +130,8 @@ def subir_fiel():
     return jsonify(_config_payload(cfg))
 
 
-# Procesamiento del logo al subir: normalizamos a un tamaño/formato controlado
-# para que siempre quede chico (sin riesgo de truncado en BD) y se vea consistente.
-LOGO_MAX_PX = 512          # lado mayor; suficiente para mostrarlo a 80-220px (incl. retina)
-LOGO_MAX_UPLOAD = 8 * 1024 * 1024  # tope del archivo de entrada (8MB) antes de decodificar
-
-
-def _procesar_logo(raw):
-    """Valida que sea imagen, la reescala a LOGO_MAX_PX y la devuelve como PNG.
-    Conserva la transparencia. Lanza ValueError si no es una imagen válida."""
-    try:
-        img = Image.open(BytesIO(raw))
-        img.load()  # fuerza el decode real → valida que no esté corrupta
-    except (UnidentifiedImageError, OSError, ValueError):
-        raise ValueError("archivo no es una imagen válida")
-    # Conserva canal alfa si lo tiene; si no, RGB plano
-    img = img.convert("RGBA" if img.mode in ("RGBA", "LA", "P") else "RGB")
-    img.thumbnail((LOGO_MAX_PX, LOGO_MAX_PX), Image.LANCZOS)  # mantiene proporción
-    out = BytesIO()
-    img.save(out, format="PNG", optimize=True)
-    return out.getvalue()
-
-
-def _logo_b64(cfg):
-    """Logo del consultorio como base64 (PNG) para enviarlo al agente de impresión.
-    Devuelve None si no hay logo; el agente térmico lo pinta arriba del nombre."""
-    if not cfg or not cfg.logo:
-        return None
-    return base64.b64encode(bytes(cfg.logo)).decode("ascii")
-
-
-@facturacion_bp.route("/configuracion/logo", methods=["POST"])
-@require_auth
-@require_role("admin")
-def subir_logo():
-    logo = request.files.get("logo")
-    if not logo:
-        return jsonify({"error": "Se requiere el archivo del logo"}), 400
-    raw = logo.read()
-    if len(raw) > LOGO_MAX_UPLOAD:
-        return jsonify({"error": "El logo no debe superar 8MB"}), 400
-    try:
-        procesado = _procesar_logo(raw)
-    except ValueError:
-        return jsonify({"error": "El archivo no es una imagen válida (usa PNG o JPG)"}), 400
-    cfg = _get_or_create_config()
-    cfg.logo = procesado
-    db.session.commit()
-    return jsonify({"message": "Logo actualizado"})
-
-
-@facturacion_bp.route("/configuracion/logo", methods=["GET"])
-@require_auth
-@require_role("admin")
-def ver_logo():
-    """Devuelve el logo guardado (para la vista previa en Ajustes). 404 si no hay."""
-    from flask import Response
-    cfg = ConfiguracionFiscal.query.filter_by(tenant_id=g.tenant_id).first()
-    if not cfg or not cfg.logo:
-        return jsonify({"error": "Sin logo"}), 404
-    data = bytes(cfg.logo)
-    mime = "image/png" if data[:8].startswith(b"\x89PNG") else "application/octet-stream"
-    resp = Response(data, mimetype=mime)
-    resp.headers["Cache-Control"] = "no-store"  # siempre muestra el actual
-    return resp
+# El logo del consultorio vive en ConfigConsultorio y se sube/consulta desde
+# /api/v1/config/logo. Aquí sólo se lee para el ticket y el PDF del CFDI.
 
 
 # ── AGENTE DE IMPRESIÓN (API key por tenant) ──
@@ -390,7 +326,7 @@ def ticket_impresion(ticket_id):
     facturable_hasta = date(t.fecha.year, t.fecha.month, ultimo) + timedelta(days=3)
 
     return jsonify({
-        "logo": _logo_b64(cfg),
+        "logo": logo_b64(g.tenant_id),
         "empresa": (cfg.razon_social if cfg and cfg.razon_social else (tenant.name if tenant else "")),
         "rfc": cfg.rfc if cfg else None,
         "regimen": cfg.regimen_fiscal if cfg else None,
@@ -429,7 +365,7 @@ def ticket_simple(ingreso_id):
         ).first()
     return jsonify({
         "facturable": False,
-        "logo": _logo_b64(cfg),
+        "logo": logo_b64(g.tenant_id),
         "empresa": empresa,
         "sucursal": suc.nombre if suc else None,
         "direccion": suc.direccion if suc else None,
@@ -498,7 +434,7 @@ def reenviar(ticket_id):
     t.email = dest_email
     try:
         from app.facturacion.cfdi import generar_pdf_de_xml, enviar_factura_email
-        pdf = generar_pdf_de_xml(t.xml, logo=cfg.logo)
+        pdf = generar_pdf_de_xml(t.xml, logo=logo_bytes(g.tenant_id))
         t.email_enviado = bool(enviar_factura_email(t, pdf, t.xml))
     except Exception as e:
         db.session.rollback()  # descarta el cambio de email

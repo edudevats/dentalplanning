@@ -1437,7 +1437,7 @@
     if (!wrap) return;
     try {
       const token = Auth.getToken();
-      const resp = await fetch('/api/v1/facturacion/configuracion/logo', {
+      const resp = await fetch('/api/v1/config/logo', {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
         cache: 'no-store',
       });
@@ -1461,7 +1461,7 @@
     e.preventDefault();
     try {
       const token = Auth.getToken();
-      const resp = await fetch('/api/v1/facturacion/configuracion/logo', {
+      const resp = await fetch('/api/v1/config/logo', {
         method: 'POST',
         headers: token ? { Authorization: `Bearer ${token}` } : {},
         body: new FormData(e.target),

@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from sqlalchemy.dialects.mysql import MEDIUMBLOB
 from app.extensions import db
 
 
@@ -22,6 +23,12 @@ class ConfigConsultorio(db.Model):
     # Tasa de impuesto SOLO informativa (estimación de impuestos a pagar).
     # No se resta de la utilidad ni se usa en ningún otro cálculo de la app.
     tasa_impuesto_pct = db.Column(db.Float, default=0, nullable=False)
+    # Logo de la clínica. Vive aquí (y no en ConfiguracionFiscal) porque lo usan
+    # el ticket impreso, el CFDI, el portal de autofacturación y las
+    # cotizaciones. Se lee siempre vía app/configuracion/logo.py.
+    # MySQL mapea LargeBinary a BLOB (máx 64KB) y truncaría logos grandes;
+    # MEDIUMBLOB sube el límite a 16MB. SQLite (tests) ignora la variante.
+    logo = db.Column(db.LargeBinary().with_variant(MEDIUMBLOB(), "mysql"))
     updated_at = db.Column(
         db.DateTime,
         default=lambda: datetime.now(timezone.utc),

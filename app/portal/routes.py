@@ -1,7 +1,6 @@
 """Portal público de autofacturación (sin login). Scope por slug del tenant."""
 from flask import Blueprint, request, jsonify, render_template, abort, Response
 from marshmallow import ValidationError
-from sqlalchemy import func
 
 from app.extensions import db
 from app.auth.models import Tenant
@@ -91,36 +90,22 @@ def portal_page(slug):
         abort(404)
     # Versión del logo (longitud en bytes, sin cargar el BLOB) para cache-busting:
     # cambia cuando el consultorio sube otro logo, así el navegador no muestra el viejo.
-    logo_ver = db.session.query(
-        func.length(ConfiguracionFiscal.logo)
-    ).filter_by(tenant_id=tenant.id).scalar()
+    from app.configuracion.logo import logo_version
     return render_template("portal/autofactura.html",
                            slug=slug, tenant_nombre=tenant.name,
-                           logo_ver=logo_ver or "")
-
-
-def _img_mime(data):
-    """Detecta el tipo de imagen por los bytes mágicos."""
-    if data[:8].startswith(b"\x89PNG"):
-        return "image/png"
-    if data[:3] == b"\xff\xd8\xff":
-        return "image/jpeg"
-    if data[:6] in (b"GIF87a", b"GIF89a"):
-        return "image/gif"
-    if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
-        return "image/webp"
-    return "application/octet-stream"
+                           logo_ver=logo_version(tenant.id))
 
 
 @portal_bp.route("/api/v1/portal/<slug>/logo")
 def portal_logo(slug):
     """Logo del consultorio (público) para el encabezado del portal. 404 si no hay."""
+    from app.configuracion.logo import logo_bytes, logo_mime
+
     tenant = _tenant_or_404(slug)
-    cfg = ConfiguracionFiscal.query.filter_by(tenant_id=tenant.id).first()
-    if not cfg or not cfg.logo:
+    data = logo_bytes(tenant.id)
+    if not data:
         abort(404)
-    data = bytes(cfg.logo)
-    resp = Response(data, mimetype=_img_mime(data))
+    resp = Response(data, mimetype=logo_mime(data))
     resp.headers["Cache-Control"] = "public, max-age=3600"
     return resp
 

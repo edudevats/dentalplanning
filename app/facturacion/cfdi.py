@@ -268,7 +268,10 @@ def timbrar_ticket(ticket, receptor):
     # PDF a partir del XML timbrado (incluye UUID/sello SAT/QR) + correo.
     # No rompen el timbrado: si fallan, la factura ya quedó timbrada.
     try:
-        pdf = result.get("pdf") or generar_pdf_de_xml(xml_timbrado, logo=cfg.logo)
+        from app.configuracion.logo import logo_bytes
+        pdf = result.get("pdf") or generar_pdf_de_xml(
+            xml_timbrado, logo=logo_bytes(ticket.tenant_id)
+        )
         ticket.email_enviado = bool(enviar_factura_email(ticket, pdf, xml_timbrado))
         db.session.commit()
     except Exception:  # noqa: BLE001
