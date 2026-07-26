@@ -45,6 +45,19 @@ _RECEP_RULES = [
     ("POST", r"/api/v1/crm/sugerencias-edr/vincular"),
     ("GET", r"/api/v1/crm/resumen"),
     ("GET", r"/api/v1/crm/config"),
+    # Cobranza: recepcion puede consultar, capturar/enviar cotizaciones y
+    # registrar cobros. Aprobar, cancelar, borrar y reintentar facturacion
+    # permanecen fuera de la allowlist.
+    ("GET", r"/api/v1/cobranza/cotizaciones"),
+    ("POST", r"/api/v1/cobranza/cotizaciones"),
+    ("GET", r"/api/v1/cobranza/cotizaciones/\d+"),
+    ("PUT", r"/api/v1/cobranza/cotizaciones/\d+"),
+    ("POST", r"/api/v1/cobranza/cotizaciones/\d+/enviar"),
+    ("POST", r"/api/v1/cobranza/cotizaciones/\d+/pagos"),
+    ("GET", r"/api/v1/cobranza/cotizaciones/\d+/estado-cuenta"),
+    ("GET", r"/api/v1/cobranza/cotizaciones/\d+/estado-cuenta\.pdf"),
+    ("GET", r"/api/v1/cobranza/cotizaciones/\d+/pdf"),
+    ("GET", r"/api/v1/cobranza/resumen"),
 ]
 RECEPCIONISTA_ALLOWLIST = [(m, re.compile("^" + p + "/?$")) for m, p in _RECEP_RULES]
 

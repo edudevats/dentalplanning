@@ -40,6 +40,7 @@ def create_app(config_name=None):
     from app.facturacion.routes import facturacion_bp
     from app.portal.routes import portal_bp
     from app.crm.routes import crm_bp
+    from app.cobranza.routes import cobranza_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(catalogo_bp)
@@ -56,6 +57,7 @@ def create_app(config_name=None):
     app.register_blueprint(facturacion_bp)
     app.register_blueprint(portal_bp)
     app.register_blueprint(crm_bp)
+    app.register_blueprint(cobranza_bp)
 
     # Error handlers
     from app.middleware.error_handlers import register_error_handlers
@@ -78,6 +80,7 @@ def create_app(config_name=None):
         from app.superadmin import models as superadmin_models  # noqa: F401
         from app.facturacion import models as facturacion_models  # noqa: F401
         from app.crm import models as crm_models  # noqa: F401
+        from app.cobranza import models as cobranza_models  # noqa: F401
 
     # Health check
     @app.route("/api/v1/health")

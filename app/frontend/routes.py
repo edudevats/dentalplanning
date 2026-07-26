@@ -237,3 +237,10 @@ def crm_pendientes():
 @frontend_bp.route("/crm/importar")
 def crm_importar():
     return render_template("crm/importar.html", crm_screen="importar")
+
+
+@frontend_bp.route("/cotizaciones")
+def cobranza_cotizaciones():
+    return render_template(
+        "cobranza/cotizaciones.html", crm_screen="cotizaciones",
+    )

@@ -4,9 +4,11 @@ from app.extensions import db
 from app.auth.models import Tenant
 
 BLUEPRINT_MODULE_MAP = {
-    "inventario": "inventario",
-    "finanzas_personales": "finanzas_personales",
-    "crm": "crm",
+    "inventario": ("inventario",),
+    "finanzas_personales": ("finanzas_personales",),
+    "crm": ("crm",),
+    # Cobranza depends on CRM patients and visits.
+    "cobranza": ("cobranza", "crm"),
 }
 
 
@@ -17,17 +19,25 @@ def check_module_access():
         return None
 
     bp = request.blueprints[0] if request.blueprints else None
-    module_slug = BLUEPRINT_MODULE_MAP.get(bp)
-    if not module_slug:
+    module_slugs = BLUEPRINT_MODULE_MAP.get(bp)
+    if not module_slugs:
         return None
 
     tenant = db.session.get(Tenant, g.tenant_id)
     if not tenant:
         return None
 
-    if module_slug not in tenant.allowed_modules:
+    missing = [
+        module_slug for module_slug in module_slugs
+        if module_slug not in tenant.allowed_modules
+    ]
+    if missing:
         return jsonify({
-            "error": "Tu plan no incluye este módulo. Contacta al administrador para actualizar tu plan."
+            "error": (
+                "Tu plan no incluye los módulos necesarios: "
+                + ", ".join(missing)
+                + ". Contacta al administrador para actualizar tu plan."
+            )
         }), 403
 
     return None

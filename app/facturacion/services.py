@@ -45,6 +45,13 @@ def asignar_ticket(ingreso, sucursal_id, ticket_folio=None):
     """
     from app.facturacion.models import ConfiguracionFiscal
 
+    # Cobranza conserva la regla de bloqueo junto a su dominio. El import local
+    # evita cargar el módulo si el ingreso normal no proviene de un plan.
+    from app.cobranza.services import ingreso_bloqueado_para_factura
+    bloqueo = ingreso_bloqueado_para_factura(ingreso)
+    if bloqueo:
+        raise FacturacionError(bloqueo)
+
     cfg = ConfiguracionFiscal.query.filter_by(tenant_id=ingreso.tenant_id).first()
     if not cfg or not cfg.facturacion_activa:
         raise FacturacionError(

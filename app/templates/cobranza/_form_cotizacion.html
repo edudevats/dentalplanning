@@ -1,0 +1,135 @@
+<div id="modal-cotizacion-form" class="hidden fixed inset-0 z-[60] overflow-y-auto">
+  <div class="flex min-h-full items-end lg:items-center justify-center p-4">
+    <div class="fixed inset-0 bg-black/40" data-close-modal="modal-cotizacion-form"></div>
+    <form id="form-cotizacion" class="relative bg-surface rounded-2xl shadow-xl w-full max-w-5xl max-h-[94vh] overflow-y-auto">
+      <div class="sticky top-0 z-10 bg-surface flex items-center justify-between px-6 py-4 border-b border-border">
+        <h2 id="cot-form-title" class="text-lg font-bold">Nueva cotización</h2>
+        <button type="button" data-close-modal="modal-cotizacion-form" class="p-2 cursor-pointer">
+          <i data-lucide="x" class="h-5 w-5"></i>
+        </button>
+      </div>
+      <div class="p-6 space-y-6">
+        <section class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+          <label class="text-sm xl:col-span-2">Paciente *
+            <div class="mt-1 flex gap-2">
+              <select id="cot-paciente" required class="min-w-0 flex-1 rounded-lg border border-border px-3 py-2"></select>
+              <button id="btn-nuevo-paciente" type="button" class="rounded-lg border border-border px-3 hover:bg-surface-hover cursor-pointer" title="Nuevo paciente">
+                <i data-lucide="user-plus" class="h-4 w-4"></i>
+              </button>
+            </div>
+          </label>
+          <label class="text-sm">Doctor
+            <select id="cot-especialista" class="mt-1 w-full rounded-lg border border-border px-3 py-2"></select>
+          </label>
+          <label class="text-sm">Sucursal
+            <select id="cot-sucursal" class="mt-1 w-full rounded-lg border border-border px-3 py-2"></select>
+          </label>
+          <label class="text-sm">Válida hasta
+            <input id="cot-valida" type="date" class="mt-1 w-full rounded-lg border border-border px-3 py-2" />
+          </label>
+          <label class="text-sm">Inicio del tratamiento
+            <input id="cot-inicio" type="date" class="mt-1 w-full rounded-lg border border-border px-3 py-2" />
+          </label>
+          <label class="text-sm">Frecuencia
+            <select id="cot-frecuencia" class="mt-1 w-full rounded-lg border border-border px-3 py-2">
+              <option value="mensual">Mensual</option>
+              <option value="quincenal">Quincenal</option>
+            </select>
+          </label>
+          <label class="inline-flex items-center gap-2 text-sm mt-6 cursor-pointer">
+            <input id="cot-factura" type="checkbox" /> Requiere factura
+          </label>
+        </section>
+
+        <section>
+          <div class="flex items-center justify-between mb-3">
+            <h3 class="font-semibold">Conceptos</h3>
+            <button id="btn-agregar-concepto" type="button" class="text-sm font-semibold text-primary-600 cursor-pointer">+ Agregar concepto</button>
+          </div>
+          <div id="conceptos-list" class="space-y-3"></div>
+        </section>
+
+        <section class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 rounded-xl bg-surface-alt p-4">
+          <label class="text-sm">Descuento
+            <select id="cot-descuento-tipo" class="mt-1 w-full rounded-lg border border-border px-3 py-2 bg-surface">
+              <option value="">Sin descuento</option>
+              <option value="monto">Monto</option>
+              <option value="porcentaje">Porcentaje</option>
+            </select>
+          </label>
+          <label class="text-sm">Valor
+            <input id="cot-descuento-valor" type="number" min="0" step="0.01" value="0"
+                   class="mt-1 w-full rounded-lg border border-border px-3 py-2 bg-surface" />
+          </label>
+          <label class="text-sm">Anticipo
+            <input id="cot-anticipo" type="number" min="0" step="0.01" value="0"
+                   class="mt-1 w-full rounded-lg border border-border px-3 py-2 bg-surface" />
+          </label>
+          <div class="text-right">
+            <p class="text-xs text-text-muted">Total</p>
+            <p id="cot-total-preview" class="text-2xl font-bold tabular-nums">$0.00</p>
+          </div>
+          <div class="md:col-span-2">
+            <p class="text-sm mb-2">Calcular plan por</p>
+            <div class="flex gap-4 text-sm">
+              <label class="inline-flex gap-2"><input name="modo-plan" type="radio" value="numero" checked /> Número de pagos</label>
+              <label class="inline-flex gap-2"><input name="modo-plan" type="radio" value="monto" /> Monto por pago</label>
+            </div>
+          </div>
+          <label id="wrap-num-pagos" class="text-sm">Número de parcialidades
+            <input id="cot-num-pagos" type="number" min="1" max="120" value="1"
+                   class="mt-1 w-full rounded-lg border border-border px-3 py-2 bg-surface" />
+          </label>
+          <label id="wrap-monto-pago" class="hidden text-sm">Monto por parcialidad
+            <input id="cot-monto-pago" type="number" min="1" step="0.01"
+                   class="mt-1 w-full rounded-lg border border-border px-3 py-2 bg-surface" />
+          </label>
+          <label class="text-sm">Primer pago
+            <input id="cot-primer-pago" type="date" class="mt-1 w-full rounded-lg border border-border px-3 py-2 bg-surface" />
+          </label>
+        </section>
+
+        <section class="rounded-xl border border-border p-4">
+          <div class="flex flex-wrap items-center justify-between gap-3">
+            <label class="inline-flex items-center gap-2 text-sm font-semibold cursor-pointer">
+              <input id="cot-calendario-manual" type="checkbox" /> Editar calendario manualmente
+            </label>
+            <button id="btn-generar-calendario" type="button"
+                    class="hidden rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-surface-hover cursor-pointer">
+              Generar calendario
+            </button>
+          </div>
+          <p class="text-xs text-text-muted mt-1">Puedes ajustar fechas y montos; la suma debe coincidir exactamente con el total.</p>
+          <div id="calendario-list" class="hidden mt-3 space-y-2"></div>
+        </section>
+
+        <label class="block text-sm">Notas
+          <textarea id="cot-notas" rows="2" class="mt-1 w-full rounded-lg border border-border px-3 py-2"></textarea>
+        </label>
+      </div>
+      <div class="sticky bottom-0 bg-surface border-t border-border px-6 py-4 flex justify-end gap-2">
+        <button type="button" data-close-modal="modal-cotizacion-form"
+                class="rounded-lg border border-border px-4 py-2 text-sm cursor-pointer">Cancelar</button>
+        <button id="btn-guardar-cotizacion" type="submit"
+                class="rounded-lg bg-primary-500 hover:bg-primary-600 text-white px-5 py-2 text-sm font-semibold cursor-pointer">
+          Guardar borrador
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div id="modal-paciente-rapido" class="hidden fixed inset-0 z-[70] overflow-y-auto">
+  <div class="flex min-h-full items-end sm:items-center justify-center p-4">
+    <div class="fixed inset-0 bg-black/40" data-close-modal="modal-paciente-rapido"></div>
+    <form id="form-paciente-rapido" class="relative bg-surface rounded-2xl shadow-xl w-full max-w-md p-6 space-y-4">
+      <div class="flex justify-between"><h2 class="text-lg font-bold">Nuevo paciente</h2>
+        <button type="button" data-close-modal="modal-paciente-rapido"><i data-lucide="x" class="h-5 w-5"></i></button>
+      </div>
+      <label class="block text-sm">Nombre *<input id="paciente-nombre" required class="mt-1 w-full rounded-lg border border-border px-3 py-2" /></label>
+      <label class="block text-sm">Teléfono<input id="paciente-telefono" class="mt-1 w-full rounded-lg border border-border px-3 py-2" /></label>
+      <label class="block text-sm">Correo<input id="paciente-email" type="email" class="mt-1 w-full rounded-lg border border-border px-3 py-2" /></label>
+      <button type="submit" class="w-full rounded-lg bg-primary-500 text-white px-4 py-2.5 font-semibold cursor-pointer">Crear y seleccionar</button>
+    </form>
+  </div>
+</div>

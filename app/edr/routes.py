@@ -105,6 +105,13 @@ def actualizar_ingreso(ingreso_id):
         id=ingreso_id, tenant_id=g.tenant_id
     ).first_or_404()
 
+    # La regla vive en cobranza (import local para no cargar el módulo de más);
+    # aquí sólo se consulta, así la dependencia apunta en una sola dirección.
+    from app.cobranza.services import ingreso_bloqueado_para_edicion
+    bloqueo = ingreso_bloqueado_para_edicion(ingreso)
+    if bloqueo:
+        return jsonify({"error": bloqueo}), 400
+
     if ingreso.ticket and ingreso.ticket.estado != TICKET_SIN_TIMBRAR:
         return jsonify({
             "error": "Este ingreso ya fue facturado (timbrado); no se puede modificar."
@@ -137,6 +144,14 @@ def eliminar_ingreso(ingreso_id):
     ingreso = Ingreso.query.filter_by(
         id=ingreso_id, tenant_id=g.tenant_id
     ).first_or_404()
+
+    # Borrarlo aquí dejaba `pago.ingreso_id` en NULL sin fallar: el plan seguía
+    # creyendo que cobró y el ticket salía corto. `eliminar_pago` de cobranza sí
+    # valida ticket asignado y comisión ya pagada.
+    from app.cobranza.services import ingreso_bloqueado_para_edicion
+    bloqueo = ingreso_bloqueado_para_edicion(ingreso)
+    if bloqueo:
+        return jsonify({"error": bloqueo}), 400
 
     ticket = ingreso.ticket
     if ticket and ticket.estado != TICKET_SIN_TIMBRAR:
@@ -299,17 +314,36 @@ def comisiones_pendientes():
     tiene fila en pago_comision_ingreso.
     """
     especialista_filtro = request.args.get("especialista_id", type=int)
+    origen = (request.args.get("origen") or "todos").strip().lower()
+    if origen not in ("todos", "contado", "plan"):
+        return jsonify({
+            "error": "origen debe ser todos, contado o plan"
+        }), 400
+
+    # Import local para conservar al EDR utilizable aunque el add-on de
+    # cobranza no esté habilitado para el tenant.
+    from app.cobranza.models import Cotizacion, Pago as PagoCobranza
 
     liquidados = _ingresos_liquidados_ids(g.tenant_id)
 
     q = Ingreso.query.options(
         joinedload(Ingreso.especialista),
         selectinload(Ingreso.tratamiento),
+        selectinload(Ingreso.cobranza_pago).joinedload(
+            PagoCobranza.cotizacion
+        ).joinedload(Cotizacion.paciente),
+        selectinload(Ingreso.cobranza_pago).joinedload(
+            PagoCobranza.cotizacion
+        ).selectinload(Cotizacion.pagos),
     ).filter(
         Ingreso.tenant_id == g.tenant_id,
         Ingreso.comision_doctor > 0,
         Ingreso.especialista_id.isnot(None),
     )
+    if origen == "plan":
+        q = q.filter(Ingreso.cobranza_pago.has())
+    elif origen == "contado":
+        q = q.filter(~Ingreso.cobranza_pago.has())
     if especialista_filtro:
         q = q.filter(Ingreso.especialista_id == especialista_filtro)
     ingresos = q.order_by(Ingreso.fecha).all()
@@ -324,9 +358,13 @@ def comisiones_pendientes():
             "especialista_nombre": i.especialista.nombre if i.especialista else "—",
             "total_pendiente": 0.0,
             "comisiones": [],
+            "cotizaciones": [],
+            "_cotizaciones": {},
         })
         comision = round(i.comision_doctor or 0.0, 2)
-        grupo["comisiones"].append({
+        pago_plan = i.cobranza_pago
+        cotizacion = pago_plan.cotizacion if pago_plan else None
+        detalle = {
             "ingreso_id": i.id,
             "fecha": i.fecha.isoformat(),
             "paciente": i.paciente or "Paciente",
@@ -334,15 +372,54 @@ def comisiones_pendientes():
                 or (i.tratamiento.nombre if i.tratamiento else "Tratamiento"),
             "monto": round(i.monto, 2),
             "comision_doctor": comision,
-        })
+            "origen": "plan" if cotizacion else "contado",
+            "cotizacion_id": cotizacion.id if cotizacion else None,
+            "cotizacion_folio": cotizacion.folio if cotizacion else None,
+        }
+        grupo["comisiones"].append(detalle)
+        if cotizacion:
+            agrupada = grupo["_cotizaciones"].setdefault(cotizacion.id, {
+                "cotizacion_id": cotizacion.id,
+                "folio": cotizacion.folio,
+                "paciente": (
+                    cotizacion.paciente.nombre
+                    if cotizacion.paciente else (i.paciente or "Paciente")
+                ),
+                "abonos_totales": sum(
+                    1 for pago in cotizacion.pagos if pago.ingreso_id
+                ),
+                "abonos_pendientes_comision": 0,
+                "total_pendiente": 0.0,
+                "abonos": [],
+            })
+            agrupada["abonos"].append(detalle)
+            agrupada["abonos_pendientes_comision"] += 1
+            agrupada["total_pendiente"] += comision
         grupo["total_pendiente"] += comision
         total_pendiente += comision
 
     doctores = sorted(por_doctor.values(), key=lambda d: d["especialista_nombre"])
     for d in doctores:
         d["total_pendiente"] = round(d["total_pendiente"], 2)
+        d["cotizaciones"] = sorted(
+            d.pop("_cotizaciones").values(),
+            key=lambda cotizacion: cotizacion["folio"],
+        )
+        for cotizacion in d["cotizaciones"]:
+            cotizacion["total_pendiente"] = round(
+                cotizacion["total_pendiente"], 2,
+            )
+        if origen == "plan":
+            # El arreglo plano se conserva por compatibilidad con la UI de
+            # liquidación, pero en modo plan respeta la jerarquía por folio.
+            d["comisiones"] = [
+                abono
+                for cotizacion in d["cotizaciones"]
+                for abono in cotizacion["abonos"]
+            ]
 
     return jsonify({
+        "origen": origen,
         "total_pendiente": round(total_pendiente, 2),
         "doctores": doctores,
     })

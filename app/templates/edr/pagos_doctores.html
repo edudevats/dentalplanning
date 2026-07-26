@@ -171,6 +171,16 @@
           <i data-lucide="x" class="h-4 w-4"></i>
         </button>
       </div>
+      <div class="px-6 pt-4 flex gap-2" role="tablist" aria-label="Origen de la comisión">
+        <button id="pend-tab-contado" type="button" onclick="switchPendientesOrigen('contado')"
+                class="rounded-lg bg-primary-500 text-white px-3 py-1.5 text-xs font-semibold cursor-pointer">
+          Tratamientos de contado
+        </button>
+        <button id="pend-tab-plan" type="button" onclick="switchPendientesOrigen('plan')"
+                class="rounded-lg border border-border px-3 py-1.5 text-xs font-semibold cursor-pointer">
+          Planes de pago
+        </button>
+      </div>
       <div id="pendientes-body" class="px-6 py-5 max-h-[65vh] overflow-y-auto space-y-6"></div>
     </div>
   </div>
@@ -732,12 +742,17 @@ async function handleDelete() {
 
 // ── Comisiones pendientes ──
 let pendientesData = { total_pendiente: 0, doctores: [] };
+let pendientesOrigen = 'contado';
 
 async function fetchPendientes() {
   try {
-    pendientesData = await API.get('/edr/comisiones/pendientes') ?? { total_pendiente: 0, doctores: [] };
+    const [total, filtrado] = await Promise.all([
+      API.get('/edr/comisiones/pendientes?origen=todos'),
+      API.get('/edr/comisiones/pendientes?origen=' + pendientesOrigen),
+    ]);
+    pendientesData = filtrado ?? { total_pendiente: 0, doctores: [] };
+    document.getElementById('stat-pendiente').textContent = fmt(total.total_pendiente || 0);
   } catch { pendientesData = { total_pendiente: 0, doctores: [] }; }
-  document.getElementById('stat-pendiente').textContent = fmt(pendientesData.total_pendiente || 0);
 }
 
 function todayISO() {
@@ -745,9 +760,22 @@ function todayISO() {
   return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
 }
 
-function openPendientes() {
+async function openPendientes() {
+  await fetchPendientes();
   renderPendientes();
   Modal.open('modal-pendientes');
+}
+
+async function switchPendientesOrigen(origen) {
+  pendientesOrigen = origen;
+  document.getElementById('pend-tab-contado').className =
+    'rounded-lg px-3 py-1.5 text-xs font-semibold cursor-pointer ' +
+    (origen === 'contado' ? 'bg-primary-500 text-white' : 'border border-border');
+  document.getElementById('pend-tab-plan').className =
+    'rounded-lg px-3 py-1.5 text-xs font-semibold cursor-pointer ' +
+    (origen === 'plan' ? 'bg-primary-500 text-white' : 'border border-border');
+  await fetchPendientes();
+  renderPendientes();
 }
 
 function renderPendientes() {
@@ -816,7 +844,22 @@ function renderPendientes() {
       '<th class="py-2 px-3 text-right font-medium">Comisión</th></tr>';
     tbl.appendChild(thead);
     const tbody = document.createElement('tbody');
+    let ultimoFolio = null;
     doc.comisiones.forEach(c => {
+      if (pendientesOrigen === 'plan' && c.cotizacion_folio !== ultimoFolio) {
+        ultimoFolio = c.cotizacion_folio;
+        const groupRow = document.createElement('tr');
+        groupRow.className = 'bg-primary-50/70';
+        const groupCell = document.createElement('td');
+        groupCell.colSpan = 5;
+        groupCell.className = 'py-2 px-3 text-xs font-semibold text-primary-700';
+        const cot = (doc.cotizaciones || []).find(item => item.folio === ultimoFolio);
+        groupCell.textContent = (ultimoFolio || 'Plan') + ' · ' +
+          (cot ? cot.abonos_pendientes_comision + ' de ' + cot.abonos_totales +
+            ' abonos pendientes de comisión' : '');
+        groupRow.appendChild(groupCell);
+        tbody.appendChild(groupRow);
+      }
       const tr = document.createElement('tr');
       tr.className = 'border-b border-border last:border-0';
       const tdCb = document.createElement('td');

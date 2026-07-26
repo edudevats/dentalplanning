@@ -18,6 +18,16 @@ Uso:
 """
 
 import sys
+import os
+import time
+
+# Forzar zona horaria de México en todo el proceso.
+os.environ['TZ'] = 'America/Mexico_City'
+try:
+    time.tzset()
+except AttributeError:
+    pass  # time.tzset() solo disponible en Unix
+
 import click
 from dotenv import load_dotenv
 

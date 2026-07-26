@@ -67,6 +67,37 @@
         </div>
       </div>
 
+      <!-- El logo es del consultorio: lo usan el ticket impreso, el CFDI, el
+           portal de autofacturación y las cotizaciones. -->
+      <div class="bg-surface rounded-xl border border-border shadow-sm">
+        <div class="px-5 py-4 border-b border-border">
+          <h3 class="text-sm font-semibold font-heading text-text-primary">Logo de la clínica</h3>
+          <p class="text-xs text-text-muted mt-1 font-body">Aparece en los tickets impresos, las facturas, las cotizaciones y el portal de autofacturación.</p>
+        </div>
+        <div class="p-5">
+          <form id="form-logo" class="flex items-end gap-3">
+            <div class="flex flex-col gap-1">
+              <label class="text-xs font-semibold text-text-muted font-body">Imagen (PNG/JPG)</label>
+              <input type="file" name="logo" accept="image/*" required class="text-sm font-body" />
+            </div>
+            <button type="submit" class="inline-flex items-center justify-center gap-2 rounded-lg font-medium font-body cursor-pointer border border-border bg-surface hover:bg-surface-hover text-text-primary px-4 py-2 text-sm min-h-[38px]">
+              Subir logo
+            </button>
+          </form>
+
+          <!-- Vista previa de cómo se guarda el logo (bytes reales almacenados) -->
+          <div id="logo-preview-wrap" class="hidden mt-4 pt-4 border-t border-border">
+            <p class="text-xs font-semibold text-text-muted font-body mb-2">Así se guardó (vista previa):</p>
+            <div class="flex items-center gap-4">
+              <div class="flex items-center justify-center bg-gray-50 border border-border rounded-lg p-2" style="width:120px;height:90px;">
+                <img id="logo-preview" alt="logo" class="max-h-full max-w-full object-contain" />
+              </div>
+              <p id="logo-meta" class="text-xs text-text-muted font-body"></p>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div class="flex justify-end">
         <button id="btn-save-cfg"
           class="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-accent-600 hover:bg-accent-700 text-white text-sm font-medium font-body transition-colors cursor-pointer min-h-[44px]">
@@ -234,33 +265,6 @@
         </div>
       </div>
 
-      <div class="bg-surface rounded-xl border border-border shadow-sm">
-        <div class="px-5 py-4 border-b border-border">
-          <h3 class="text-sm font-semibold font-heading text-text-primary">Logo de la clínica</h3>
-        </div>
-        <div class="p-5">
-          <form id="form-logo" class="flex items-end gap-3">
-            <div class="flex flex-col gap-1">
-              <label class="text-xs font-semibold text-text-muted font-body">Imagen (PNG/JPG)</label>
-              <input type="file" name="logo" accept="image/*" required class="text-sm font-body" />
-            </div>
-            <button type="submit" class="inline-flex items-center justify-center gap-2 rounded-lg font-medium font-body cursor-pointer border border-border bg-surface hover:bg-surface-hover text-text-primary px-4 py-2 text-sm min-h-[38px]">
-              Subir logo
-            </button>
-          </form>
-
-          <!-- Vista previa de cómo se guarda el logo (bytes reales almacenados) -->
-          <div id="logo-preview-wrap" class="hidden mt-4 pt-4 border-t border-border">
-            <p class="text-xs font-semibold text-text-muted font-body mb-2">Así se guardó (vista previa):</p>
-            <div class="flex items-center gap-4">
-              <div class="flex items-center justify-center bg-gray-50 border border-border rounded-lg p-2" style="width:120px;height:90px;">
-                <img id="logo-preview" alt="logo" class="max-h-full max-w-full object-contain" />
-              </div>
-              <p id="logo-meta" class="text-xs text-text-muted font-body"></p>
-            </div>
-          </div>
-        </div>
-      </div>
     </div>
 
     <!-- SUCURSALES -->
@@ -551,6 +555,62 @@
     document.getElementById('calc-costo_hora').textContent = fmt(calc.costo_hora);
     document.getElementById('calc-costo_operario_hora').textContent = fmt(calc.costo_operario_hora);
   }
+
+  // ── Logo de la clínica ───────────────────────────────────
+  // Vive en la configuración del consultorio: lo usan el ticket impreso, el
+  // CFDI, el portal de autofacturación y las cotizaciones.
+
+  // Vista previa del logo realmente almacenado (bytes de la BD), con dimensiones y peso.
+  async function cargarLogoPreview() {
+    const wrap = document.getElementById('logo-preview-wrap');
+    const img = document.getElementById('logo-preview');
+    const meta = document.getElementById('logo-meta');
+    if (!wrap) return;
+    try {
+      const token = Auth.getToken();
+      const resp = await fetch('/api/v1/config/logo', {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        cache: 'no-store',
+      });
+      if (!resp.ok) { wrap.classList.add('hidden'); return; }
+      const blob = await resp.blob();
+      const url = URL.createObjectURL(blob);
+      img.onload = () => {
+        const kb = (blob.size / 1024).toFixed(1);
+        const tipo = (blob.type || '').split('/')[1]?.toUpperCase() || 'IMG';
+        meta.textContent = `${tipo} · ${img.naturalWidth}×${img.naturalHeight}px · ${kb} KB`;
+        URL.revokeObjectURL(url);
+      };
+      img.src = url;
+      wrap.classList.remove('hidden');
+    } catch (_) {
+      wrap.classList.add('hidden');
+    }
+  }
+
+  document.getElementById('form-logo').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    try {
+      const token = Auth.getToken();
+      const resp = await fetch('/api/v1/config/logo', {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: new FormData(e.target),
+      });
+      if (resp.ok) {
+        Toast.success('Logo actualizado');
+        e.target.reset();
+        cargarLogoPreview();  // refresca la vista previa con lo recién guardado
+      } else {
+        const data = await resp.json().catch(() => ({}));
+        Toast.error(data.error || 'Error al subir logo');
+      }
+    } catch (err) {
+      Toast.error(err.message || 'Error al subir logo');
+    }
+  });
+
+  cargarLogoPreview();  // al abrir Ajustes, muestra el logo actual si existe
 
   document.getElementById('btn-save-cfg').addEventListener('click', async () => {
     const payload = { gastos_fijos: Number(document.getElementById('cfg-gastos_fijos').value) || 0 };
@@ -1428,58 +1488,6 @@
     await cargarConfigFiscal();
     Toast.success('FIEL subida correctamente');
   });
-
-  // Vista previa del logo realmente almacenado (bytes de la BD), con dimensiones y peso.
-  async function cargarLogoPreview() {
-    const wrap = document.getElementById('logo-preview-wrap');
-    const img = document.getElementById('logo-preview');
-    const meta = document.getElementById('logo-meta');
-    if (!wrap) return;
-    try {
-      const token = Auth.getToken();
-      const resp = await fetch('/api/v1/config/logo', {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-        cache: 'no-store',
-      });
-      if (!resp.ok) { wrap.classList.add('hidden'); return; }
-      const blob = await resp.blob();
-      const url = URL.createObjectURL(blob);
-      img.onload = () => {
-        const kb = (blob.size / 1024).toFixed(1);
-        const tipo = (blob.type || '').split('/')[1]?.toUpperCase() || 'IMG';
-        meta.textContent = `${tipo} · ${img.naturalWidth}×${img.naturalHeight}px · ${kb} KB`;
-        URL.revokeObjectURL(url);
-      };
-      img.src = url;
-      wrap.classList.remove('hidden');
-    } catch (_) {
-      wrap.classList.add('hidden');
-    }
-  }
-
-  document.getElementById('form-logo').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    try {
-      const token = Auth.getToken();
-      const resp = await fetch('/api/v1/config/logo', {
-        method: 'POST',
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-        body: new FormData(e.target),
-      });
-      if (resp.ok) {
-        Toast.success('Logo actualizado');
-        e.target.reset();
-        cargarLogoPreview();  // refresca la vista previa con lo recién guardado
-      } else {
-        const data = await resp.json().catch(() => ({}));
-        Toast.error(data.error || 'Error al subir logo');
-      }
-    } catch (err) {
-      Toast.error(err.message || 'Error al subir logo');
-    }
-  });
-
-  cargarLogoPreview();  // al abrir Ajustes, muestra el logo actual si existe
 
   document.querySelectorAll('.nat-opt').forEach(btn => btn.addEventListener('click', async () => {
     try {

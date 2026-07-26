@@ -1,0 +1,149 @@
+{% extends "crm/_layout.html" %}
+{% block title %}Cotizaciones y cobranza — Dental Planning{% endblock %}
+
+{% block cs_content %}
+<div class="space-y-6" id="cobranza-app">
+  <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+    <div>
+      <h1 class="text-2xl font-bold font-heading text-text-primary">Cotizaciones y cobranza</h1>
+      <p class="text-sm text-text-muted mt-1">Presupuestos, planes de pago y estados de cuenta.</p>
+    </div>
+    <button id="btn-nueva-cotizacion" type="button"
+            class="inline-flex items-center justify-center gap-2 rounded-lg bg-primary-500 hover:bg-primary-600 text-white px-4 py-2.5 text-sm font-semibold cursor-pointer">
+      <i data-lucide="plus" class="h-4 w-4"></i> Nueva cotización
+    </button>
+  </div>
+
+  <div class="grid grid-cols-2 xl:grid-cols-4 gap-4">
+    <div class="rounded-xl bg-surface border border-border p-4">
+      <p class="text-xs font-semibold uppercase tracking-wide text-text-muted">Total por cobrar</p>
+      <p id="stat-por-cobrar" class="mt-2 text-2xl font-bold tabular-nums">$0.00</p>
+    </div>
+    <div class="rounded-xl bg-surface border border-border p-4">
+      <p class="text-xs font-semibold uppercase tracking-wide text-text-muted">Sin pagos recientes</p>
+      <p id="stat-sin-pagos" class="mt-2 text-2xl font-bold tabular-nums">0</p>
+    </div>
+    <div class="rounded-xl bg-surface border border-border p-4">
+      <p class="text-xs font-semibold uppercase tracking-wide text-text-muted">Cobrado este mes</p>
+      <p id="stat-cobrado" class="mt-2 text-2xl font-bold tabular-nums">$0.00</p>
+    </div>
+    <div class="rounded-xl bg-surface border border-border p-4">
+      <p class="text-xs font-semibold uppercase tracking-wide text-text-muted">Planes activos</p>
+      <p id="stat-activos" class="mt-2 text-2xl font-bold tabular-nums">0</p>
+    </div>
+  </div>
+
+  <div class="rounded-xl bg-surface border border-border overflow-hidden">
+    <div class="p-4 border-b border-border grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-3">
+      <select id="filtro-estatus" class="rounded-lg border border-border bg-surface px-3 py-2 text-sm">
+        <option value="">Todos los estados</option>
+        <option value="borrador">Borradores</option>
+        <option value="enviada">Enviadas</option>
+        <option value="vencida">Vencidas</option>
+        <option value="aprobada">En cobranza</option>
+        <option value="liquidada">Liquidadas</option>
+        <option value="cancelada">Canceladas</option>
+        <option value="rechazada">Rechazadas</option>
+      </select>
+      <select id="filtro-paciente" class="rounded-lg border border-border bg-surface px-3 py-2 text-sm">
+        <option value="">Todos los pacientes</option>
+      </select>
+      <input id="filtro-desde" type="date" aria-label="Fecha desde"
+             class="rounded-lg border border-border bg-surface px-3 py-2 text-sm" />
+      <input id="filtro-hasta" type="date" aria-label="Fecha hasta"
+             class="rounded-lg border border-border bg-surface px-3 py-2 text-sm" />
+      <button id="btn-limpiar-filtros" type="button"
+              class="rounded-lg border border-border px-3 py-2 text-sm font-medium hover:bg-surface-hover cursor-pointer">
+        Limpiar filtros
+      </button>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead class="bg-surface-alt text-xs uppercase tracking-wide text-text-muted">
+          <tr>
+            <th class="px-4 py-3 text-left">Folio / paciente</th>
+            <th class="px-4 py-3 text-right">Total</th>
+            <th class="px-4 py-3 text-right">Pagado</th>
+            <th class="px-4 py-3 text-right">Saldo</th>
+            <th class="px-4 py-3 text-center">Avance</th>
+            <th class="px-4 py-3 text-center">Estado</th>
+          </tr>
+        </thead>
+        <tbody id="cotizaciones-body"></tbody>
+      </table>
+      <div id="cotizaciones-empty" class="hidden px-6 py-14 text-center text-sm text-text-muted">
+        No hay cotizaciones con estos filtros.
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="modal-cotizacion-detalle" class="hidden fixed inset-0 z-50 overflow-y-auto">
+  <div class="flex min-h-full items-end lg:items-center justify-center p-4">
+    <div class="fixed inset-0 bg-black/40" data-close-modal="modal-cotizacion-detalle"></div>
+    <div class="relative bg-surface rounded-2xl shadow-xl w-full max-w-5xl max-h-[92vh] overflow-y-auto">
+      <div class="sticky top-0 z-10 bg-surface flex items-center justify-between px-6 py-4 border-b border-border">
+        <div>
+          <h2 id="detalle-folio" class="text-lg font-bold font-heading">Cotización</h2>
+          <p id="detalle-paciente" class="text-sm text-text-muted"></p>
+        </div>
+        <button type="button" data-close-modal="modal-cotizacion-detalle"
+                class="p-2 rounded-lg hover:bg-surface-hover cursor-pointer" aria-label="Cerrar">
+          <i data-lucide="x" class="h-5 w-5"></i>
+        </button>
+      </div>
+      <div id="detalle-alerta" class="hidden mx-6 mt-5 rounded-lg px-4 py-3 text-sm"></div>
+      <div id="detalle-contenido" class="p-6"></div>
+      <div id="detalle-acciones" class="sticky bottom-0 bg-surface border-t border-border px-6 py-4 flex flex-wrap justify-end gap-2"></div>
+    </div>
+  </div>
+</div>
+
+<div id="modal-pago" class="hidden fixed inset-0 z-[60] overflow-y-auto">
+  <div class="flex min-h-full items-end sm:items-center justify-center p-4">
+    <div class="fixed inset-0 bg-black/40" data-close-modal="modal-pago"></div>
+    <form id="form-pago" class="relative bg-surface rounded-2xl shadow-xl w-full max-w-lg p-6 space-y-4">
+      <div class="flex items-center justify-between">
+        <div>
+          <h2 class="text-lg font-bold">Registrar abono</h2>
+          <p id="pago-saldo" class="text-sm text-text-muted"></p>
+        </div>
+        <button type="button" data-close-modal="modal-pago" class="p-2 cursor-pointer">
+          <i data-lucide="x" class="h-5 w-5"></i>
+        </button>
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <label class="text-sm">Fecha
+          <input id="pago-fecha" type="date" required
+                 class="mt-1 w-full rounded-lg border border-border px-3 py-2" />
+        </label>
+        <label class="text-sm">Monto
+          <input id="pago-monto" type="number" min="0.01" step="0.01" required
+                 class="mt-1 w-full rounded-lg border border-border px-3 py-2" />
+        </label>
+      </div>
+      <label class="block text-sm">Método de pago
+        <select id="pago-metodo" class="mt-1 w-full rounded-lg border border-border px-3 py-2"></select>
+      </label>
+      <label class="block text-sm">Notas
+        <textarea id="pago-notas" rows="2" class="mt-1 w-full rounded-lg border border-border px-3 py-2"></textarea>
+      </label>
+      <label id="pago-historico-wrap" class="inline-flex items-start gap-2 text-sm cursor-pointer">
+        <input id="pago-historico" type="checkbox" class="mt-0.5" />
+        <span><strong>Pago histórico</strong><br><span class="text-xs text-text-muted">Cuenta al saldo, pero no crea ingreso ni comisión.</span></span>
+      </label>
+      <button id="btn-guardar-pago" type="submit"
+              class="w-full rounded-lg bg-primary-500 hover:bg-primary-600 text-white px-4 py-2.5 font-semibold cursor-pointer">
+        Guardar abono
+      </button>
+    </form>
+  </div>
+</div>
+
+{% include "cobranza/_form_cotizacion.html" %}
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/cobranza/cotizacion_form.js') }}"></script>
+<script src="{{ url_for('static', filename='js/cobranza/cotizaciones.js') }}"></script>
+{% endblock %}
