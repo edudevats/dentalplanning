@@ -175,8 +175,47 @@ class CotizacionSchema(Schema):
             )
 
 
+class ConceptoExtraSchema(Schema):
+    class Meta:
+        unknown = EXCLUDE
+
+    tratamiento_id = fields.Int(allow_none=True)
+    descripcion = fields.Str(allow_none=True, validate=validate.Length(max=300))
+    cantidad = fields.Float(load_default=1, validate=validate.Range(min=0.01))
+    precio_unitario = fields.Float(load_default=0, validate=validate.Range(min=0))
+    tipo_servicio = fields.Str(
+        allow_none=True, validate=validate.OneOf(["clinico", "estetico"]),
+    )
+    comision_especialista_tipo = fields.Str(
+        allow_none=True, validate=validate.OneOf(["porcentaje", "monto"]),
+    )
+    comision_especialista_valor = fields.Float(
+        allow_none=True, validate=validate.Range(min=0),
+    )
+
+
 class AprobarSchema(Schema):
     class Meta:
         unknown = EXCLUDE
 
     sucursal_id = fields.Int(allow_none=True)
+
+
+class DevolucionSchema(Schema):
+    class Meta:
+        unknown = EXCLUDE
+
+    fecha = fields.Date(required=True)
+    monto = fields.Float(required=True, validate=validate.Range(min=0.01))
+    metodo_pago_id = fields.Int(allow_none=True)
+    motivo = fields.Str(allow_none=True, validate=validate.Length(max=2000))
+
+
+class EditarCalendarioSchema(Schema):
+    class Meta:
+        unknown = EXCLUDE
+
+    calendario = fields.List(
+        fields.Nested(CalendarioItemSchema), required=True,
+        validate=validate.Length(min=1),
+    )

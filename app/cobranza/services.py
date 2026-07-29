@@ -15,8 +15,10 @@ from app.cobranza.calculo import (
     calcular_plan,
 )
 from app.cobranza.models import (
+    CobranzaAuditoria,
     Cotizacion,
     CotizacionConcepto,
+    Devolucion,
     Pago,
     PagoProgramado,
 )
@@ -385,12 +387,71 @@ def actualizar_cotizacion(tenant_id, cotizacion_id, data):
     return cot
 
 
-def eliminar_cotizacion(tenant_id, cotizacion_id):
-    cot = obtener_cotizacion(tenant_id, cotizacion_id)
-    if cot.estatus != "borrador":
-        raise CobranzaError("Sólo se puede eliminar una cotización en borrador")
-    db.session.delete(cot)
-    db.session.commit()
+def eliminar_cotizacion(tenant_id, user_id, cotizacion_id):
+    """Borra una cotización en cualquier estatus, con toda su cascada:
+    conceptos, calendario, pagos, ingresos de esos pagos, devoluciones y sus
+    ingresos. Bloquea si algún abono ya salió del consultorio (ticket de
+    facturación o comisión ya pagada al doctor): esos casos exigen cancelar +
+    devolver, no borrar.
+    """
+    from app.crm.services import eliminar_visita_ingreso
+    from app.edr.models import Ingreso, PagoComisionIngreso
+
+    try:
+        cot = obtener_cotizacion(tenant_id, cotizacion_id)
+
+        ingreso_ids = [p.ingreso_id for p in cot.pagos if p.ingreso_id]
+        ingreso_ids += [d.ingreso_id for d in cot.devoluciones if d.ingreso_id]
+
+        for ingreso_id in ingreso_ids:
+            ingreso = db.session.get(Ingreso, ingreso_id)
+            if ingreso is None:
+                continue
+            if ingreso.ticket_id:
+                raise CobranzaError(
+                    "No se puede eliminar: un abono ya está en un ticket de "
+                    "facturación. Cancela el plan y registra una devolución."
+                )
+            if PagoComisionIngreso.query.filter_by(
+                tenant_id=tenant_id, ingreso_id=ingreso.id,
+            ).first():
+                raise CobranzaError(
+                    "No se puede eliminar: la comisión de un abono ya se le "
+                    "pagó al doctor. Cancela el plan y registra una devolución."
+                )
+
+        registrar_auditoria(
+            tenant_id, user_id, "eliminar_cotizacion", cot,
+            monto=total_pagado(cot),
+            detalle={
+                "estatus": cot.estatus,
+                "pagos": len(cot.pagos),
+                "devoluciones": len(cot.devoluciones),
+            },
+        )
+
+        # Desliga los abonos/devoluciones de sus ingresos ANTES de borrar los
+        # ingresos: las FKs cobranza_pagos.ingreso_id y
+        # cobranza_devoluciones.ingreso_id apuntan a ingresos.id, y en MySQL
+        # borrar el Ingreso con esas filas aún ligadas violaría la restricción.
+        for pago in list(cot.pagos):
+            pago.ingreso_id = None
+        for dev in list(cot.devoluciones):
+            dev.ingreso_id = None
+        db.session.flush()
+        for ingreso_id in ingreso_ids:
+            ingreso = db.session.get(Ingreso, ingreso_id)
+            if ingreso is not None:
+                eliminar_visita_ingreso(tenant_id, ingreso.id)
+                db.session.delete(ingreso)
+        db.session.flush()
+        # La cascada del ORM (delete-orphan) borra pagos, conceptos, calendario
+        # y devoluciones al borrar la cotización.
+        db.session.delete(cot)
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        raise
 
 
 def comision_doctor_total(cot):
@@ -529,6 +590,174 @@ def cancelar_cotizacion(tenant_id, cotizacion_id):
             prog.estatus = "cancelado"
     cot.estatus = "cancelada"
     db.session.commit()
+    return cot
+
+
+def editar_calendario(tenant_id, user_id, cotizacion_id, calendario):
+    """Reescribe el calendario de un plan aprobado. Las parcialidades con abono
+    (y el anticipo si ya recibió pago) son intocables: deben venir idénticas.
+    """
+    try:
+        cot = _cotizacion_para_pago(tenant_id, cotizacion_id)
+        if cot.estatus != "aprobada":
+            raise CobranzaError(
+                "Sólo se pueden editar las mensualidades de un plan aprobado"
+            )
+
+        # Filas intocables: las que ya recibieron algo.
+        intocables = {
+            p.numero: p for p in cot.programados
+            if p.monto_pagado > TOLERANCIA
+        }
+        try:
+            propuestos = {int(item["numero"]): item for item in calendario}
+        except (KeyError, TypeError, ValueError):
+            raise CobranzaError("El calendario contiene un pago inválido")
+        for numero, prog in intocables.items():
+            item = propuestos.get(numero)
+            if item is None:
+                raise CobranzaError(
+                    f"La parcialidad {numero} ya tiene un abono y no se puede quitar"
+                )
+            mismo_monto = abs(
+                round(float(item["monto_programado"]), 2) - prog.monto_programado
+            ) <= TOLERANCIA
+            mismo_fecha = item["fecha_vencimiento"] == prog.fecha_vencimiento
+            if not (mismo_monto and mismo_fecha):
+                raise CobranzaError(
+                    f"La parcialidad {numero} ya tiene un abono: no cambies su "
+                    "fecha ni su monto"
+                )
+
+        # reemplazar_calendario aplica validar_calendario (numeración, suma == total).
+        reemplazar_calendario(cot, calendario)
+        db.session.flush()
+        # reemplazar_calendario recreó las filas por FK cruda, así que la
+        # colección cot.programados en memoria quedó apuntando a los objetos
+        # viejos ya borrados. La expiramos para que _recalcular_cascada lea las
+        # filas nuevas desde la BD y reasigne monto_pagado/estatus sobre ellas.
+        db.session.expire(cot, ["programados"])
+        _recalcular_cascada(cot)
+
+        registrar_auditoria(
+            tenant_id, user_id, "editar_calendario", cot,
+            detalle={"parcialidades": cot.num_parcialidades},
+        )
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        raise
+    db.session.refresh(cot)
+    return cot
+
+
+def agregar_concepto(tenant_id, user_id, cotizacion_id, data):
+    """Agrega un concepto a un plan aprobado. Sube el total y reparte el
+    incremento, en partes iguales, entre las parcialidades pendientes.
+    """
+    from app.cobranza.calculo import PlanInvalido, montos_por_numero
+
+    try:
+        cot = _cotizacion_para_pago(tenant_id, cotizacion_id)
+        if cot.estatus != "aprobada":
+            raise CobranzaError(
+                "Sólo se puede agregar un concepto a un plan aprobado y abierto. "
+                "Para un plan liquidado, levanta una cotización nueva."
+            )
+
+        pendientes = [
+            p for p in sorted(cot.programados, key=lambda p: p.numero)
+            if p.numero >= 1 and p.monto_pagado <= TOLERANCIA
+        ]
+        if not pendientes:
+            raise CobranzaError(
+                "No quedan mensualidades pendientes donde cobrar el concepto. "
+                "Edita primero el calendario para abrir una."
+            )
+
+        # Snapshot del concepto (reutiliza el criterio de _construir_conceptos).
+        cantidad = data.get("cantidad") or 1
+        precio = data.get("precio_unitario") or 0
+        tratamiento = None
+        if data.get("tratamiento_id"):
+            tratamiento = Tratamiento.query.filter_by(
+                id=data["tratamiento_id"], tenant_id=tenant_id,
+            ).first()
+            if not tratamiento:
+                raise CobranzaError("Tratamiento no encontrado")
+        descripcion = (data.get("descripcion") or "").strip()
+        if not descripcion:
+            descripcion = tratamiento.nombre if tratamiento else ""
+        if not descripcion:
+            raise CobranzaError("El concepto necesita una descripción")
+
+        orden = max((c.orden for c in cot.conceptos), default=-1) + 1
+        db.session.add(CotizacionConcepto(
+            tenant_id=tenant_id,
+            # Se asocia por la relación, no por la FK cruda: así el concepto
+            # nuevo entra a la colección `cot.conceptos` ya cargada en memoria
+            # (por ejemplo por el cálculo de `orden` de arriba) y el recálculo
+            # de totales de abajo lo ve sin necesitar un expire/refresh.
+            cotizacion=cot,
+            tratamiento_id=tratamiento.id if tratamiento else None,
+            descripcion=descripcion[:300],
+            cantidad=cantidad,
+            precio_unitario=precio,
+            importe=round(cantidad * precio, 2),
+            tipo_servicio=(
+                tratamiento.tipo_servicio if tratamiento
+                else (data.get("tipo_servicio") or "clinico")
+            ),
+            comision_especialista_tipo=(
+                tratamiento.comision_especialista_tipo if tratamiento
+                else (data.get("comision_especialista_tipo") or "porcentaje")
+            ),
+            comision_especialista_valor=(
+                tratamiento.comision_especialista_valor if tratamiento
+                else (data.get("comision_especialista_valor") or 0)
+            ),
+            orden=orden,
+        ))
+        db.session.flush()
+
+        # Recalcula totales respetando el descuento vigente.
+        conceptos_dicts = [
+            {"cantidad": c.cantidad, "precio_unitario": c.precio_unitario}
+            for c in cot.conceptos
+        ]
+        subtotal, total_nuevo = calcular_totales(
+            conceptos_dicts, cot.descuento_tipo, cot.descuento_valor,
+        )
+        delta = round(total_nuevo - cot.total, 2)
+        if delta <= TOLERANCIA:
+            raise CobranzaError("El concepto no incrementa el total del plan")
+
+        # Reparte el delta en partes iguales entre las pendientes.
+        # montos_por_numero lanza PlanInvalido (ValueError) si el delta es
+        # demasiado chico frente al número de pendientes; se traduce a
+        # CobranzaError para que la ruta responda 400 y no 500.
+        try:
+            incrementos = montos_por_numero(delta, len(pendientes))
+        except PlanInvalido as e:
+            raise CobranzaError(str(e))
+        for prog, extra in zip(pendientes, incrementos):
+            prog.monto_programado = round(prog.monto_programado + extra, 2)
+
+        cot.subtotal = subtotal
+        cot.total = total_nuevo
+        cot.comision_doctor_total = comision_doctor_total(cot)
+        db.session.flush()
+        _recalcular_cascada(cot)
+
+        registrar_auditoria(
+            tenant_id, user_id, "agregar_concepto", cot, monto=delta,
+            detalle={"descripcion": descripcion[:300], "total": total_nuevo},
+        )
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        raise
+    db.session.refresh(cot)
     return cot
 
 
@@ -760,7 +989,7 @@ def registrar_pago(tenant_id, user_id, cotizacion_id, data):
     return pago
 
 
-def eliminar_pago(tenant_id, pago_id):
+def eliminar_pago(tenant_id, user_id, pago_id):
     """Borra un abono no liquidado, su Ingreso y recalcula el calendario."""
     from app.crm.services import eliminar_visita_ingreso
     from app.edr.models import Ingreso, PagoComisionIngreso
@@ -788,6 +1017,11 @@ def eliminar_pago(tenant_id, pago_id):
                 "el pago al doctor"
             )
 
+        registrar_auditoria(
+            tenant_id, user_id, "eliminar_pago", cot, monto=pago.monto,
+            detalle={"pago_id": pago_id},
+        )
+
         db.session.delete(pago)
         if ingreso is not None:
             eliminar_visita_ingreso(tenant_id, ingreso.id)
@@ -799,6 +1033,117 @@ def eliminar_pago(tenant_id, pago_id):
     except Exception:
         db.session.rollback()
         raise
+
+
+# ── Devoluciones ─────────────────────────────────────────────────────────────
+
+def devolvible(cot):
+    """Lo que aún se puede devolver: cobrado NO histórico menos lo ya devuelto.
+
+    Los pagos históricos se excluyen: nunca generaron Ingreso, así que un
+    contra-asiento negativo sobre ellos restaría de las ventas un dinero que
+    este módulo jamás sumó.
+    """
+    cobrado = round(sum(p.monto for p in cot.pagos if not p.historico), 2)
+    ya_devuelto = round(sum(d.monto for d in cot.devoluciones), 2)
+    return round(cobrado - ya_devuelto, 2)
+
+
+def reversion_comision(cot, monto):
+    """Comisión del doctor a revertir por una devolución de `monto`.
+
+    Prorratea sobre el total del plan, pero nunca revierte más comisión de la
+    que el plan llegó a devengar (descontando lo ya revertido por devoluciones
+    previas).
+    """
+    if not cot.total:
+        return 0.0
+    objetivo = round((cot.comision_doctor_total or 0) * (monto / cot.total), 2)
+    devengada = round(sum(
+        (p.ingreso.comision_doctor or 0)
+        for p in cot.pagos if p.ingreso is not None
+    ), 2)
+    revertida = round(sum(
+        -(d.ingreso.comision_doctor or 0)
+        for d in cot.devoluciones if d.ingreso is not None
+    ), 2)
+    return max(0.0, min(objetivo, round(devengada - revertida, 2)))
+
+
+def registrar_devolucion(tenant_id, user_id, cotizacion_id, data):
+    """Registra una devolución sobre un plan cancelado. Crea un Ingreso
+    negativo (contra-asiento) y NO toca los Pago existentes.
+    """
+    from app.crm.services import sincronizar_visita_ingreso
+    from app.edr.models import Ingreso
+
+    try:
+        cot = _cotizacion_para_pago(tenant_id, cotizacion_id)
+        if cot.estatus != "cancelada":
+            raise CobranzaError(
+                "Sólo se puede registrar una devolución en un plan cancelado"
+            )
+        monto = round(float(data.get("monto") or 0), 2)
+        if monto <= 0:
+            raise CobranzaError("El monto de la devolución debe ser mayor a cero")
+        disponible = devolvible(cot)
+        if monto > disponible + TOLERANCIA:
+            raise CobranzaError(
+                f"La devolución excede lo disponible: hay ${disponible:,.2f} "
+                "por devolver."
+            )
+        metodo = _validar_metodo_pago(tenant_id, data.get("metodo_pago_id"))
+
+        comision_bancaria = round(
+            monto * ((metodo.comision_pct or 0) if metodo else 0) / 100, 2,
+        )
+        principal = max(cot.conceptos, key=lambda c: c.importe, default=None)
+        ingreso = Ingreso(
+            tenant_id=tenant_id,
+            fecha=data["fecha"],
+            tratamiento_id=None,
+            nombre_tratamiento=f"{cot.folio} · Devolución",
+            paciente=cot.paciente.nombre if cot.paciente else "Paciente",
+            paciente_id=cot.paciente_id,
+            especialista_id=cot.especialista_id,
+            metodo_pago_id=metodo.id if metodo else None,
+            monto=-monto,
+            comision_bancaria=-comision_bancaria,
+            comision_doctor=-reversion_comision(cot, monto),
+            tipo_servicio=principal.tipo_servicio if principal else "clinico",
+            factura=False,
+            comentarios=f"Devolución del plan {cot.folio}",
+        )
+        db.session.add(ingreso)
+        db.session.flush()
+        sincronizar_visita_ingreso(ingreso)
+
+        devolucion = Devolucion(
+            tenant_id=tenant_id,
+            cotizacion_id=cot.id,
+            fecha=data["fecha"],
+            monto=monto,
+            metodo_pago_id=metodo.id if metodo else None,
+            motivo=(data.get("motivo") or None),
+            ingreso_id=ingreso.id,
+            created_by=user_id,
+        )
+        db.session.add(devolucion)
+
+        registrar_auditoria(
+            tenant_id, user_id, "devolucion", cot, monto=monto,
+            detalle={"metodo_pago_id": metodo.id if metodo else None},
+        )
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        raise
+    db.session.refresh(devolucion)
+    return devolucion
+
+
+def total_pagado_devuelto(cot):
+    return round(sum(d.monto for d in cot.devoluciones), 2)
 
 
 # ── Facturación posterior a la liquidación ───────────────────────────────────
@@ -817,20 +1162,24 @@ def ingreso_bloqueado_para_factura(ingreso):
 
 
 def ingreso_bloqueado_para_edicion(ingreso):
-    """Mensaje de bloqueo si el ingreso es el abono de un plan de pagos.
+    """Mensaje de bloqueo si el ingreso es el abono o la devolución de un plan.
 
-    El monto vive en `Pago` y la comisión se prorratea sobre el plan completo:
-    editar o borrar el `Ingreso` por su cuenta los deja descuadrados y le pagaría
-    al doctor una comisión inventada. El EDR consulta esta regla; el alta, la
-    edición y la baja de un abono pasan siempre por cobranza.
+    El monto y la comisión se administran desde la cotización; editar el
+    Ingreso suelto los descuadra.
     """
     pago = getattr(ingreso, "cobranza_pago", None)
-    if pago is None:
-        return None
-    return (
-        f"Este ingreso es el abono de un plan de pagos ({pago.cotizacion.folio}). "
-        "Modifícalo o elimínalo desde la cotización, en Cobranza."
-    )
+    if pago is not None:
+        return (
+            f"Este ingreso es el abono de un plan de pagos ({pago.cotizacion.folio}). "
+            "Modifícalo o elimínalo desde la cotización, en Cobranza."
+        )
+    devolucion = getattr(ingreso, "cobranza_devolucion", None)
+    if devolucion is not None:
+        return (
+            f"Este ingreso es una devolución del plan {devolucion.cotizacion.folio}. "
+            "Adminístralo desde la cotización, en Cobranza."
+        )
+    return None
 
 
 def agrupar_en_ticket(cot):
@@ -1022,6 +1371,35 @@ def procesar_facturacion_liquidacion(tenant_id, cotizacion_id):
     return {"estado": "completada", "ticket_id": ticket.id}
 
 
+# ── Auditoría ────────────────────────────────────────────────────────────────
+
+def registrar_auditoria(tenant_id, user_id, accion, cot, *, monto=None, detalle=None):
+    """Agrega una fila de bitácora a la sesión. NO hace commit: viaja dentro de
+    la transacción de la operación que la origina, así un rollback la deshace.
+    """
+    db.session.add(CobranzaAuditoria(
+        tenant_id=tenant_id,
+        usuario_id=user_id,
+        accion=accion,
+        cotizacion_id=cot.id,
+        cotizacion_folio=cot.folio,
+        paciente=cot.paciente.nombre if cot.paciente else None,
+        monto=monto,
+        detalle=detalle,
+    ))
+
+
+def listar_auditoria(tenant_id, *, accion=None, fecha_desde=None, fecha_hasta=None):
+    q = CobranzaAuditoria.query.filter_by(tenant_id=tenant_id)
+    if accion:
+        q = q.filter(CobranzaAuditoria.accion == accion)
+    if fecha_desde:
+        q = q.filter(CobranzaAuditoria.created_at >= fecha_desde)
+    if fecha_hasta:
+        q = q.filter(CobranzaAuditoria.created_at <= fecha_hasta)
+    return q.order_by(CobranzaAuditoria.created_at.desc()).all()
+
+
 # ── Estado de cuenta y tablero ────────────────────────────────────────────────
 
 def _abonos_por_bloque(cot):
@@ -1061,6 +1439,16 @@ def datos_estado_cuenta(tenant_id, cotizacion_id):
     pendiente = saldo(cot)
     fecha_inicio = cot.fecha_inicio_tratamiento or cot.fecha
     pagadas = parcialidades_pagadas(cot)
+    devoluciones_data = [
+        {
+            "fecha": d.fecha,
+            "monto": d.monto,
+            "metodo": d.metodo_pago.nombre if d.metodo_pago else None,
+            "motivo": d.motivo,
+        }
+        for d in sorted(cot.devoluciones, key=lambda d: (d.fecha, d.id or 0))
+    ]
+    total_devuelto = round(sum(d.monto for d in cot.devoluciones), 2)
     texto = construir_texto(
         paciente=cot.paciente.nombre if cot.paciente else "su paciente",
         fecha_inicio=fecha_inicio,
@@ -1073,6 +1461,7 @@ def datos_estado_cuenta(tenant_id, cotizacion_id):
         abonos_parcialidades=abonos_parcialidades,
         pagado=pagado,
         saldo=pendiente,
+        devoluciones=devoluciones_data,
     )
     return {
         "texto": texto,
@@ -1088,6 +1477,8 @@ def datos_estado_cuenta(tenant_id, cotizacion_id):
         "parcialidades_pagadas": pagadas,
         "abonos_anticipo": abonos_anticipo,
         "abonos_parcialidades": abonos_parcialidades,
+        "devoluciones": devoluciones_data,
+        "devuelto": total_devuelto,
     }
 
 

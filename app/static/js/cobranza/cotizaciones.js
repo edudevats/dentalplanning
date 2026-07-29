@@ -11,6 +11,39 @@ const Cobranza = (() => {
   const $ = id => document.getElementById(id);
   const writableRoles = ['admin', 'editor', 'recepcionista'];
 
+  // Pide la contraseña del admin para una operación sensible.
+  // Devuelve la contraseña, o null si el usuario cancela (botón, X o backdrop).
+  const AdminGate = {
+    ask(mensaje) {
+      return new Promise((resolve) => {
+        const input = $('admin-gate-input');
+        const msg = $('admin-gate-msg');
+        const form = $('admin-gate-form');
+        input.value = '';
+        msg.textContent = mensaje || 'Escribe tu contraseña de administrador para continuar.';
+        const onSubmit = (e) => {
+          e.preventDefault();
+          cleanup();
+          Modal.close('modal-admin-gate');
+          resolve(input.value);
+        };
+        const onCancel = () => { cleanup(); Modal.close('modal-admin-gate'); resolve(null); };
+        function cleanup() {
+          form.removeEventListener('submit', onSubmit);
+          $('admin-gate-cancel').removeEventListener('click', onCancel);
+          $('admin-gate-x').removeEventListener('click', onCancel);
+          $('admin-gate-backdrop').removeEventListener('click', onCancel);
+        }
+        form.addEventListener('submit', onSubmit);
+        $('admin-gate-cancel').addEventListener('click', onCancel);
+        $('admin-gate-x').addEventListener('click', onCancel);
+        $('admin-gate-backdrop').addEventListener('click', onCancel);
+        Modal.open('modal-admin-gate');
+        setTimeout(() => input.focus(), 50);
+      });
+    },
+  };
+
   function localISO() {
     const date = new Date();
     return [
@@ -213,6 +246,18 @@ const Cobranza = (() => {
       </div>
       <section class="mt-6"><h3 class="font-semibold mb-2">Calendario</h3>${scheduleTable(quote)}</section>
       <section class="mt-6"><h3 class="font-semibold mb-2">Historial de abonos</h3>${paymentsTable(quote)}</section>
+      ${quote.devoluciones && quote.devoluciones.length ? `
+      <section class="mt-6"><h3 class="font-semibold mb-2">Devoluciones</h3>
+        <div class="space-y-2">${quote.devoluciones.map(d => `
+          <div class="rounded-lg bg-surface-alt px-3 py-2 text-sm">
+            <div class="flex justify-between gap-4">
+              <span>${formatDate(d.fecha)} · ${esc(d.metodo_pago_nombre || 'Sin método')}</span>
+              <strong>${fmt(d.monto)}</strong>
+            </div>
+            ${d.motivo ? `<p class="text-xs text-text-muted mt-1">${esc(d.motivo)}</p>` : ''}
+          </div>`).join('')}</div>
+        <p class="text-sm font-semibold mt-2">Total devuelto: ${fmt(quote.devuelto)}</p>
+      </section>` : ''}
       ${quote.notas ? `<section class="mt-6"><h3 class="font-semibold mb-1">Notas</h3><p class="text-sm whitespace-pre-wrap">${esc(quote.notas)}</p></section>` : ''}`;
 
     const alert = $('detalle-alerta');
@@ -251,6 +296,9 @@ const Cobranza = (() => {
     if (['aprobada', 'liquidada', 'cancelada'].includes(baseStatus)) {
       action('Copiar estado', 'border border-border hover:bg-surface-hover', copyStatement, 'copy');
       action('Estado de cuenta PDF', 'border border-border hover:bg-surface-hover', () => download('estado-cuenta.pdf'), 'file-text');
+      if (writableRoles.includes(role())) {
+        action('Enviar estado por correo', 'border border-primary-200 text-primary-700 hover:bg-primary-50', sendStatement, 'mail');
+      }
     }
     if (['borrador', 'enviada'].includes(baseStatus) && writableRoles.includes(role())) {
       action('Editar', 'border border-border hover:bg-surface-hover', () => CobranzaForm.open(quote), 'pencil');
@@ -260,14 +308,16 @@ const Cobranza = (() => {
       action('Rechazar', 'border border-danger-100 text-danger-700', () => transition('rechazar'), 'x-circle');
       action('Aprobar', 'bg-primary-500 text-white hover:bg-primary-600', approve, 'check-circle');
     }
-    if (baseStatus === 'borrador' && role() === 'admin') {
-      action('Eliminar', 'border border-danger-100 text-danger-700', removeQuote, 'trash-2');
-    }
     if (baseStatus === 'aprobada' && writableRoles.includes(role())) {
       action('Registrar abono', 'bg-primary-500 text-white hover:bg-primary-600', () => openPayment(), 'circle-dollar-sign');
     }
+    if (baseStatus === 'cancelada' && role() === 'admin') {
+      action('Registrar devolución', 'border border-danger-100 text-danger-700', openRefund, 'undo-2');
+    }
     if (baseStatus === 'aprobada' && role() === 'admin') {
       action('Cancelar plan', 'border border-danger-100 text-danger-700', () => transition('cancelar'), 'ban');
+      action('Editar mensualidades', 'border border-border hover:bg-surface-hover', openEditCalendar, 'calendar-cog');
+      action('Agregar concepto', 'border border-border hover:bg-surface-hover', openAddConcept, 'plus-circle');
     }
     // La facturacion se ofrece en planes liquidados y tambien en cancelados:
     // en un plan cancelado los abonos cobrados son dinero real y el paciente
@@ -279,6 +329,10 @@ const Cobranza = (() => {
     if (facturable && role() === 'admin') {
       const label = invoiceError ? 'Reintentar facturación' : 'Facturar abonos cobrados';
       action(label, 'bg-amber-500 text-white hover:bg-amber-600', retryInvoice, 'refresh-cw');
+    }
+    // Eliminar disponible en cualquier estatus (antes sólo borrador).
+    if (role() === 'admin') {
+      action('Eliminar', 'border border-danger-100 text-danger-700', removeQuote, 'trash-2');
     }
   }
 
@@ -319,13 +373,194 @@ const Cobranza = (() => {
   }
 
   async function removeQuote() {
-    if (!window.confirm('¿Eliminar definitivamente este borrador?')) return;
+    if (!window.confirm('¿Eliminar definitivamente esta cotización y todos sus pagos e ingresos?')) return;
+    const password = await AdminGate.ask('Eliminar la cotización borra sus pagos e ingresos. Confirma con tu contraseña.');
+    if (password === null) return;
     try {
-      await API.delete(`/cobranza/cotizaciones/${state.current.id}`);
+      await API.delete(`/cobranza/cotizaciones/${state.current.id}`, { admin_password: password });
       Modal.close('modal-cotizacion-detalle');
-      Toast.success('Borrador eliminado');
+      Toast.success('Cotización eliminada');
       await reload();
     } catch (error) { Toast.error(error.message); }
+  }
+
+  // Monto máximo devolvible: lo cobrado en abonos no históricos, menos lo ya
+  // devuelto. Replica devolvible() del backend (services.py) para el hint de
+  // UI; el backend es quien valida de verdad al guardar.
+  function montoDevolvible(quote) {
+    const cobrado = (quote.pagos || [])
+      .filter(p => !p.historico)
+      .reduce((sum, p) => sum + Number(p.monto || 0), 0);
+    return Math.max(cobrado - Number(quote.devuelto || 0), 0);
+  }
+
+  async function openRefund() {
+    const password = await AdminGate.ask('Registrar una devolución. Confirma con tu contraseña.');
+    if (password === null) return;
+
+    const disponible = montoDevolvible(state.current);
+    $('form-devolucion').reset();
+    $('devolucion-fecha').value = localISO();
+    $('devolucion-monto').value = disponible ? disponible.toFixed(2) : '';
+    $('devolucion-disponible').textContent = `Disponible: ${fmt(disponible)}`;
+    $('devolucion-metodo').innerHTML = '<option value="">Sin método</option>' +
+      state.methods.map(method => `<option value="${method.id}">${esc(method.nombre)}</option>`).join('');
+
+    $('form-devolucion').onsubmit = async (event) => {
+      event.preventDefault();
+      const button = $('btn-guardar-devolucion');
+      button.disabled = true;
+      try {
+        const result = await API.post(`/cobranza/cotizaciones/${state.current.id}/devoluciones`, {
+          fecha: $('devolucion-fecha').value,
+          monto: Number($('devolucion-monto').value),
+          metodo_pago_id: Number($('devolucion-metodo').value) || null,
+          motivo: $('devolucion-motivo').value.trim() || null,
+          admin_password: password,
+        });
+        Modal.close('modal-devolucion');
+        Toast.success('Devolución registrada');
+        if (result.aviso_nota_credito) Toast.warning(result.aviso_nota_credito, 8000);
+        await reload();
+        await refreshDetail();
+      } catch (error) {
+        Toast.error(error.message || 'No se pudo registrar la devolución');
+      } finally {
+        button.disabled = false;
+      }
+    };
+    Modal.open('modal-devolucion');
+  }
+
+  async function openEditCalendar() {
+    const password = await AdminGate.ask('Editar las mensualidades del plan. Confirma con tu contraseña.');
+    if (password === null) return;
+
+    const body = $('editar-calendario-body');
+    body.replaceChildren();
+    const rows = [];
+
+    function updateSum() {
+      const suma = rows.reduce((sum, r) => sum + (Number(r.inputMonto.value) || 0), 0);
+      $('editar-calendario-suma').textContent = `${fmt(suma)} / ${fmt(state.current.total)}`;
+    }
+
+    (state.current.programados || []).forEach(item => {
+      const pagado = item.monto_pagado > 0.01;
+      const tr = document.createElement('tr');
+      tr.className = 'border-t border-border';
+
+      tr.appendChild(domEl('td', 'py-2', item.numero === 0 ? 'Anticipo' : `Pago ${item.numero}`));
+
+      const tdFecha = document.createElement('td');
+      tdFecha.className = 'py-2';
+      const inputFecha = document.createElement('input');
+      inputFecha.type = 'date';
+      inputFecha.value = item.fecha_vencimiento;
+      inputFecha.disabled = pagado;
+      inputFecha.className = 'w-full rounded-lg border border-border px-2 py-1 text-sm disabled:bg-surface-alt disabled:text-text-muted';
+      tdFecha.appendChild(inputFecha);
+      tr.appendChild(tdFecha);
+
+      const tdMonto = document.createElement('td');
+      tdMonto.className = 'py-2 text-right';
+      const inputMonto = document.createElement('input');
+      inputMonto.type = 'number';
+      inputMonto.min = '0.01';
+      inputMonto.step = '0.01';
+      inputMonto.value = item.monto_programado;
+      inputMonto.disabled = pagado;
+      inputMonto.className = 'w-28 rounded-lg border border-border px-2 py-1 text-sm text-right disabled:bg-surface-alt disabled:text-text-muted';
+      inputMonto.addEventListener('input', updateSum);
+      tdMonto.appendChild(inputMonto);
+      tr.appendChild(tdMonto);
+
+      const tdEstatus = document.createElement('td');
+      tdEstatus.className = 'py-2 text-center';
+      if (pagado) tdEstatus.appendChild(badgeEl('pagada', 'success'));
+      tr.appendChild(tdEstatus);
+
+      body.appendChild(tr);
+      rows.push({ numero: item.numero, inputFecha, inputMonto });
+    });
+    updateSum();
+
+    $('form-editar-calendario').onsubmit = async (event) => {
+      event.preventDefault();
+      const calendario = rows.map(r => ({
+        numero: r.numero,
+        fecha_vencimiento: r.inputFecha.value,
+        monto_programado: Number(r.inputMonto.value),
+      }));
+      const button = $('btn-guardar-calendario');
+      button.disabled = true;
+      try {
+        await API.put(`/cobranza/cotizaciones/${state.current.id}/calendario`, {
+          calendario,
+          admin_password: password,
+        });
+        Modal.close('modal-editar-calendario');
+        Toast.success('Mensualidades actualizadas');
+        await reload();
+        await refreshDetail();
+      } catch (error) {
+        Toast.error(error.message || 'No se pudieron guardar las mensualidades');
+      } finally {
+        button.disabled = false;
+      }
+    };
+    Modal.open('modal-editar-calendario');
+  }
+
+  function updateConceptPreview() {
+    const cantidad = Number($('concepto-cantidad').value) || 0;
+    const precio = Number($('concepto-precio').value) || 0;
+    const incremento = cantidad * precio;
+    const nuevoTotal = Number(state.current.total || 0) + incremento;
+    const pendientes = (state.current.programados || [])
+      .filter(p => p.numero >= 1 && p.monto_pagado <= 0.01);
+    let mensaje = `Nuevo total: ${fmt(nuevoTotal)}`;
+    if (pendientes.length) {
+      const porPendiente = incremento / pendientes.length;
+      const ejemplo = Number(pendientes[0].monto_programado || 0) + porPendiente;
+      mensaje += ` · las mensualidades pendientes pasan a ${fmt(ejemplo)}`;
+    }
+    $('concepto-preview').textContent = mensaje;
+  }
+
+  async function openAddConcept() {
+    const password = await AdminGate.ask('Agregar un concepto al plan. Confirma con tu contraseña.');
+    if (password === null) return;
+
+    $('form-agregar-concepto').reset();
+    $('concepto-cantidad').value = '1';
+    $('concepto-precio').value = '';
+    updateConceptPreview();
+    $('concepto-cantidad').oninput = updateConceptPreview;
+    $('concepto-precio').oninput = updateConceptPreview;
+
+    $('form-agregar-concepto').onsubmit = async (event) => {
+      event.preventDefault();
+      const button = $('btn-guardar-concepto');
+      button.disabled = true;
+      try {
+        await API.post(`/cobranza/cotizaciones/${state.current.id}/conceptos`, {
+          descripcion: $('concepto-descripcion').value.trim(),
+          cantidad: Number($('concepto-cantidad').value) || 1,
+          precio_unitario: Number($('concepto-precio').value) || 0,
+          admin_password: password,
+        });
+        Modal.close('modal-agregar-concepto');
+        Toast.success('Concepto agregado');
+        await reload();
+        await refreshDetail();
+      } catch (error) {
+        Toast.error(error.message || 'No se pudo agregar el concepto');
+      } finally {
+        button.disabled = false;
+      }
+    };
+    Modal.open('modal-agregar-concepto');
   }
 
   async function sendQuote() {
@@ -335,6 +570,17 @@ const Cobranza = (() => {
       await reload();
       await refreshDetail();
     } catch (error) { Toast.error(error.message); }
+  }
+
+  async function sendStatement() {
+    try {
+      const result = await API.post(
+        `/cobranza/cotizaciones/${state.current.id}/estado-cuenta/enviar`, {},
+      );
+      Toast.success(result.message || 'Estado de cuenta enviado por correo');
+    } catch (error) {
+      Toast.error(error.message || 'No se pudo enviar el estado de cuenta');
+    }
   }
 
   async function copyStatement() {
@@ -424,6 +670,37 @@ const Cobranza = (() => {
     } catch (error) { Toast.error(error.message); }
   }
 
+  async function openAuditLog() {
+    try {
+      const filas = await API.get('/cobranza/auditoria');
+      const cont = $('auditoria-lista');
+      cont.replaceChildren();
+      if (!filas.length) {
+        const vacio = document.createElement('p');
+        vacio.className = 'text-sm text-text-muted';
+        vacio.textContent = 'Sin operaciones registradas.';
+        cont.appendChild(vacio);
+      } else {
+        // textContent en todos los campos: `paciente` y `usuario` vienen de
+        // datos capturados por el usuario y no deben interpretarse como HTML.
+        filas.forEach((f) => {
+          const row = document.createElement('div');
+          row.className = 'flex justify-between border-b border-border py-2 text-sm';
+          const fecha = f.created_at ? new Date(f.created_at).toLocaleDateString() : '';
+          const monto = f.monto != null ? `$${Number(f.monto).toLocaleString()}` : '';
+          const izq = document.createElement('span');
+          izq.textContent = `${fecha} · ${f.accion} · ${f.cotizacion_folio}`
+            + (f.paciente ? ` · ${f.paciente}` : '');
+          const der = document.createElement('span');
+          der.textContent = `${monto}${f.usuario ? ' · ' + f.usuario : ''}`;
+          row.append(izq, der);
+          cont.appendChild(row);
+        });
+      }
+      Modal.open('modal-auditoria');
+    } catch (error) { Toast.error(error.message || 'No se pudo cargar la bitácora'); }
+  }
+
   function clearFilters() {
     ['filtro-estatus', 'filtro-paciente', 'filtro-desde', 'filtro-hasta']
       .forEach(id => { $(id).value = ''; });
@@ -444,10 +721,12 @@ const Cobranza = (() => {
       state.branches = (Array.isArray(branches) ? branches : []).filter(branch => branch.activa !== false);
       refreshPatients(CobranzaForm.patients());
       $('btn-nueva-cotizacion').classList.toggle('hidden', !writableRoles.includes(role()));
+      $('btn-bitacora').classList.toggle('hidden', role() !== 'admin');
     } catch (error) {
       Toast.error(error.message || 'No se pudieron cargar los catálogos');
     }
     $('btn-nueva-cotizacion').addEventListener('click', () => CobranzaForm.open());
+    $('btn-bitacora').addEventListener('click', openAuditLog);
     $('form-pago').addEventListener('submit', savePayment);
     $('btn-limpiar-filtros').addEventListener('click', clearFilters);
     ['filtro-estatus', 'filtro-paciente', 'filtro-desde', 'filtro-hasta']

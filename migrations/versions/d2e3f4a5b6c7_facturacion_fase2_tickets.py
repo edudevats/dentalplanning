@@ -52,18 +52,32 @@ def upgrade():
     )
     op.create_index('ix_tickets_tenant_estado', 'tickets',
                     ['tenant_id', 'estado'])
-    op.add_column('ingresos', sa.Column('ticket_id', sa.Integer(), nullable=True))
-    op.add_column('ingresos', sa.Column('sucursal_id', sa.Integer(), nullable=True))
-    op.create_foreign_key('fk_ingresos_ticket', 'ingresos', 'tickets',
-                          ['ticket_id'], ['id'])
-    op.create_foreign_key('fk_ingresos_sucursal', 'ingresos', 'sucursales',
-                          ['sucursal_id'], ['id'])
+    # SQLite no permite ALTER TABLE ... ADD CONSTRAINT. El modo batch recrea
+    # la tabla preservando sus datos y también funciona en los demás motores.
+    with op.batch_alter_table('ingresos', schema=None) as batch_op:
+        batch_op.add_column(
+            sa.Column('ticket_id', sa.Integer(), nullable=True)
+        )
+        batch_op.add_column(
+            sa.Column('sucursal_id', sa.Integer(), nullable=True)
+        )
+        batch_op.create_foreign_key(
+            'fk_ingresos_ticket', 'tickets', ['ticket_id'], ['id']
+        )
+        batch_op.create_foreign_key(
+            'fk_ingresos_sucursal', 'sucursales', ['sucursal_id'], ['id']
+        )
 
 
 def downgrade():
-    op.drop_constraint('fk_ingresos_sucursal', 'ingresos', type_='foreignkey')
-    op.drop_constraint('fk_ingresos_ticket', 'ingresos', type_='foreignkey')
-    op.drop_column('ingresos', 'sucursal_id')
-    op.drop_column('ingresos', 'ticket_id')
+    with op.batch_alter_table('ingresos', schema=None) as batch_op:
+        batch_op.drop_constraint(
+            'fk_ingresos_sucursal', type_='foreignkey'
+        )
+        batch_op.drop_constraint(
+            'fk_ingresos_ticket', type_='foreignkey'
+        )
+        batch_op.drop_column('sucursal_id')
+        batch_op.drop_column('ticket_id')
     op.drop_index('ix_tickets_tenant_estado', table_name='tickets')
     op.drop_table('tickets')

@@ -7,7 +7,15 @@ from sqlalchemy.orm import joinedload, selectinload
 
 from app.cobranza import services
 from app.cobranza.models import Cotizacion, Pago
-from app.cobranza.schemas import AprobarSchema, CotizacionSchema, PagoSchema
+from app.cobranza.schemas import (
+    AprobarSchema,
+    ConceptoExtraSchema,
+    CotizacionSchema,
+    DevolucionSchema,
+    EditarCalendarioSchema,
+    PagoSchema,
+)
+from app.middleware.reauth import require_admin_password
 from app.middleware.tenant import require_auth, require_role
 
 
@@ -45,6 +53,7 @@ def _query_cotizaciones():
         selectinload(Cotizacion.conceptos),
         selectinload(Cotizacion.programados),
         selectinload(Cotizacion.pagos).joinedload(Pago.metodo_pago),
+        selectinload(Cotizacion.devoluciones),
     ).filter(Cotizacion.tenant_id == g.tenant_id)
 
 
@@ -89,6 +98,17 @@ def _dump(cotizacion, *, detallado=False):
         data["dias_sin_pago"] = None
     if detallado:
         data["pagos"] = [_dump_pago(pago) for pago in cotizacion.pagos]
+        data["devoluciones"] = [
+            {
+                "id": d.id,
+                "fecha": d.fecha.isoformat(),
+                "monto": d.monto,
+                "metodo_pago_nombre": d.metodo_pago.nombre if d.metodo_pago else None,
+                "motivo": d.motivo,
+            }
+            for d in sorted(cotizacion.devoluciones, key=lambda d: (d.fecha, d.id or 0))
+        ]
+        data["devuelto"] = services.total_pagado_devuelto(cotizacion)
     return data
 
 
@@ -165,8 +185,9 @@ def actualizar_cotizacion(cotizacion_id):
 @cobranza_bp.route("/cotizaciones/<int:cotizacion_id>", methods=["DELETE"])
 @require_auth
 @require_role("admin")
+@require_admin_password
 def eliminar_cotizacion(cotizacion_id):
-    services.eliminar_cotizacion(g.tenant_id, cotizacion_id)
+    services.eliminar_cotizacion(g.tenant_id, g.current_user.id, cotizacion_id)
     return jsonify({"message": "Cotización eliminada"})
 
 
@@ -211,6 +232,34 @@ def cancelar_cotizacion(cotizacion_id):
 
 
 @cobranza_bp.route(
+    "/cotizaciones/<int:cotizacion_id>/calendario", methods=["PUT"],
+)
+@require_auth
+@require_role("admin")
+@require_admin_password
+def editar_calendario(cotizacion_id):
+    data = EditarCalendarioSchema().load(request.get_json() or {})
+    cotizacion = services.editar_calendario(
+        g.tenant_id, g.current_user.id, cotizacion_id, data["calendario"],
+    )
+    return jsonify(_dump(cotizacion, detallado=True))
+
+
+@cobranza_bp.route(
+    "/cotizaciones/<int:cotizacion_id>/conceptos", methods=["POST"],
+)
+@require_auth
+@require_role("admin")
+@require_admin_password
+def agregar_concepto(cotizacion_id):
+    data = ConceptoExtraSchema().load(request.get_json() or {})
+    cotizacion = services.agregar_concepto(
+        g.tenant_id, g.current_user.id, cotizacion_id, data,
+    )
+    return jsonify(_dump(cotizacion, detallado=True))
+
+
+@cobranza_bp.route(
     "/cotizaciones/<int:cotizacion_id>/enviar", methods=["POST"],
 )
 @require_auth
@@ -231,6 +280,39 @@ def enviar_cotizacion(cotizacion_id):
         g.tenant_id, cotizacion_id,
     )
     return jsonify(_dump(cotizacion, detallado=True))
+
+
+@cobranza_bp.route(
+    "/cotizaciones/<int:cotizacion_id>/estado-cuenta/enviar",
+    methods=["POST"],
+)
+@require_auth
+@require_role("admin", "editor", "recepcionista")
+def enviar_estado_cuenta(cotizacion_id):
+    from app.cobranza.correo import enviar_estado_cuenta as enviar
+    from app.email.service import EmailError
+
+    cotizacion = services.obtener_cotizacion(g.tenant_id, cotizacion_id)
+    if cotizacion.estatus not in ("aprobada", "liquidada", "cancelada"):
+        raise services.CobranzaError(
+            "El estado de cuenta sólo se puede enviar cuando el plan ya está "
+            "en cobranza"
+        )
+    datos = services.datos_estado_cuenta(g.tenant_id, cotizacion_id)
+    try:
+        enviado = enviar(cotizacion, datos)
+    except EmailError:
+        return jsonify({
+            "error": "El servidor de correo rechazó el envío. Intenta de nuevo."
+        }), 502
+    if not enviado:
+        return jsonify({
+            "error": "No se pudo enviar el correo. Revisa la configuración SMTP."
+        }), 502
+    return jsonify({
+        "enviado": True,
+        "message": "Estado de cuenta enviado por correo",
+    })
 
 
 @cobranza_bp.route(
@@ -264,9 +346,39 @@ def registrar_pago(cotizacion_id):
 @cobranza_bp.route("/pagos/<int:pago_id>", methods=["DELETE"])
 @require_auth
 @require_role("admin")
+@require_admin_password
 def eliminar_pago(pago_id):
-    services.eliminar_pago(g.tenant_id, pago_id)
+    services.eliminar_pago(g.tenant_id, g.current_user.id, pago_id)
     return jsonify({"message": "Pago eliminado"})
+
+
+@cobranza_bp.route(
+    "/cotizaciones/<int:cotizacion_id>/devoluciones", methods=["POST"],
+)
+@require_auth
+@require_role("admin")
+@require_admin_password
+def registrar_devolucion(cotizacion_id):
+    data = DevolucionSchema().load(request.get_json() or {})
+    devolucion = services.registrar_devolucion(
+        g.tenant_id, g.current_user.id, cotizacion_id, data,
+    )
+    cotizacion = services.obtener_cotizacion(g.tenant_id, cotizacion_id)
+    aviso = None
+    if cotizacion.facturacion_estado in ("completada", "parcial_historicos"):
+        aviso = (
+            "El plan ya fue facturado. El CFDI emitido necesita una nota de "
+            "crédito manual por la devolución; este módulo no la genera."
+        )
+    return jsonify({
+        "devolucion": {
+            "id": devolucion.id,
+            "fecha": devolucion.fecha.isoformat(),
+            "monto": devolucion.monto,
+        },
+        "cotizacion": _dump(cotizacion, detallado=True),
+        "aviso_nota_credito": aviso,
+    }), 201
 
 
 @cobranza_bp.route(
@@ -333,3 +445,29 @@ def reintentar_facturacion(cotizacion_id):
 @require_auth
 def resumen():
     return jsonify(services.resumen_cobranza(g.tenant_id))
+
+
+@cobranza_bp.route("/auditoria", methods=["GET"])
+@require_auth
+@require_role("admin")
+def auditoria():
+    filas = services.listar_auditoria(
+        g.tenant_id,
+        accion=(request.args.get("accion") or "").strip() or None,
+        fecha_desde=_fecha_param("fecha_desde"),
+        fecha_hasta=_fecha_param("fecha_hasta"),
+    )
+    return jsonify([
+        {
+            "id": f.id,
+            "accion": f.accion,
+            "cotizacion_id": f.cotizacion_id,
+            "cotizacion_folio": f.cotizacion_folio,
+            "paciente": f.paciente,
+            "monto": f.monto,
+            "detalle": f.detalle,
+            "usuario": f.usuario.name if f.usuario else None,
+            "created_at": f.created_at.isoformat() if f.created_at else None,
+        }
+        for f in filas
+    ])

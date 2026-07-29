@@ -49,7 +49,7 @@ def _linea_abono(abono):
 def construir_texto(*, paciente, fecha_inicio, total, anticipo, frecuencia,
                     num_parcialidades, parcialidades_pagadas,
                     abonos_anticipo, abonos_parcialidades, pagado, saldo,
-                    hora=None):
+                    devoluciones=None, hora=None):
     """Arma el estado de cuenta completo, listo para pegar en WhatsApp."""
     if hora is None:
         from app.facturacion.timezone_helper import now_mexico
@@ -77,6 +77,14 @@ def construir_texto(*, paciente, fecha_inicio, total, anticipo, frecuencia,
             f"actualmente llevan {parcialidades_pagadas}:"
         ]
         lineas += [_linea_abono(a) for a in abonos_parcialidades]
+        bloques.append("\n".join(lineas))
+
+    if devoluciones:
+        total_dev = sum(d["monto"] for d in devoluciones)
+        lineas = [
+            f"Se realizaron devoluciones por {monto_texto(total_dev)} pesos:"
+        ]
+        lineas += [_linea_abono(d) for d in devoluciones]
         bloques.append("\n".join(lineas))
 
     bloques.append(

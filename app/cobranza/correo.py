@@ -47,6 +47,34 @@ def enviar_cotizacion(cot):
     )
 
 
+def enviar_estado_cuenta(cot, datos):
+    """Manda el estado de cuenta en el correo y como PDF adjunto."""
+    from app.cobranza.pdf import nombre_archivo, pdf_estado_cuenta
+
+    destino = _email_paciente(cot)
+    filename = nombre_archivo(cot, "Estado-de-cuenta")
+    nombre = escape(cot.paciente.nombre)
+    folio = escape(cot.folio)
+    texto_estado = datos["texto"]
+    estado_html = escape(texto_estado).replace("\n", "<br>")
+    html = (
+        f"<p>Hola {nombre},</p>"
+        f"<p>Te compartimos el estado de cuenta de tu tratamiento "
+        f"<strong>{folio}</strong>.</p>"
+        f'<div style="padding:16px;background:#f8fafc;border-radius:8px;'
+        f'line-height:1.5">{estado_html}</div>'
+        "<p>También encontrarás el documento completo en PDF adjunto.</p>"
+        "<p>Cualquier duda, quedamos a tus órdenes.</p>"
+    )
+    return send_email_with_attachments(
+        destino,
+        f"Estado de cuenta {cot.folio}",
+        html,
+        [(filename, pdf_estado_cuenta(cot, datos), "application/pdf")],
+        text_body=texto_estado,
+    )
+
+
 def enviar_link_facturacion(cot, ticket):
     """Manda el enlace funcional del portal una vez confirmado el ticket."""
     if ticket is None:

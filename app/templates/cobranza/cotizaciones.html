@@ -8,10 +8,16 @@
       <h1 class="text-2xl font-bold font-heading text-text-primary">Cotizaciones y cobranza</h1>
       <p class="text-sm text-text-muted mt-1">Presupuestos, planes de pago y estados de cuenta.</p>
     </div>
-    <button id="btn-nueva-cotizacion" type="button"
-            class="inline-flex items-center justify-center gap-2 rounded-lg bg-primary-500 hover:bg-primary-600 text-white px-4 py-2.5 text-sm font-semibold cursor-pointer">
-      <i data-lucide="plus" class="h-4 w-4"></i> Nueva cotización
-    </button>
+    <div class="flex items-center gap-2">
+      <button id="btn-bitacora" type="button"
+              class="hidden inline-flex items-center justify-center gap-2 rounded-lg border border-border hover:bg-surface-hover px-4 py-2.5 text-sm font-semibold cursor-pointer">
+        <i data-lucide="scroll-text" class="h-4 w-4"></i> Bitácora
+      </button>
+      <button id="btn-nueva-cotizacion" type="button"
+              class="inline-flex items-center justify-center gap-2 rounded-lg bg-primary-500 hover:bg-primary-600 text-white px-4 py-2.5 text-sm font-semibold cursor-pointer">
+        <i data-lucide="plus" class="h-4 w-4"></i> Nueva cotización
+      </button>
+    </div>
   </div>
 
   <div class="grid grid-cols-2 xl:grid-cols-4 gap-4">
@@ -135,6 +141,158 @@
       <button id="btn-guardar-pago" type="submit"
               class="w-full rounded-lg bg-primary-500 hover:bg-primary-600 text-white px-4 py-2.5 font-semibold cursor-pointer">
         Guardar abono
+      </button>
+    </form>
+  </div>
+</div>
+
+<div id="modal-auditoria" class="hidden fixed inset-0 z-[60] overflow-y-auto">
+  <div class="flex min-h-full items-end sm:items-center justify-center p-4">
+    <div class="fixed inset-0 bg-black/40" data-close-modal="modal-auditoria"></div>
+    <div class="relative bg-surface rounded-2xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto p-6 space-y-4">
+      <div class="flex items-center justify-between">
+        <h2 class="text-lg font-bold">Bitácora de operaciones sensibles</h2>
+        <button type="button" data-close-modal="modal-auditoria" class="p-2 cursor-pointer">
+          <i data-lucide="x" class="h-5 w-5"></i>
+        </button>
+      </div>
+      <div id="auditoria-lista"></div>
+    </div>
+  </div>
+</div>
+
+<div id="modal-admin-gate" class="hidden fixed inset-0 z-[70] overflow-y-auto">
+  <div class="flex min-h-full items-end sm:items-center justify-center p-4">
+    <div id="admin-gate-backdrop" class="fixed inset-0 bg-black/40"></div>
+    <form id="admin-gate-form" class="relative bg-surface rounded-2xl shadow-xl w-full max-w-sm p-6 space-y-4">
+      <div class="flex items-center justify-between">
+        <h2 class="text-lg font-bold">Confirmar con contraseña</h2>
+        <button type="button" id="admin-gate-x" class="p-2 cursor-pointer" aria-label="Cerrar">
+          <i data-lucide="x" class="h-5 w-5"></i>
+        </button>
+      </div>
+      <p id="admin-gate-msg" class="text-sm text-text-muted"></p>
+      <input id="admin-gate-input" type="password" autocomplete="current-password"
+             class="w-full rounded-lg border border-border px-3 py-2"
+             placeholder="Contraseña de administrador" />
+      <div class="flex justify-end gap-2">
+        <button type="button" id="admin-gate-cancel"
+                class="rounded-lg border border-border px-3 py-2 text-sm font-medium hover:bg-surface-hover cursor-pointer">
+          Cancelar
+        </button>
+        <button type="submit"
+                class="rounded-lg bg-primary-500 hover:bg-primary-600 text-white px-3 py-2 text-sm font-semibold cursor-pointer">
+          Confirmar
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div id="modal-devolucion" class="hidden fixed inset-0 z-[60] overflow-y-auto">
+  <div class="flex min-h-full items-end sm:items-center justify-center p-4">
+    <div class="fixed inset-0 bg-black/40" data-close-modal="modal-devolucion"></div>
+    <form id="form-devolucion" class="relative bg-surface rounded-2xl shadow-xl w-full max-w-lg p-6 space-y-4">
+      <div class="flex items-center justify-between">
+        <div>
+          <h2 class="text-lg font-bold">Registrar devolución</h2>
+          <p id="devolucion-disponible" class="text-sm text-text-muted"></p>
+        </div>
+        <button type="button" data-close-modal="modal-devolucion" class="p-2 cursor-pointer">
+          <i data-lucide="x" class="h-5 w-5"></i>
+        </button>
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <label class="text-sm">Fecha
+          <input id="devolucion-fecha" type="date" required
+                 class="mt-1 w-full rounded-lg border border-border px-3 py-2" />
+        </label>
+        <label class="text-sm">Monto
+          <input id="devolucion-monto" type="number" min="0.01" step="0.01" required
+                 class="mt-1 w-full rounded-lg border border-border px-3 py-2" />
+        </label>
+      </div>
+      <label class="block text-sm">Método de pago
+        <select id="devolucion-metodo" class="mt-1 w-full rounded-lg border border-border px-3 py-2"></select>
+      </label>
+      <label class="block text-sm">Motivo
+        <textarea id="devolucion-motivo" rows="2" class="mt-1 w-full rounded-lg border border-border px-3 py-2"></textarea>
+      </label>
+      <button id="btn-guardar-devolucion" type="submit"
+              class="w-full rounded-lg bg-red-600 hover:bg-red-700 text-white px-4 py-2.5 font-semibold cursor-pointer">
+        Registrar devolución
+      </button>
+    </form>
+  </div>
+</div>
+
+<div id="modal-editar-calendario" class="hidden fixed inset-0 z-[60] overflow-y-auto">
+  <div class="flex min-h-full items-end lg:items-center justify-center p-4">
+    <div class="fixed inset-0 bg-black/40" data-close-modal="modal-editar-calendario"></div>
+    <form id="form-editar-calendario"
+          class="relative bg-surface rounded-2xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto p-6 space-y-4">
+      <div class="flex items-center justify-between">
+        <h2 class="text-lg font-bold">Editar mensualidades</h2>
+        <button type="button" data-close-modal="modal-editar-calendario" class="p-2 cursor-pointer">
+          <i data-lucide="x" class="h-5 w-5"></i>
+        </button>
+      </div>
+      <p class="text-sm text-text-muted">
+        Las parcialidades que ya tienen un abono no se pueden editar.
+      </p>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead class="text-xs text-text-muted">
+            <tr>
+              <th class="py-2 text-left">Pago</th>
+              <th class="py-2 text-left">Fecha</th>
+              <th class="py-2 text-right">Monto</th>
+              <th class="py-2 text-center">Estado</th>
+            </tr>
+          </thead>
+          <tbody id="editar-calendario-body"></tbody>
+        </table>
+      </div>
+      <div class="flex justify-between text-sm font-semibold border-t border-border pt-3">
+        <span>Suma de mensualidades / Total del plan</span>
+        <span id="editar-calendario-suma"></span>
+      </div>
+      <button id="btn-guardar-calendario" type="submit"
+              class="w-full rounded-lg bg-primary-500 hover:bg-primary-600 text-white px-4 py-2.5 font-semibold cursor-pointer">
+        Guardar mensualidades
+      </button>
+    </form>
+  </div>
+</div>
+
+<div id="modal-agregar-concepto" class="hidden fixed inset-0 z-[60] overflow-y-auto">
+  <div class="flex min-h-full items-end sm:items-center justify-center p-4">
+    <div class="fixed inset-0 bg-black/40" data-close-modal="modal-agregar-concepto"></div>
+    <form id="form-agregar-concepto" class="relative bg-surface rounded-2xl shadow-xl w-full max-w-lg p-6 space-y-4">
+      <div class="flex items-center justify-between">
+        <h2 class="text-lg font-bold">Agregar concepto</h2>
+        <button type="button" data-close-modal="modal-agregar-concepto" class="p-2 cursor-pointer">
+          <i data-lucide="x" class="h-5 w-5"></i>
+        </button>
+      </div>
+      <label class="block text-sm">Descripción
+        <input id="concepto-descripcion" type="text" required
+               class="mt-1 w-full rounded-lg border border-border px-3 py-2" />
+      </label>
+      <div class="grid grid-cols-2 gap-3">
+        <label class="text-sm">Cantidad
+          <input id="concepto-cantidad" type="number" min="0.01" step="0.01" value="1" required
+                 class="mt-1 w-full rounded-lg border border-border px-3 py-2" />
+        </label>
+        <label class="text-sm">Precio unitario
+          <input id="concepto-precio" type="number" min="0" step="0.01" required
+                 class="mt-1 w-full rounded-lg border border-border px-3 py-2" />
+        </label>
+      </div>
+      <p id="concepto-preview" class="text-sm text-text-muted"></p>
+      <button id="btn-guardar-concepto" type="submit"
+              class="w-full rounded-lg bg-primary-500 hover:bg-primary-600 text-white px-4 py-2.5 font-semibold cursor-pointer">
+        Agregar concepto
       </button>
     </form>
   </div>

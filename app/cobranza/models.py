@@ -190,3 +190,63 @@ class Pago(db.Model):
             name="uq_cobranza_pago_idempotency",
         ),
     )
+
+
+class Devolucion(db.Model):
+    """Devolución de dinero a un paciente sobre un plan cancelado.
+
+    No toca `Pago`: los abonos ocurrieron de verdad y su historia se conserva.
+    El reflejo contable es un `Ingreso` de monto negativo (contra-asiento).
+    """
+    __tablename__ = "cobranza_devoluciones"
+
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey("tenants.id"), nullable=False, index=True)
+    cotizacion_id = db.Column(db.Integer, db.ForeignKey("cotizaciones.id"), nullable=False)
+    fecha = db.Column(db.Date, nullable=False)
+    monto = db.Column(db.Float, nullable=False)  # siempre positivo
+    metodo_pago_id = db.Column(db.Integer, db.ForeignKey("metodos_pago.id"), nullable=True)
+    motivo = db.Column(db.Text, nullable=True)
+    ingreso_id = db.Column(
+        db.Integer, db.ForeignKey("ingresos.id"), nullable=True, unique=True,
+    )
+    created_by = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+
+    cotizacion = db.relationship(
+        "Cotizacion",
+        backref=db.backref("devoluciones", cascade="all, delete-orphan",
+                           order_by="Devolucion.fecha, Devolucion.id"),
+    )
+    metodo_pago = db.relationship("MetodoPago")
+    ingreso = db.relationship(
+        "Ingreso", backref=db.backref("cobranza_devolucion", uselist=False),
+    )
+
+    __table_args__ = (
+        db.Index("ix_cobranza_devoluciones_tenant_cot", "tenant_id", "cotizacion_id"),
+    )
+
+
+class CobranzaAuditoria(db.Model):
+    """Bitácora de operaciones sensibles. `cotizacion_id` va SIN ForeignKey
+    a propósito: el registro de un borrado debe sobrevivir a la cotización.
+    """
+    __tablename__ = "cobranza_auditoria"
+
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey("tenants.id"), nullable=False, index=True)
+    usuario_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
+    accion = db.Column(db.String(40), nullable=False)
+    cotizacion_id = db.Column(db.Integer, nullable=True)  # sin FK: sobrevive al borrado
+    cotizacion_folio = db.Column(db.String(20), nullable=False)
+    paciente = db.Column(db.String(200), nullable=True)
+    monto = db.Column(db.Float, nullable=True)
+    detalle = db.Column(db.JSON, nullable=True)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+
+    usuario = db.relationship("User")
+
+    __table_args__ = (
+        db.Index("ix_cobranza_auditoria_tenant_fecha", "tenant_id", "created_at"),
+    )
