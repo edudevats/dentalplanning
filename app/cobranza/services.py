@@ -1392,9 +1392,11 @@ def registrar_auditoria(tenant_id, user_id, accion, cot, *, monto=None, detalle=
 def reasignar_especialista(tenant_id, user_id, cotizacion_id, especialista_id):
     """Asigna o cambia el especialista de una cotización ya en cobranza.
 
-    Solo afecta a futuro: los Ingresos ya creados conservan su especialista
-    (la comisión de cada pago se estampó al momento de registrarlo). No
-    recalcula comision_doctor_total, que depende de los conceptos, no del doctor.
+    Rellena los Ingresos del plan que se registraron SIN médico
+    (especialista_id NULL): su comisión ya estaba calculada, solo le da dueño.
+    Un Ingreso que ya tenga otro médico NO se reescribe (al cambiar de A→B, lo
+    cobrado bajo A se conserva). No recalcula comision_doctor_total, que depende
+    de los conceptos, no del doctor.
     """
     cot = obtener_cotizacion(tenant_id, cotizacion_id)
     if cot.estatus not in ("aprobada", "liquidada"):
@@ -1417,6 +1419,9 @@ def reasignar_especialista(tenant_id, user_id, cotizacion_id, especialista_id):
 
     try:
         cot.especialista_id = especialista_id
+        huerfanos = _ingresos_sin_medico_del_plan(cot)
+        for ingreso in huerfanos:
+            ingreso.especialista_id = especialista_id
         registrar_auditoria(
             tenant_id, user_id, "reasignar_especialista", cot,
             detalle={
@@ -1424,6 +1429,7 @@ def reasignar_especialista(tenant_id, user_id, cotizacion_id, especialista_id):
                 "a": especialista_id,
                 "de_nombre": _nombre(anterior_id),
                 "a_nombre": _nombre(especialista_id),
+                "ingresos_rellenados": len(huerfanos),
             },
         )
         db.session.commit()
@@ -1431,6 +1437,22 @@ def reasignar_especialista(tenant_id, user_id, cotizacion_id, especialista_id):
         db.session.rollback()
         raise
     return cot
+
+
+def _ingresos_sin_medico_del_plan(cot):
+    """Ingresos del plan (de pagos y devoluciones) con especialista_id NULL.
+
+    Los pagos históricos no generan Ingreso, así que quedan fuera solos.
+    """
+    ingresos = []
+    for pago in cot.pagos:
+        if pago.ingreso is not None and pago.ingreso.especialista_id is None:
+            ingresos.append(pago.ingreso)
+    for devolucion in cot.devoluciones:
+        if (devolucion.ingreso is not None
+                and devolucion.ingreso.especialista_id is None):
+            ingresos.append(devolucion.ingreso)
+    return ingresos
 
 
 def listar_auditoria(tenant_id, *, accion=None, fecha_desde=None, fecha_hasta=None):

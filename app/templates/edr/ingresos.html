@@ -323,7 +323,7 @@ function renderTable_() {
   const cols = [
     { key: 'fecha', label: 'Fecha', render: v => formatDate(v) },
     { key: 'paciente', label: 'Paciente' },
-    { key: 'tratamiento_id', label: 'Tratamiento', render: v => findName(tratamientos, v) },
+    { key: 'tratamiento_id', label: 'Tratamiento', render: (v, row) => v ? findName(tratamientos, v) : (row.nombre_tratamiento || '-') },
     { key: 'especialista_id', label: 'Especialista', render: v => findName(especialistas, v) },
     { key: 'metodo_pago_id', label: 'Metodo Pago', render: v => findName(metodosPago, v) },
     { key: 'descuento_pct', label: 'Descuento', align: 'right', render: v => domEl('span', 'tabular-nums text-text-muted', v ? v + '%' : '-') },
