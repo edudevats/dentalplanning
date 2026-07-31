@@ -1,5 +1,21 @@
 const SIDEBAR_W = 256;
 
+// ── Clinical Sanctuary palette — igual que el sidebar de CRM (tokens cs- de base.html) ──
+const CS = {
+  bg: '#f1f5f9',                  // surface-container-low (fondo del sidebar)
+  lowest: '#ffffff',              // surface-container-lowest
+  hover: '#e8eff3',               // surface-container (hover)
+  onSurface: '#2a3439',
+  onVar: '#475569',
+  primary: '#005db6',
+  primaryContainer: '#d5e3f7',
+  onPrimaryContainer: '#001c3b',
+  outline: '#8a9199',
+  containerHigh: '#dde6ec',
+  display: "'Manrope', system-ui, sans-serif",
+  body: "'Inter', system-ui, sans-serif",
+};
+
 function ClinicIncomeWidget() {
   const [amount, setAmount] = React.useState(null);
   React.useEffect(() => {
@@ -10,14 +26,85 @@ function ClinicIncomeWidget() {
   }, []);
   return (
     <div style={{
-      margin: '4px 0', padding: '10px 12px', background: '#f8fafc',
-      borderRadius: 8, border: '1px solid #e2e8f0',
+      margin: '4px 0', padding: '10px 12px', background: CS.lowest,
+      borderRadius: 8, border: `1px solid ${CS.containerHigh}`,
     }}>
-      <div style={{ fontSize: 11, color: '#94a3b8', fontFamily: 'var(--font-body)', marginBottom: 2 }}>
+      <div style={{ fontSize: 11, color: CS.onVar, fontFamily: CS.body, marginBottom: 2 }}>
         Ingresos consultorio (este mes)
       </div>
-      <div style={{ fontSize: 15, fontWeight: 600, color: '#164e63', fontFamily: 'var(--font-body)' }}>
+      <div style={{ fontSize: 15, fontWeight: 600, color: CS.onSurface, fontFamily: CS.body }}>
         {amount === null ? '---' : fmt(amount)}
+      </div>
+    </div>
+  );
+}
+
+// Enlace de navegacion estilo cs-nav-link de CRM (hover + estado activo con barra lateral).
+function CsNavLink({ href, icon, label, active }) {
+  const [hover, setHover] = useState(false);
+  const isActive = href === active;
+  const bg = isActive ? CS.lowest : (hover ? CS.hover : 'transparent');
+  const color = isActive ? CS.primary : (hover ? CS.onSurface : CS.onVar);
+  return (
+    <a href={href}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={{
+        display: 'flex', alignItems: 'center', gap: 12, padding: '10px 12px', borderRadius: 8,
+        fontSize: 14, fontWeight: isActive ? 600 : 500, fontFamily: CS.body, textDecoration: 'none',
+        color, background: bg,
+        boxShadow: isActive ? `inset 3px 0 0 0 ${CS.primary}` : 'none',
+        transition: 'background-color .2s, color .2s',
+      }}>
+      <Icon name={icon} size={18} />
+      {label}
+    </a>
+  );
+}
+
+// Enlace tenue del bloque inferior (Configuracion / Cambiar de Sistema), como en CRM.
+function CsBottomLink({ href, icon, label }) {
+  const [hover, setHover] = useState(false);
+  return (
+    <a href={href}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={{
+        display: 'flex', alignItems: 'center', gap: 12, padding: '8px 12px', borderRadius: 8,
+        fontSize: 14, fontWeight: 500, fontFamily: CS.body, textDecoration: 'none',
+        color: CS.onVar, background: hover ? CS.hover : 'transparent',
+        transition: 'background-color .2s, color .2s',
+      }}>
+      <Icon name={icon} size={18} />
+      {label}
+    </a>
+  );
+}
+
+// Tarjeta de usuario inferior, igual que la de CRM. Los datos vienen de /auth/me.
+function SidebarUserCard() {
+  const [name, setName] = useState('Usuario');
+  React.useEffect(() => {
+    const token = localStorage.getItem('token');
+    fetch('/api/v1/auth/me', { headers: token ? { Authorization: `Bearer ${token}` } : {} })
+      .then(r => (r.ok ? r.json() : null))
+      .then(d => { const u = d && (d.user || d); if (u && u.name) setName(u.name); })
+      .catch(() => {});
+  }, []);
+  const initials = name.split(' ').filter(Boolean).slice(0, 2).map(w => w[0].toUpperCase()).join('') || '??';
+  return (
+    <div style={{
+      marginTop: 12, display: 'flex', alignItems: 'center', gap: 12,
+      padding: '10px 12px', borderRadius: 8, background: CS.lowest,
+    }}>
+      <div style={{
+        width: 36, height: 36, borderRadius: 6, background: CS.primaryContainer,
+        color: CS.onPrimaryContainer, display: 'flex', alignItems: 'center', justifyContent: 'center',
+        fontSize: 14, fontWeight: 600, fontFamily: CS.display, flexShrink: 0,
+      }}>{initials}</div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 14, fontWeight: 600, color: CS.onSurface, fontFamily: CS.body, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</div>
+        <div style={{ fontSize: 12, color: CS.onVar, fontFamily: CS.body }}>Ver Perfil</div>
       </div>
     </div>
   );
@@ -33,41 +120,35 @@ function Sidebar({ active = '/finanzas-personales' }) {
     { icon: 'target',      label: 'Metas de ahorro',       href: '/finanzas-personales/metas' },
   ];
 
+  const sectionLabel = {
+    padding: '0 12px', marginBottom: 8, fontSize: 11, fontWeight: 600,
+    letterSpacing: '.06em', color: CS.outline, textTransform: 'uppercase', fontFamily: CS.body,
+  };
+
   return (
     <aside style={{
       position: 'fixed', top: 0, bottom: 0, left: 0, width: SIDEBAR_W,
-      background: '#fff', borderRight: '1px solid #e2e8f0', zIndex: 30,
-      display: 'flex', flexDirection: 'column', overflow: 'hidden',
+      background: CS.bg, zIndex: 30,
+      display: 'flex', flexDirection: 'column', overflow: 'hidden', padding: 16,
     }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '0 20px', height: 64, borderBottom: '1px solid #e2e8f0', flexShrink: 0 }}>
-        <img src="/static/imagenes/02-fondoblanco.jpg.jpeg" alt="Logo" style={{ height: 32, width: 32, objectFit: 'contain', borderRadius: 6 }} />
-        <span style={{ fontSize: 18, fontWeight: 700, fontFamily: 'var(--font-heading)', color: '#164e63' }}>Dental Planning</span>
+      <div style={{ padding: '0 8px', marginBottom: 24 }}>
+        <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, fontFamily: CS.display, color: CS.onSurface, lineHeight: 1.2 }}>
+          Finanzas Personales
+        </h2>
+        <p style={{ margin: '2px 0 0', fontSize: 12, color: CS.onVar, letterSpacing: '.05rem', fontFamily: CS.body }}>
+          Ingresos, Gastos y Metas
+        </p>
       </div>
 
-      <nav style={{ flex: 1, overflowY: 'auto', padding: '16px 12px', display: 'flex', flexDirection: 'column', gap: 22 }}>
+      <nav style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 22 }}>
         {/* FINANZAS PERSONALES */}
         <div>
-          <div style={{ padding: '0 12px', marginBottom: 8, fontSize: 11, fontWeight: 600, letterSpacing: '.06em', color: '#94a3b8', textTransform: 'uppercase', fontFamily: 'var(--font-body)' }}>
-            Finanzas Personales
+          <div style={sectionLabel}>Finanzas Personales</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            {fpItems.map(it => (
+              <CsNavLink key={it.href} href={it.href} icon={it.icon} label={it.label} active={active} />
+            ))}
           </div>
-          <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
-            {fpItems.map(it => {
-              const isActive = it.href === active;
-              return (
-                <li key={it.href}>
-                  <a href={it.href} style={{
-                    display: 'flex', alignItems: 'center', gap: 12, padding: '10px 12px', borderRadius: 8,
-                    fontSize: 14, fontWeight: 500, fontFamily: 'var(--font-body)', textDecoration: 'none',
-                    color: isActive ? '#0e7490' : '#475569',
-                    background: isActive ? '#ecfeff' : 'transparent',
-                  }}>
-                    <Icon name={it.icon} size={18} />
-                    {it.label}
-                  </a>
-                </li>
-              );
-            })}
-          </ul>
         </div>
 
         {/* RESUMEN DENTAL */}
@@ -77,23 +158,23 @@ function Sidebar({ active = '/finanzas-personales' }) {
             style={{
               display: 'flex', alignItems: 'center', justifyContent: 'space-between',
               width: '100%', padding: '0 12px', marginBottom: dentalOpen ? 8 : 0,
-              fontSize: 11, fontWeight: 600, letterSpacing: '.06em', color: '#94a3b8',
-              textTransform: 'uppercase', fontFamily: 'var(--font-body)',
+              fontSize: 11, fontWeight: 600, letterSpacing: '.06em', color: CS.outline,
+              textTransform: 'uppercase', fontFamily: CS.body,
               background: 'transparent', border: 'none', cursor: 'pointer',
             }}
           >
             Resumen Dental
-            <Icon name={dentalOpen ? 'chevron-up' : 'chevron-down'} size={12} color="#94a3b8" />
+            <Icon name={dentalOpen ? 'chevron-up' : 'chevron-down'} size={12} color={CS.outline} />
           </button>
           {dentalOpen && (
             <div style={{ padding: '0 4px' }}>
               <ClinicIncomeWidget />
               <a href="/ingresos" style={{
                 display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', marginTop: 4,
-                borderRadius: 8, fontSize: 13, fontWeight: 500, fontFamily: 'var(--font-body)',
-                color: '#475569', textDecoration: 'none',
+                borderRadius: 8, fontSize: 13, fontWeight: 500, fontFamily: CS.body,
+                color: CS.onVar, textDecoration: 'none',
               }}>
-                <Icon name="external-link" size={14} color="#94a3b8" />
+                <Icon name="external-link" size={14} color={CS.outline} />
                 Ver ingresos completos
                 <span style={{ fontSize: 10, background: '#fef9c3', color: '#92400e', borderRadius: 4, padding: '1px 5px', marginLeft: 'auto' }}>
                   cambia sistema
@@ -102,35 +183,12 @@ function Sidebar({ active = '/finanzas-personales' }) {
             </div>
           )}
         </div>
-
-        {/* SISTEMA */}
-        <div>
-          <div style={{ padding: '0 12px', marginBottom: 8, fontSize: 11, fontWeight: 600, letterSpacing: '.06em', color: '#94a3b8', textTransform: 'uppercase', fontFamily: 'var(--font-body)' }}>
-            Sistema
-          </div>
-          <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
-            <li>
-              <a href="/ajustes" style={{
-                display: 'flex', alignItems: 'center', gap: 12, padding: '10px 12px', borderRadius: 8,
-                fontSize: 14, fontWeight: 500, fontFamily: 'var(--font-body)', textDecoration: 'none',
-                color: '/ajustes' === active ? '#0e7490' : '#475569',
-                background: '/ajustes' === active ? '#ecfeff' : 'transparent',
-              }}>
-                <Icon name="settings" size={18} />Ajustes
-              </a>
-            </li>
-          </ul>
-        </div>
       </nav>
 
-      <div style={{ padding: '0 12px 12px 12px', flexShrink: 0 }}>
-        <a href="/selector" style={{
-          display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', borderRadius: 8,
-          fontSize: 11, fontWeight: 600, fontFamily: 'var(--font-body)', color: '#0e7490',
-          background: '#ecfeff', textDecoration: 'none', letterSpacing: '.02em',
-        }}>
-          <Icon name="grid-2x2" size={14} /> Cambiar de Sistema
-        </a>
+      <div style={{ paddingTop: 16, display: 'flex', flexDirection: 'column', gap: 2, flexShrink: 0 }}>
+        <CsBottomLink href="/ajustes" icon="settings" label="Configuración" />
+        <CsBottomLink href="/selector" icon="grid-2x2" label="Cambiar de Sistema" />
+        <SidebarUserCard />
       </div>
     </aside>
   );
