@@ -44,16 +44,6 @@ function Sidebar({ active = '/finanzas-personales' }) {
         <span style={{ fontSize: 18, fontWeight: 700, fontFamily: 'var(--font-heading)', color: '#164e63' }}>Dental Planning</span>
       </div>
 
-      <div style={{ padding: '12px 12px 0 12px' }}>
-        <a href="/selector" style={{
-          display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', borderRadius: 8,
-          fontSize: 11, fontWeight: 600, fontFamily: 'var(--font-body)', color: '#0e7490',
-          background: '#ecfeff', textDecoration: 'none', letterSpacing: '.02em',
-        }}>
-          <Icon name="grid-2x2" size={14} /> Cambiar de Sistema
-        </a>
-      </div>
-
       <nav style={{ flex: 1, overflowY: 'auto', padding: '16px 12px', display: 'flex', flexDirection: 'column', gap: 22 }}>
         {/* FINANZAS PERSONALES */}
         <div>
@@ -132,6 +122,16 @@ function Sidebar({ active = '/finanzas-personales' }) {
           </ul>
         </div>
       </nav>
+
+      <div style={{ padding: '0 12px 12px 12px', flexShrink: 0 }}>
+        <a href="/selector" style={{
+          display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', borderRadius: 8,
+          fontSize: 11, fontWeight: 600, fontFamily: 'var(--font-body)', color: '#0e7490',
+          background: '#ecfeff', textDecoration: 'none', letterSpacing: '.02em',
+        }}>
+          <Icon name="grid-2x2" size={14} /> Cambiar de Sistema
+        </a>
+      </div>
     </aside>
   );
 }

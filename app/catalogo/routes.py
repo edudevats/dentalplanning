@@ -153,9 +153,62 @@ def actualizar(material_id):
 @require_auth
 @require_role("admin")
 def eliminar(material_id):
+    from app.inventario.models import (
+        Lote, StockUbicacion, Compra, MovimientoInventario,
+    )
+    from app.tratamientos.models import TratamientoMaterial
+
     material = Material.query.filter_by(
         id=material_id, tenant_id=g.tenant_id
     ).first_or_404()
+
+    # Bloquear el borrado si el material tiene existencias o historial: la BD
+    # tiene FKs sin cascada (lotes/stock/compras/movimientos/tratamiento) que
+    # de lo contrario lanzan IntegrityError -> 409 con un mensaje genérico.
+    razones = []
+    n_stock = StockUbicacion.query.filter(
+        StockUbicacion.tenant_id == g.tenant_id,
+        StockUbicacion.material_id == material.id,
+        StockUbicacion.cantidad > 0,
+    ).count()
+    if n_stock:
+        razones.append(f"tiene existencias en {n_stock} ubicación(es)")
+
+    n_lotes = Lote.query.filter_by(
+        tenant_id=g.tenant_id, material_id=material.id
+    ).count()
+    if n_lotes:
+        razones.append(f"{n_lotes} lote(s) de inventario")
+
+    n_compras = Compra.query.filter_by(
+        tenant_id=g.tenant_id, material_id=material.id
+    ).count()
+    if n_compras:
+        razones.append(f"{n_compras} compra(s) registrada(s)")
+
+    n_movs = MovimientoInventario.query.filter_by(
+        tenant_id=g.tenant_id, material_id=material.id
+    ).count()
+    if n_movs:
+        razones.append(f"{n_movs} movimiento(s) de inventario")
+
+    n_trat = TratamientoMaterial.query.filter_by(material_id=material.id).count()
+    if n_trat:
+        razones.append(f"se usa en {n_trat} tratamiento(s)")
+
+    if razones:
+        msg = (
+            f"No se puede eliminar «{material.nombre}» porque "
+            + ", ".join(razones)
+            + ". Elimina o traspasa esos registros primero."
+        )
+        return jsonify({"error": msg, "detail": msg}), 409
+
+    # Sin historial real: limpiar filas de stock vacías (creadas al importar el
+    # material) y luego borrar. material_categoria se borra por cascada (FK).
+    StockUbicacion.query.filter_by(
+        tenant_id=g.tenant_id, material_id=material.id
+    ).delete(synchronize_session=False)
     db.session.delete(material)
     db.session.commit()
     return jsonify({"message": "Material eliminado"})
