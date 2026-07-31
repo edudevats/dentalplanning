@@ -14,6 +14,7 @@ from app.cobranza.schemas import (
     DevolucionSchema,
     EditarCalendarioSchema,
     PagoSchema,
+    ReasignarEspecialistaSchema,
 )
 from app.middleware.reauth import require_admin_password
 from app.middleware.tenant import require_auth, require_role
@@ -379,6 +380,20 @@ def registrar_devolucion(cotizacion_id):
         "cotizacion": _dump(cotizacion, detallado=True),
         "aviso_nota_credito": aviso,
     }), 201
+
+
+@cobranza_bp.route(
+    "/cotizaciones/<int:cotizacion_id>/especialista", methods=["POST"],
+)
+@require_auth
+@require_role("admin")
+@require_admin_password
+def reasignar_especialista(cotizacion_id):
+    data = ReasignarEspecialistaSchema().load(request.get_json() or {})
+    cotizacion = services.reasignar_especialista(
+        g.tenant_id, g.current_user.id, cotizacion_id, data["especialista_id"],
+    )
+    return jsonify(_dump(cotizacion, detallado=True))
 
 
 @cobranza_bp.route(

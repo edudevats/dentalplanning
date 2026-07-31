@@ -1389,6 +1389,50 @@ def registrar_auditoria(tenant_id, user_id, accion, cot, *, monto=None, detalle=
     ))
 
 
+def reasignar_especialista(tenant_id, user_id, cotizacion_id, especialista_id):
+    """Asigna o cambia el especialista de una cotización ya en cobranza.
+
+    Solo afecta a futuro: los Ingresos ya creados conservan su especialista
+    (la comisión de cada pago se estampó al momento de registrarlo). No
+    recalcula comision_doctor_total, que depende de los conceptos, no del doctor.
+    """
+    cot = obtener_cotizacion(tenant_id, cotizacion_id)
+    if cot.estatus not in ("aprobada", "liquidada"):
+        raise CobranzaError(
+            "Solo se puede asignar el médico en un plan ya aprobado"
+        )
+    if especialista_id is None:
+        raise CobranzaError("Selecciona un especialista")
+    _validar_especialista(tenant_id, especialista_id)
+
+    anterior_id = cot.especialista_id
+    if anterior_id == especialista_id:
+        return cot  # no-op idempotente: ni auditoría ni commit
+
+    def _nombre(eid):
+        if eid is None:
+            return None
+        esp = Especialista.query.filter_by(id=eid, tenant_id=tenant_id).first()
+        return esp.nombre if esp else None
+
+    try:
+        cot.especialista_id = especialista_id
+        registrar_auditoria(
+            tenant_id, user_id, "reasignar_especialista", cot,
+            detalle={
+                "de": anterior_id,
+                "a": especialista_id,
+                "de_nombre": _nombre(anterior_id),
+                "a_nombre": _nombre(especialista_id),
+            },
+        )
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        raise
+    return cot
+
+
 def listar_auditoria(tenant_id, *, accion=None, fecha_desde=None, fecha_hasta=None):
     q = CobranzaAuditoria.query.filter_by(tenant_id=tenant_id)
     if accion:

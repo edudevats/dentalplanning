@@ -512,5 +512,5 @@ const CobranzaForm = (() => {
     );
   }
 
-  return { init, open, loadCatalogs, patients: () => state.pacientes };
+  return { init, open, loadCatalogs, patients: () => state.pacientes, specialists: () => state.especialistas };
 })();

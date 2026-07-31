@@ -219,3 +219,10 @@ class EditarCalendarioSchema(Schema):
         fields.Nested(CalendarioItemSchema), required=True,
         validate=validate.Length(min=1),
     )
+
+
+class ReasignarEspecialistaSchema(Schema):
+    class Meta:
+        unknown = EXCLUDE
+
+    especialista_id = fields.Int(required=True)

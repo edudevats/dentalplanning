@@ -319,6 +319,10 @@ const Cobranza = (() => {
       action('Editar mensualidades', 'border border-border hover:bg-surface-hover', openEditCalendar, 'calendar-cog');
       action('Agregar concepto', 'border border-border hover:bg-surface-hover', openAddConcept, 'plus-circle');
     }
+    if (['aprobada', 'liquidada'].includes(baseStatus) && role() === 'admin') {
+      const label = quote.especialista_nombre ? 'Cambiar médico' : 'Asignar médico';
+      action(label, 'border border-border hover:bg-surface-hover', openAssignDoctor, 'user-plus');
+    }
     // La facturacion se ofrece en planes liquidados y tambien en cancelados:
     // en un plan cancelado los abonos cobrados son dinero real y el paciente
     // tiene derecho a su factura. Si aun no hay ticket es la primera emision;
@@ -430,6 +434,42 @@ const Cobranza = (() => {
       }
     };
     Modal.open('modal-devolucion');
+  }
+
+  async function openAssignDoctor() {
+    const password = await AdminGate.ask('Asignar el médico del plan. Confirma con tu contraseña.');
+    if (password === null) return;
+
+    const actual = state.current.especialista_id || null;
+    const activos = (CobranzaForm.specialists() || []).filter(s => s.is_active !== false);
+    $('especialista-select').innerHTML =
+      '<option value="">Selecciona…</option>' +
+      activos.map(s =>
+        `<option value="${s.id}" ${s.id === actual ? 'selected' : ''}>${esc(s.nombre)}</option>`
+      ).join('');
+
+    $('form-especialista').onsubmit = async (event) => {
+      event.preventDefault();
+      const especialistaId = Number($('especialista-select').value) || null;
+      if (!especialistaId) { Toast.error('Selecciona un especialista'); return; }
+      const button = $('btn-guardar-especialista');
+      button.disabled = true;
+      try {
+        await API.post(`/cobranza/cotizaciones/${state.current.id}/especialista`, {
+          especialista_id: especialistaId,
+          admin_password: password,
+        });
+        Modal.close('modal-especialista');
+        Toast.success('Médico asignado');
+        await reload();
+        await refreshDetail();
+      } catch (error) {
+        Toast.error(error.message || 'No se pudo asignar el médico');
+      } finally {
+        button.disabled = false;
+      }
+    };
+    Modal.open('modal-especialista');
   }
 
   async function openEditCalendar() {

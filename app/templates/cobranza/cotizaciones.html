@@ -189,6 +189,27 @@
   </div>
 </div>
 
+<div id="modal-especialista" class="hidden fixed inset-0 z-[60] overflow-y-auto">
+  <div class="min-h-full flex items-center justify-center p-4">
+    <div class="fixed inset-0 bg-black/40" data-close-modal="modal-especialista"></div>
+    <form id="form-especialista" class="relative bg-surface rounded-2xl shadow-xl w-full max-w-sm p-6 space-y-4">
+      <div class="flex items-start justify-between">
+        <h2 class="text-lg font-bold">Asignar médico</h2>
+        <button type="button" data-close-modal="modal-especialista" class="p-2 cursor-pointer" aria-label="Cerrar">✕</button>
+      </div>
+      <div>
+        <label class="text-sm text-text-muted">Especialista</label>
+        <select id="especialista-select" required
+                class="mt-1 w-full rounded-lg border border-border px-3 py-2"></select>
+      </div>
+      <button id="btn-guardar-especialista" type="submit"
+              class="w-full bg-primary-500 text-white rounded-lg py-2 hover:bg-primary-600">
+        Guardar
+      </button>
+    </form>
+  </div>
+</div>
+
 <div id="modal-devolucion" class="hidden fixed inset-0 z-[60] overflow-y-auto">
   <div class="flex min-h-full items-end sm:items-center justify-center p-4">
     <div class="fixed inset-0 bg-black/40" data-close-modal="modal-devolucion"></div>
