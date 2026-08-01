@@ -227,6 +227,13 @@ def eliminar_gasto(gasto_id):
     gasto = GastoOperativo.query.filter_by(
         id=gasto_id, tenant_id=g.tenant_id
     ).first_or_404()
+
+    from app.cobranza.models import Devolucion
+    if Devolucion.query.filter_by(tenant_id=g.tenant_id, gasto_id=gasto.id).first():
+        return jsonify({
+            "error": "Este gasto es la devolución de un plan. Elimínala desde la cotización."
+        }), 409
+
     db.session.delete(gasto)
     db.session.commit()
     return jsonify({"message": "Gasto eliminado"})
@@ -305,6 +312,43 @@ def _ingresos_liquidados_ids(tenant_id):
     return {f.ingreso_id for f in filas}
 
 
+def _reversiones_no_pagadas_por_ingreso(tenant_id):
+    """{ingreso_id: comisión revertida NO pagada} (para restar de pendientes)."""
+    from app.cobranza.models import ComisionReversion
+    out = {}
+    q = ComisionReversion.query.filter_by(
+        tenant_id=tenant_id, pagada_al_revertir=False,
+    ).all()
+    for r in q:
+        out[r.ingreso_id] = round(out.get(r.ingreso_id, 0) + r.monto, 2)
+    return out
+
+
+def _saldo_negativo_por_doctor(tenant_id):
+    """{especialista_id: saldo negativo} = reversiones ya pagadas − descuentos
+    ya aplicados en PagoDoctor. Solo positivos (lo que el doctor aún debe)."""
+    from app.cobranza.models import ComisionReversion
+    deuda = {}
+    revs = ComisionReversion.query.filter_by(
+        tenant_id=tenant_id, pagada_al_revertir=True,
+    ).all()
+    for r in revs:
+        esp = r.ingreso.especialista_id if r.ingreso else None
+        if esp is None:
+            continue
+        deuda[esp] = round(deuda.get(esp, 0) + r.monto, 2)
+    aplicado = {}
+    pagos = PagoDoctor.query.filter_by(tenant_id=tenant_id).all()
+    for p in pagos:
+        if p.descuento_saldo:
+            aplicado[p.especialista_id] = round(
+                aplicado.get(p.especialista_id, 0) + p.descuento_saldo, 2)
+    return {
+        esp: max(0.0, round(monto - aplicado.get(esp, 0), 2))
+        for esp, monto in deuda.items()
+    }
+
+
 @edr_bp.route("/comisiones/pendientes", methods=["GET"])
 @require_auth
 def comisiones_pendientes():
@@ -325,6 +369,8 @@ def comisiones_pendientes():
     from app.cobranza.models import Cotizacion, Pago as PagoCobranza
 
     liquidados = _ingresos_liquidados_ids(g.tenant_id)
+    reversiones_no_pagadas = _reversiones_no_pagadas_por_ingreso(g.tenant_id)
+    saldos = _saldo_negativo_por_doctor(g.tenant_id)
 
     q = Ingreso.query.options(
         joinedload(Ingreso.especialista),
@@ -357,11 +403,16 @@ def comisiones_pendientes():
             "especialista_id": i.especialista_id,
             "especialista_nombre": i.especialista.nombre if i.especialista else "—",
             "total_pendiente": 0.0,
+            "saldo_negativo": round(saldos.get(i.especialista_id, 0), 2),
             "comisiones": [],
             "cotizaciones": [],
             "_cotizaciones": {},
         })
         comision = round(i.comision_doctor or 0.0, 2)
+        comision -= reversiones_no_pagadas.get(i.id, 0)
+        comision = round(comision, 2)
+        if comision <= 0:
+            continue  # comisión totalmente revertida: no es pendiente
         pago_plan = i.cobranza_pago
         cotizacion = pago_plan.cotizacion if pago_plan else None
         detalle = {
@@ -397,6 +448,25 @@ def comisiones_pendientes():
             agrupada["total_pendiente"] += comision
         grupo["total_pendiente"] += comision
         total_pendiente += comision
+
+    # Los saldos negativos no son específicos de un origen (contado/plan), así
+    # que solo se inyectan doctores "solo saldo" cuando se piden todos los
+    # orígenes, y respetando el filtro de especialista si vino en la query.
+    if origen == "todos":
+        for esp_id, saldo in saldos.items():
+            if especialista_filtro and esp_id != especialista_filtro:
+                continue
+            if saldo > 0 and esp_id not in por_doctor:
+                esp = Especialista.query.filter_by(id=esp_id, tenant_id=g.tenant_id).first()
+                por_doctor[esp_id] = {
+                    "especialista_id": esp_id,
+                    "especialista_nombre": esp.nombre if esp else "—",
+                    "total_pendiente": 0.0,
+                    "saldo_negativo": round(saldo, 2),
+                    "comisiones": [],
+                    "cotizaciones": [],
+                    "_cotizaciones": {},
+                }
 
     doctores = sorted(por_doctor.values(), key=lambda d: d["especialista_nombre"])
     for d in doctores:
@@ -465,14 +535,35 @@ def pagar_comisiones():
     if any(i.id in ya_liquidados for i in ingresos):
         return jsonify({"error": "Alguna comisión ya fue pagada"}), 400
 
-    total = round(sum(i.comision_doctor for i in ingresos), 2)
+    # Rechazar comisiones totalmente revertidas por una devolución (no se pagan)
+    # y calcular de una sola vez el NETO por ingreso (bruto - reversión no
+    # pagada), reutilizándolo para el total y para las filas puente: así el
+    # doctor nunca cobra sobre dinero ya devuelto al paciente.
+    reversiones = _reversiones_no_pagadas_por_ingreso(g.tenant_id)
+    pendientes_por_ingreso = {}
+    for i in ingresos:
+        pend = round((i.comision_doctor or 0) - reversiones.get(i.id, 0), 2)
+        if pend <= 0:
+            return jsonify({
+                "error": "Alguna comisión fue revertida por una devolución"
+            }), 400
+        pendientes_por_ingreso[i.id] = pend
+
+    total = round(sum(pendientes_por_ingreso.values()), 2)
+
+    # Descontar el saldo negativo del doctor (reversiones de comisión ya pagadas).
+    saldo = _saldo_negativo_por_doctor(g.tenant_id).get(especialista_id, 0.0)
+    descuento = round(min(saldo, total), 2)
+    neto = round(total - descuento, 2)
+
     pago = PagoDoctor(
         tenant_id=g.tenant_id,
         fecha=fecha,
         especialista_id=especialista_id,
         concepto=f"Pago de {len(ingresos)} comisión(es)",
         tipo="comision",
-        monto=total,
+        monto=neto,
+        descuento_saldo=descuento,
     )
     db.session.add(pago)
     db.session.flush()  # obtener pago.id
@@ -482,7 +573,7 @@ def pagar_comisiones():
             tenant_id=g.tenant_id,
             pago_id=pago.id,
             ingreso_id=i.id,
-            monto=round(i.comision_doctor, 2),
+            monto=pendientes_por_ingreso[i.id],
         ))
 
     db.session.commit()

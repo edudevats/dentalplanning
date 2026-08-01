@@ -445,6 +445,23 @@ def eliminar_cotizacion(tenant_id, user_id, cotizacion_id):
                 eliminar_visita_ingreso(tenant_id, ingreso.id)
                 db.session.delete(ingreso)
         db.session.flush()
+
+        # Igual que con los ingresos: desliga la devolución de su gasto ANTES de
+        # borrarlo. La FK cobranza_devoluciones.gasto_id apunta a
+        # gastos_operativos.id, y en MySQL borrar el gasto con la devolución aún
+        # ligada violaría la restricción (SQLite no la valida, de ahí el cuidado).
+        from app.edr.models import GastoOperativo
+        gastos_a_borrar = [dev.gasto_id for dev in list(cot.devoluciones) if dev.gasto_id]
+        for dev in list(cot.devoluciones):
+            dev.gasto_id = None
+        db.session.flush()
+        for gasto_id in gastos_a_borrar:
+            gasto = db.session.get(GastoOperativo, gasto_id)
+            if gasto is not None:
+                db.session.delete(gasto)
+        # Las devoluciones (y sus ComisionReversion por cascade) se borran con la
+        # cotización vía el backref cascade existente.
+
         # La cascada del ORM (delete-orphan) borra pagos, conceptos, calendario
         # y devoluciones al borrar la cotización.
         db.session.delete(cot)

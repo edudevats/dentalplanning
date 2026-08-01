@@ -805,7 +805,12 @@ function renderPendientes() {
       updateDoctorTotal(doc.especialista_id);
     });
     const nameWrap = domEl('div', '');
-    nameWrap.appendChild(domEl('p', 'text-sm font-semibold text-text-primary', doc.especialista_nombre));
+    const nameLine = domEl('div', 'flex items-center gap-2');
+    nameLine.appendChild(domEl('p', 'text-sm font-semibold text-text-primary', doc.especialista_nombre));
+    if (doc.saldo_negativo > 0) {
+      nameLine.appendChild(domEl('span', 'text-xs text-danger-600', 'Debe ' + fmt(doc.saldo_negativo) + ' (se descuenta del próximo pago)'));
+    }
+    nameWrap.appendChild(nameLine);
     nameWrap.appendChild(domEl('p', 'text-xs text-text-muted', doc.comisiones.length + ' comisión(es) · pendiente ' + fmt(doc.total_pendiente)));
     left.appendChild(cbAll);
     left.appendChild(nameWrap);
