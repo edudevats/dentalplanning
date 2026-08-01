@@ -1054,8 +1054,10 @@ def reversion_comision(cot, monto):
 
     Prorratea sobre el total del plan, pero nunca revierte más comisión de la
     que el plan llegó a devengar (descontando lo ya revertido por devoluciones
-    previas).
+    previas, vía `ComisionReversion`).
     """
+    from app.cobranza.models import ComisionReversion
+
     if not cot.total:
         return 0.0
     objetivo = round((cot.comision_doctor_total or 0) * (monto / cot.total), 2)
@@ -1063,19 +1065,24 @@ def reversion_comision(cot, monto):
         (p.ingreso.comision_doctor or 0)
         for p in cot.pagos if p.ingreso is not None
     ), 2)
-    revertida = round(sum(
-        -(d.ingreso.comision_doctor or 0)
-        for d in cot.devoluciones if d.ingreso is not None
-    ), 2)
+    ingreso_ids = [p.ingreso.id for p in cot.pagos if p.ingreso is not None]
+    revertida = 0.0
+    if ingreso_ids:
+        revertida = round(sum(
+            r.monto for r in ComisionReversion.query.filter(
+                ComisionReversion.tenant_id == cot.tenant_id,
+                ComisionReversion.ingreso_id.in_(ingreso_ids),
+            ).all()
+        ), 2)
     return max(0.0, min(objetivo, round(devengada - revertida, 2)))
 
 
 def registrar_devolucion(tenant_id, user_id, cotizacion_id, data):
-    """Registra una devolución sobre un plan cancelado. Crea un Ingreso
-    negativo (contra-asiento) y NO toca los Pago existentes.
+    """Registra una devolución sobre un plan cancelado. Crea un GastoOperativo
+    (el dinero sale de caja) y revierte la comisión del doctor devengada
+    sobre los abonos del plan; NO toca los Pago existentes.
     """
-    from app.crm.services import sincronizar_visita_ingreso
-    from app.edr.models import Ingreso
+    from app.edr.models import GastoOperativo
 
     try:
         cot = _cotizacion_para_pago(tenant_id, cotizacion_id)
@@ -1094,29 +1101,15 @@ def registrar_devolucion(tenant_id, user_id, cotizacion_id, data):
             )
         metodo = _validar_metodo_pago(tenant_id, data.get("metodo_pago_id"))
 
-        comision_bancaria = round(
-            monto * ((metodo.comision_pct or 0) if metodo else 0) / 100, 2,
-        )
-        principal = max(cot.conceptos, key=lambda c: c.importe, default=None)
-        ingreso = Ingreso(
+        gasto = GastoOperativo(
             tenant_id=tenant_id,
             fecha=data["fecha"],
-            tratamiento_id=None,
-            nombre_tratamiento=f"{cot.folio} · Devolución",
-            paciente=cot.paciente.nombre if cot.paciente else "Paciente",
-            paciente_id=cot.paciente_id,
-            especialista_id=cot.especialista_id,
-            metodo_pago_id=metodo.id if metodo else None,
-            monto=-monto,
-            comision_bancaria=-comision_bancaria,
-            comision_doctor=-reversion_comision(cot, monto),
-            tipo_servicio=principal.tipo_servicio if principal else "clinico",
-            factura=False,
-            comentarios=f"Devolución del plan {cot.folio}",
+            tipo="variable",
+            monto=monto,
+            concepto_nombre=f"Devolución {cot.folio}",
         )
-        db.session.add(ingreso)
+        db.session.add(gasto)
         db.session.flush()
-        sincronizar_visita_ingreso(ingreso)
 
         devolucion = Devolucion(
             tenant_id=tenant_id,
@@ -1125,10 +1118,13 @@ def registrar_devolucion(tenant_id, user_id, cotizacion_id, data):
             monto=monto,
             metodo_pago_id=metodo.id if metodo else None,
             motivo=(data.get("motivo") or None),
-            ingreso_id=ingreso.id,
+            gasto_id=gasto.id,
             created_by=user_id,
         )
         db.session.add(devolucion)
+        db.session.flush()
+
+        _revertir_comision_doctor(tenant_id, cot, devolucion, monto)
 
         registrar_auditoria(
             tenant_id, user_id, "devolucion", cot, monto=monto,
@@ -1140,6 +1136,50 @@ def registrar_devolucion(tenant_id, user_id, cotizacion_id, data):
         raise
     db.session.refresh(devolucion)
     return devolucion
+
+
+def _revertir_comision_doctor(tenant_id, cot, devolucion, monto_devuelto):
+    """Reparte la comisión a revertir (por `monto_devuelto`) sobre los abonos
+    del plan, oldest-first, creando filas ComisionReversion. Marca cada tramo
+    como pagada_al_revertir según si el ingreso del abono ya estaba liquidado.
+    """
+    from app.cobranza.models import ComisionReversion
+    from app.edr.models import PagoComisionIngreso
+
+    R = round(reversion_comision(cot, monto_devuelto), 2)
+    if R <= 0:
+        return
+
+    # Ingresos de abono del plan (con comisión), oldest-first.
+    abonos = [
+        p.ingreso for p in sorted(cot.pagos, key=lambda p: (p.fecha, p.id or 0))
+        if p.ingreso is not None and (p.ingreso.comision_doctor or 0) > 0
+    ]
+    liquidados = {
+        f.ingreso_id
+        for f in PagoComisionIngreso.query.filter_by(tenant_id=tenant_id).all()
+    }
+    # Ya revertido por devoluciones previas, por ingreso.
+    previas = {}
+    for r in ComisionReversion.query.filter_by(tenant_id=tenant_id).all():
+        previas[r.ingreso_id] = previas.get(r.ingreso_id, 0) + r.monto
+
+    restante = R
+    for ing in abonos:
+        if restante <= 0:
+            break
+        disponible = round((ing.comision_doctor or 0) - previas.get(ing.id, 0), 2)
+        if disponible <= 0:
+            continue
+        tramo = round(min(restante, disponible), 2)
+        db.session.add(ComisionReversion(
+            tenant_id=tenant_id,
+            devolucion_id=devolucion.id,
+            ingreso_id=ing.id,
+            monto=tramo,
+            pagada_al_revertir=(ing.id in liquidados),
+        ))
+        restante = round(restante - tramo, 2)
 
 
 def total_pagado_devuelto(cot):
@@ -1408,8 +1448,13 @@ def reasignar_especialista(tenant_id, user_id, cotizacion_id, especialista_id):
     _validar_especialista(tenant_id, especialista_id)
 
     anterior_id = cot.especialista_id
-    if anterior_id == especialista_id:
-        return cot  # no-op idempotente: ni auditoría ni commit
+    huerfanos = _ingresos_sin_medico_del_plan(cot)
+    # No-op solo si de verdad no hay nada que hacer: mismo médico y ningún
+    # Ingreso huérfano. Si el plan ya tiene médico pero arrastra ingresos sin
+    # médico (estado heredado de antes del backfill), re-confirmar el mismo
+    # médico SÍ debe rellenarlos.
+    if anterior_id == especialista_id and not huerfanos:
+        return cot
 
     def _nombre(eid):
         if eid is None:
@@ -1419,7 +1464,6 @@ def reasignar_especialista(tenant_id, user_id, cotizacion_id, especialista_id):
 
     try:
         cot.especialista_id = especialista_id
-        huerfanos = _ingresos_sin_medico_del_plan(cot)
         for ingreso in huerfanos:
             ingreso.especialista_id = especialista_id
         registrar_auditoria(

@@ -81,6 +81,9 @@ class PagoDoctor(db.Model):
     concepto = db.Column(db.String(200))
     tipo = db.Column(db.String(20), default="variable")  # fijo / variable
     monto = db.Column(db.Float, nullable=False)
+    # Saldo negativo del doctor aplicado en este pago (por reversiones de
+    # comisión ya pagadas). El `monto` de arriba ya es el neto (comisiones − esto).
+    descuento_saldo = db.Column(db.Float, nullable=False, default=0)
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
 
     especialista = db.relationship("Especialista", backref="pagos")

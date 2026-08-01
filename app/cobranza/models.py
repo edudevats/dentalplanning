@@ -196,7 +196,10 @@ class Devolucion(db.Model):
     """Devolución de dinero a un paciente sobre un plan cancelado.
 
     No toca `Pago`: los abonos ocurrieron de verdad y su historia se conserva.
-    El reflejo contable es un `Ingreso` de monto negativo (contra-asiento).
+    El reflejo contable es un `GastoOperativo` (el dinero sale de caja) y la
+    comisión del doctor devengada sobre esos abonos se revierte mediante
+    `ComisionReversion`. No crea `Ingreso` (`ingreso_id` queda en NULL; se
+    conserva sólo por compatibilidad con devoluciones antiguas).
     """
     __tablename__ = "cobranza_devoluciones"
 
@@ -210,6 +213,9 @@ class Devolucion(db.Model):
     ingreso_id = db.Column(
         db.Integer, db.ForeignKey("ingresos.id"), nullable=True, unique=True,
     )
+    gasto_id = db.Column(
+        db.Integer, db.ForeignKey("gastos_operativos.id"), nullable=True,
+    )
     created_by = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
 
@@ -222,6 +228,7 @@ class Devolucion(db.Model):
     ingreso = db.relationship(
         "Ingreso", backref=db.backref("cobranza_devolucion", uselist=False),
     )
+    gasto = db.relationship("GastoOperativo")
 
     __table_args__ = (
         db.Index("ix_cobranza_devoluciones_tenant_cot", "tenant_id", "cotizacion_id"),
@@ -249,4 +256,34 @@ class CobranzaAuditoria(db.Model):
 
     __table_args__ = (
         db.Index("ix_cobranza_auditoria_tenant_fecha", "tenant_id", "created_at"),
+    )
+
+
+class ComisionReversion(db.Model):
+    """Comisión de doctor revertida por una devolución, por abono (Ingreso).
+
+    Si el ingreso NO estaba liquidado al revertir (pagada_al_revertir=False) su
+    comisión se saca de pendientes. Si ya estaba pagado (True) el doctor queda
+    con un saldo negativo que se descuenta de sus próximas comisiones.
+    """
+    __tablename__ = "comision_reversiones"
+
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey("tenants.id"), nullable=False, index=True)
+    devolucion_id = db.Column(
+        db.Integer, db.ForeignKey("cobranza_devoluciones.id"), nullable=False,
+    )
+    ingreso_id = db.Column(db.Integer, db.ForeignKey("ingresos.id"), nullable=False)
+    monto = db.Column(db.Float, nullable=False)  # comisión revertida (positivo)
+    pagada_al_revertir = db.Column(db.Boolean, nullable=False, default=False)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+
+    devolucion = db.relationship(
+        "Devolucion",
+        backref=db.backref("reversiones", cascade="all, delete-orphan"),
+    )
+    ingreso = db.relationship("Ingreso")
+
+    __table_args__ = (
+        db.Index("ix_comision_reversiones_tenant_ing", "tenant_id", "ingreso_id"),
     )
