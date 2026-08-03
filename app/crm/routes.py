@@ -14,6 +14,8 @@ from app.crm.services import CrmError, CrmNotFound
 
 crm_bp = Blueprint("crm", __name__, url_prefix="/api/v1/crm")
 
+LIMITE_BUSQUEDA = 20
+
 
 @crm_bp.errorhandler(CrmNotFound)
 def _crm_not_found(e):
@@ -99,6 +101,36 @@ def listar_pacientes():
         resultado.append(data)
 
     return jsonify({"pacientes": resultado, "total": len(resultado)})
+
+
+@crm_bp.route("/pacientes/buscar", methods=["GET"])
+@require_auth
+def buscar_pacientes():
+    """Búsqueda ligera para autocompletar: solo id/nombre/telefono, con límite.
+
+    A diferencia de listar_pacientes, no calcula inactividad ni timeline, así
+    que es barato aun con miles de pacientes. La ruta /pacientes/buscar no
+    choca con /pacientes/<int:paciente_id> porque "buscar" no es entero.
+    """
+    texto = (request.args.get("q") or "").strip()
+    if len(texto) < 2:
+        return jsonify({"pacientes": [], "total": 0})
+    like = f"%{texto}%"
+    filas = (
+        Paciente.query
+        .filter(
+            Paciente.tenant_id == g.tenant_id,
+            Paciente.eliminado.is_(False),
+            or_(Paciente.nombre.ilike(like), Paciente.telefono.ilike(like)),
+        )
+        .order_by(Paciente.nombre)
+        .limit(LIMITE_BUSQUEDA)
+        .all()
+    )
+    pacientes = [
+        {"id": p.id, "nombre": p.nombre, "telefono": p.telefono} for p in filas
+    ]
+    return jsonify({"pacientes": pacientes, "total": len(pacientes)})
 
 
 @crm_bp.route("/pacientes/<int:paciente_id>", methods=["GET"])

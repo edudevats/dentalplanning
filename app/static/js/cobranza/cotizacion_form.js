@@ -2,11 +2,12 @@
 const CobranzaForm = (() => {
   const state = {
     id: null,
-    pacientes: [],
+    pacienteResultados: [],
     tratamientos: [],
     especialistas: [],
     sucursales: [],
     calendario: [],
+    loaded: false,
   };
   const $ = id => document.getElementById(id);
 
@@ -121,9 +122,8 @@ const CobranzaForm = (() => {
   }
 
   async function loadCatalogs(force = false) {
-    if (state.pacientes.length && !force) return;
+    if (state.loaded && !force) return;
     const results = await Promise.allSettled([
-      API.get('/crm/pacientes'),
       API.get('/tratamientos'),
       API.get('/ajustes/especialistas'),
       API.get('/facturacion/sucursales'),
@@ -131,31 +131,27 @@ const CobranzaForm = (() => {
     const value = (index, fallback) => (
       results[index].status === 'fulfilled' ? results[index].value : fallback
     );
-    const pacientes = value(0, { pacientes: [] });
-    const tratamientos = value(1, []);
-    const especialistas = value(2, []);
-    const sucursales = value(3, []);
-    state.pacientes = pacientes.pacientes || [];
+    const tratamientos = value(0, []);
+    const especialistas = value(1, []);
+    const sucursales = value(2, []);
     state.tratamientos = Array.isArray(tratamientos) ? tratamientos : [];
     state.especialistas = Array.isArray(especialistas) ? especialistas : [];
     state.sucursales = (Array.isArray(sucursales) ? sucursales : [])
       .filter(item => item.activa !== false);
-    if (results[1].status === 'rejected') {
+    if (results[0].status === 'rejected') {
       Toast.warning('El catálogo de tratamientos no está disponible; puedes usar conceptos libres');
     }
+    state.loaded = true;
     renderCatalogs();
   }
 
   function renderCatalogs(selected = {}) {
-    fillSelect($('cot-paciente'), state.pacientes, 'Seleccionar paciente', selected.paciente_id);
-    fillSelect($('cot-especialista'), state.especialistas, 'Sin doctor', selected.especialista_id);
     fillSelect($('cot-sucursal'), state.sucursales, 'Sucursal automática', selected.sucursal_id);
   }
 
-  function treatmentOptions(selected) {
-    return '<option value="">Concepto libre</option>' + state.tratamientos.map(t =>
-      `<option value="${t.id}" ${String(t.id) === String(selected || '') ? 'selected' : ''}>${esc(t.nombre)}</option>`
-    ).join('');
+  function treatmentName(id) {
+    const t = state.tratamientos.find(x => String(x.id) === String(id || ''));
+    return t ? t.nombre : '';
   }
 
   function addConcept(concept = {}) {
@@ -163,7 +159,10 @@ const CobranzaForm = (() => {
     row.className = 'concepto-row grid grid-cols-1 md:grid-cols-12 gap-2 items-end rounded-lg border border-border p-3';
     row.innerHTML = `
       <label class="text-xs md:col-span-3">Catálogo
-        <select class="concepto-tratamiento mt-1 w-full rounded-lg border border-border px-2 py-2 text-sm">${treatmentOptions(concept.tratamiento_id)}</select>
+        <div class="relative mt-1">
+          <input class="concepto-buscar-tratamiento w-full rounded-lg border border-border px-2 py-2 text-sm" type="text" autocomplete="off" placeholder="Buscar…" value="${esc(treatmentName(concept.tratamiento_id))}" />
+          <input class="concepto-tratamiento" type="hidden" value="${concept.tratamiento_id ? esc(String(concept.tratamiento_id)) : ''}" />
+        </div>
       </label>
       <label class="text-xs md:col-span-4">Descripción *
         <input class="concepto-descripcion mt-1 w-full rounded-lg border border-border px-2 py-2 text-sm" maxlength="300" value="${esc(concept.descripcion || '')}" />
@@ -177,13 +176,24 @@ const CobranzaForm = (() => {
       <button type="button" class="concepto-remove md:col-span-1 rounded-lg p-2 text-danger-600 hover:bg-danger-50 cursor-pointer" aria-label="Quitar concepto">
         <i data-lucide="trash-2" class="h-4 w-4 mx-auto"></i>
       </button>`;
-    row.querySelector('.concepto-tratamiento').addEventListener('change', event => {
-      const treatment = state.tratamientos.find(t => String(t.id) === event.target.value);
-      if (treatment) {
-        row.querySelector('.concepto-descripcion').value = treatment.nombre;
-        row.querySelector('.concepto-precio').value = treatment.precio_paciente || 0;
+    const tratSearch = row.querySelector('.concepto-buscar-tratamiento');
+    const tratHidden = row.querySelector('.concepto-tratamiento');
+    tratSearch.addEventListener('input', () => {
+      if (!tratSearch.value.trim()) tratHidden.value = '';  // concepto libre
+    });
+    Combobox({
+      input: tratSearch,
+      getItems: () => state.tratamientos,
+      getMeta: t => (t.precio_paciente != null ? fmt(t.precio_paciente) : null),
+      onSelect: t => {
+        tratHidden.value = String(t.id);
+        tratSearch.value = t.nombre;
+        row.querySelector('.concepto-descripcion').value = t.nombre;
+        row.querySelector('.concepto-precio').value = t.precio_paciente || 0;
         updateTotal();
-      }
+      },
+      clearOnSelect: false,
+      emptyText: 'Sin tratamientos',
     });
     row.querySelector('.concepto-remove').addEventListener('click', () => {
       if (document.querySelectorAll('.concepto-row').length === 1) {
@@ -320,6 +330,11 @@ const CobranzaForm = (() => {
     state.id = null;
     state.calendario = [];
     $('form-cotizacion').reset();
+    $('cot-paciente-search').value = '';
+    $('cot-paciente').value = '';
+    $('cot-especialista-search').value = '';
+    $('cot-especialista').value = '';
+    state.pacienteResultados = [];
     $('conceptos-list').replaceChildren();
     $('cot-valida').value = addDays(localISO(), 30);
     $('cot-primer-pago').value = addDays(localISO(), 30);
@@ -340,6 +355,13 @@ const CobranzaForm = (() => {
       $('cot-form-title').textContent = state.id ? `Editar ${quote.folio}` : 'Nueva cotización';
       if (quote) {
         renderCatalogs(quote);
+        $('cot-paciente-search').value = quote.paciente_nombre || '';
+        $('cot-paciente').value = quote.paciente_id ? String(quote.paciente_id) : '';
+        const doctor = state.especialistas.find(
+          e => String(e.id) === String(quote.especialista_id || ''),
+        );
+        $('cot-especialista-search').value = doctor ? doctor.nombre : '';
+        $('cot-especialista').value = doctor ? String(doctor.id) : '';
         $('cot-valida').value = quote.valida_hasta || '';
         $('cot-inicio').value = quote.fecha_inicio_tratamiento || '';
         $('cot-frecuencia').value = quote.frecuencia || 'mensual';
@@ -486,15 +508,76 @@ const CobranzaForm = (() => {
         email: $('paciente-email').value.trim() || null,
         estatus_crm: 'prospecto',
       });
-      await loadCatalogs(true);
+      state.pacienteResultados = [
+        { id: patient.id, nombre: patient.nombre, telefono: patient.telefono || null },
+      ];
+      $('cot-paciente-search').value = patient.nombre;
       $('cot-paciente').value = String(patient.id);
       Modal.close('modal-paciente-rapido');
       $('form-paciente-rapido').reset();
-      if (window.Cobranza) Cobranza.refreshPatients(state.pacientes);
       Toast.success('Paciente creado');
     } catch (error) {
       Toast.error(error.message || 'No se pudo crear el paciente');
     }
+  }
+
+  // Doctor: filtra la lista local state.especialistas. Opcional: vaciar el
+  // buscador equivale a "Sin doctor" (hidden en '').
+  function setupDoctorCombobox() {
+    const input = $('cot-especialista-search');
+    const hidden = $('cot-especialista');
+    input.addEventListener('input', () => {
+      // Al teclear se invalida la selección previa hasta volver a elegir de la
+      // lista, para no enviar un especialista_id que no coincida con el texto.
+      hidden.value = '';
+    });
+    Combobox({
+      input,
+      getItems: () => state.especialistas,
+      onSelect: e => { hidden.value = String(e.id); input.value = e.nombre; },
+      clearOnSelect: false,
+      emptyText: 'Sin doctores',
+    });
+  }
+
+  let comboPaciente = null;
+
+  // Paciente: busca en el servidor con debounce; el <input> oculto cot-paciente
+  // guarda el id que leen payload()/save(). Reutiliza Combobox (app.js) filtrando
+  // sobre state.pacienteResultados; la etiqueta incluye el teléfono para que las
+  // coincidencias por teléfono no se descarten en el filtro local del Combobox.
+  function setupPacienteCombobox() {
+    const input = $('cot-paciente-search');
+    const hidden = $('cot-paciente');
+    let timer = null;
+    input.addEventListener('input', () => {
+      hidden.value = '';
+      clearTimeout(timer);
+      const q = input.value.trim();
+      if (q.length < 2) {
+        state.pacienteResultados = [];
+        if (comboPaciente) comboPaciente.refresh();
+        return;
+      }
+      timer = setTimeout(async () => {
+        try {
+          const data = await API.get('/crm/pacientes/buscar?q=' + encodeURIComponent(q));
+          state.pacienteResultados = data.pacientes || [];
+        } catch (error) {
+          state.pacienteResultados = [];
+          Toast.error('No se pudo buscar pacientes');
+        }
+        if (comboPaciente) comboPaciente.refresh();
+      }, 250);
+    });
+    comboPaciente = Combobox({
+      input,
+      getItems: () => state.pacienteResultados,
+      getLabel: p => (p.telefono ? `${p.nombre} · ${p.telefono}` : p.nombre),
+      onSelect: p => { hidden.value = String(p.id); input.value = p.nombre; },
+      clearOnSelect: false,
+      emptyText: 'Escribe para buscar…',
+    });
   }
 
   function init() {
@@ -510,7 +593,9 @@ const CobranzaForm = (() => {
     ['cot-descuento-tipo', 'cot-descuento-valor', 'cot-anticipo'].forEach(
       id => $(id).addEventListener('input', updateTotal),
     );
+    setupPacienteCombobox();
+    setupDoctorCombobox();
   }
 
-  return { init, open, loadCatalogs, patients: () => state.pacientes, specialists: () => state.especialistas };
+  return { init, open, loadCatalogs, specialists: () => state.especialistas };
 })();

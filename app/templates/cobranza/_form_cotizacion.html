@@ -12,14 +12,22 @@
         <section class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
           <label class="text-sm xl:col-span-2">Paciente *
             <div class="mt-1 flex gap-2">
-              <select id="cot-paciente" required class="min-w-0 flex-1 rounded-lg border border-border px-3 py-2"></select>
+              <div class="relative min-w-0 flex-1">
+                <input id="cot-paciente-search" type="text" autocomplete="off" placeholder="Buscar por nombre o teléfono…"
+                       class="w-full rounded-lg border border-border px-3 py-2" />
+                <input id="cot-paciente" type="hidden" />
+              </div>
               <button id="btn-nuevo-paciente" type="button" class="rounded-lg border border-border px-3 hover:bg-surface-hover cursor-pointer" title="Nuevo paciente">
                 <i data-lucide="user-plus" class="h-4 w-4"></i>
               </button>
             </div>
           </label>
           <label class="text-sm">Doctor
-            <select id="cot-especialista" class="mt-1 w-full rounded-lg border border-border px-3 py-2"></select>
+            <div class="relative mt-1">
+              <input id="cot-especialista-search" type="text" autocomplete="off" placeholder="Buscar doctor…"
+                     class="w-full rounded-lg border border-border px-3 py-2" />
+              <input id="cot-especialista" type="hidden" />
+            </div>
           </label>
           <label class="text-sm">Sucursal
             <select id="cot-sucursal" class="mt-1 w-full rounded-lg border border-border px-3 py-2"></select>

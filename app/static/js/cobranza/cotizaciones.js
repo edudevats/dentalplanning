@@ -100,14 +100,48 @@ const Cobranza = (() => {
     return FACTURACION_LABELS[estado] || estado;
   }
 
-  function refreshPatients(patients) {
-    const select = $('filtro-paciente');
-    const selected = select.value;
-    select.innerHTML = '<option value="">Todos los pacientes</option>' +
-      patients.map(patient =>
-        `<option value="${patient.id}">${esc(patient.nombre)}</option>`
-      ).join('');
-    select.value = selected;
+  let comboFiltro = null;
+  let filtroResultados = [];
+
+  // Filtro de paciente por búsqueda en el servidor. El <input> oculto
+  // filtro-paciente guarda el id que lee query(); vaciar el buscador = "Todos".
+  function setupFiltroPaciente() {
+    const input = $('filtro-paciente-search');
+    const hidden = $('filtro-paciente');
+    let timer = null;
+    input.addEventListener('input', () => {
+      clearTimeout(timer);
+      const q = input.value.trim();
+      if (!q) {
+        hidden.value = '';
+        filtroResultados = [];
+        if (comboFiltro) comboFiltro.refresh();
+        reload();
+        return;
+      }
+      if (q.length < 2) {
+        filtroResultados = [];
+        if (comboFiltro) comboFiltro.refresh();
+        return;
+      }
+      timer = setTimeout(async () => {
+        try {
+          const data = await API.get('/crm/pacientes/buscar?q=' + encodeURIComponent(q));
+          filtroResultados = data.pacientes || [];
+        } catch (error) {
+          filtroResultados = [];
+        }
+        if (comboFiltro) comboFiltro.refresh();
+      }, 250);
+    });
+    comboFiltro = Combobox({
+      input,
+      getItems: () => filtroResultados,
+      getLabel: p => (p.telefono ? `${p.nombre} · ${p.telefono}` : p.nombre),
+      onSelect: p => { hidden.value = String(p.id); input.value = p.nombre; reload(); },
+      clearOnSelect: false,
+      emptyText: 'Escribe para buscar…',
+    });
   }
 
   function query() {
@@ -744,6 +778,7 @@ const Cobranza = (() => {
   function clearFilters() {
     ['filtro-estatus', 'filtro-paciente', 'filtro-desde', 'filtro-hasta']
       .forEach(id => { $(id).value = ''; });
+    $('filtro-paciente-search').value = '';
     reload();
   }
 
@@ -759,7 +794,6 @@ const Cobranza = (() => {
       state.user = me.user || me;
       state.methods = Array.isArray(methods) ? methods : [];
       state.branches = (Array.isArray(branches) ? branches : []).filter(branch => branch.activa !== false);
-      refreshPatients(CobranzaForm.patients());
       $('btn-nueva-cotizacion').classList.toggle('hidden', !writableRoles.includes(role()));
       $('btn-bitacora').classList.toggle('hidden', role() !== 'admin');
     } catch (error) {
@@ -769,8 +803,9 @@ const Cobranza = (() => {
     $('btn-bitacora').addEventListener('click', openAuditLog);
     $('form-pago').addEventListener('submit', savePayment);
     $('btn-limpiar-filtros').addEventListener('click', clearFilters);
-    ['filtro-estatus', 'filtro-paciente', 'filtro-desde', 'filtro-hasta']
+    ['filtro-estatus', 'filtro-desde', 'filtro-hasta']
       .forEach(id => $(id).addEventListener('change', reload));
+    setupFiltroPaciente();
     const search = $('cs-global-search');
     if (search) search.addEventListener('input', renderList);
     document.querySelectorAll('[data-close-modal]').forEach(element => {
@@ -779,7 +814,7 @@ const Cobranza = (() => {
     await reload();
   }
 
-  return { init, reload, openDetail, refreshPatients };
+  return { init, reload, openDetail };
 })();
 
 document.addEventListener('DOMContentLoaded', Cobranza.init);

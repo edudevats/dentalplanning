@@ -51,9 +51,12 @@
         <option value="cancelada">Canceladas</option>
         <option value="rechazada">Rechazadas</option>
       </select>
-      <select id="filtro-paciente" class="rounded-lg border border-border bg-surface px-3 py-2 text-sm">
-        <option value="">Todos los pacientes</option>
-      </select>
+      <div class="relative">
+        <input id="filtro-paciente-search" type="text" autocomplete="off" placeholder="Todos los pacientes"
+               aria-label="Buscar paciente"
+               class="rounded-lg border border-border bg-surface px-3 py-2 text-sm" />
+        <input id="filtro-paciente" type="hidden" />
+      </div>
       <input id="filtro-desde" type="date" aria-label="Fecha desde"
              class="rounded-lg border border-border bg-surface px-3 py-2 text-sm" />
       <input id="filtro-hasta" type="date" aria-label="Fecha hasta"
