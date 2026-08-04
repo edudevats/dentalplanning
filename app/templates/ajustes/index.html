@@ -222,6 +222,17 @@
             </div>
           </form>
           <p id="csd-estado" class="mt-4 text-sm text-text-muted font-body"></p>
+
+          <!-- Registro en Finkok -->
+          <div id="finkok-registro" class="mt-6 border-t border-border pt-4">
+            <h3 class="text-sm font-semibold font-heading text-text-primary">Registro en Finkok</h3>
+            <p id="finkok-estado" class="mt-2 text-sm text-text-muted font-body">Consultando…</p>
+            <button id="btn-finkok-registrar" type="button"
+                    class="mt-3 inline-flex items-center rounded-lg bg-primary-500 hover:bg-primary-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                    disabled>
+              Registrar RFC en Finkok
+            </button>
+          </div>
         </div>
       </div>
 
@@ -1322,8 +1333,45 @@
       if (!cfg.naturaleza_juridica) {
         document.getElementById('modal-naturaleza').classList.remove('hidden');
       }
+      renderFinkok(cfg);
     } catch (e) {
       console.error('Error al cargar configuración', e);
+    }
+  }
+
+  function renderFinkok(cfg) {
+    const estado = document.getElementById('finkok-estado');
+    const btn = document.getElementById('btn-finkok-registrar');
+    if (!estado || !btn) return;
+
+    if (!cfg.csd_configurado) {
+      estado.textContent = 'Sube tu CSD primero para poder registrar el RFC en Finkok.';
+      btn.disabled = true;
+      btn.textContent = 'Registrar RFC en Finkok';
+      return;
+    }
+
+    const yaRegistrado = cfg.finkok_registrado && cfg.finkok_rfc_registrado === cfg.rfc;
+    btn.disabled = false;
+    btn.textContent = yaRegistrado ? 'Actualizar CSD en Finkok' : 'Registrar RFC en Finkok';
+
+    if (yaRegistrado) {
+      const desde = cfg.finkok_registrado_at ? cfg.finkok_registrado_at.slice(0, 10) : '';
+      estado.textContent = `RFC ${esc(cfg.rfc || '')} registrado en Finkok${desde ? ' desde ' + desde : ''}.`;
+      // Estado en vivo (timbres del mes) — best-effort, no bloquea.
+      const token = Auth.getToken();
+      fetch('/api/v1/facturacion/configuracion/finkok/estado', {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      })
+        .then(r => r.json())
+        .then(d => {
+          if (d && d.success && d.status) {
+            estado.textContent += ` Estatus: ${esc(d.status)}, timbres este mes: ${d.counter ?? 0}.`;
+          }
+        })
+        .catch(() => {});
+    } else {
+      estado.textContent = 'Tu RFC aún no está registrado en Finkok. Regístralo para poder facturar.';
     }
   }
 
@@ -1473,6 +1521,31 @@
       Toast.success('CSD subido correctamente');
     } catch (err) {
       Toast.error(err.message || 'Error al subir CSD');
+    }
+  });
+
+  document.getElementById('btn-finkok-registrar').addEventListener('click', async () => {
+    const btn = document.getElementById('btn-finkok-registrar');
+    btn.disabled = true;
+    const original = btn.textContent;
+    btn.textContent = 'Procesando…';
+    try {
+      const token = Auth.getToken();
+      const resp = await fetch('/api/v1/facturacion/configuracion/finkok/registrar', {
+        method: 'POST', headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      const data = await resp.json();
+      if (resp.ok && data.success) {
+        Toast.success(data.message || 'RFC registrado en Finkok');
+      } else {
+        Toast.error(data.message || data.error || 'No se pudo registrar en Finkok');
+      }
+    } catch (err) {
+      Toast.error(err.message || 'Error al registrar en Finkok');
+    } finally {
+      btn.textContent = original;
+      btn.disabled = false;
+      cargarConfigFiscal();  // refresca cfg + re-render (loader existente ~L1297)
     }
   });
 

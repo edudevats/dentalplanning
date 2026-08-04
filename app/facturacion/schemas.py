@@ -65,6 +65,10 @@ class ConfiguracionFiscalSchema(Schema):
     fiel_configurada = fields.Bool(dump_only=True)
     fiel_no_certificado = fields.Str(dump_only=True)
     fiel_valido_hasta = fields.DateTime(dump_only=True)
+    # Estado del registro en Finkok (solo lectura)
+    finkok_registrado = fields.Bool(dump_only=True)
+    finkok_registrado_at = fields.DateTime(dump_only=True)
+    finkok_rfc_registrado = fields.Str(dump_only=True, allow_none=True)
 
 
 class ReceptorSchema(Schema):

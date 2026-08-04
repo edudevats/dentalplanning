@@ -46,6 +46,10 @@ class ConfiguracionFiscal(db.Model):
     facturacion_cargo_pendiente = db.Column(db.Boolean, default=False, nullable=False)
     # API key compartida con el agente de impresión local (cifrada con Fernet)
     print_agent_key_cifrada = db.Column(db.LargeBinary)
+    # Registro del RFC bajo la cuenta del socio Finkok (Registro de Clientes).
+    # Rastrea si el RFC actual ya está dado de alta para decidir add vs edit.
+    finkok_registrado_at = db.Column(db.DateTime)
+    finkok_rfc_registrado = db.Column(db.String(13))
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = db.Column(
         db.DateTime,
@@ -64,6 +68,10 @@ class ConfiguracionFiscal(db.Model):
     @property
     def print_agent_configurado(self):
         return bool(self.print_agent_key_cifrada)
+
+    @property
+    def finkok_registrado(self):
+        return bool(self.finkok_registrado_at)
 
 
 class Sucursal(db.Model):

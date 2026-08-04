@@ -18,7 +18,7 @@ from app.facturacion.schemas import (
 from app.facturacion.cfdi import timbrar_ticket, cancelar_ticket, TimbradoError
 from app.facturacion.iva import iva_de
 from app.engine.accounting import parse_mes, filtro_mes
-from app.facturacion import crypto
+from app.facturacion import crypto, registro_clientes
 from app.facturacion.csd import validar_csd, validar_fiel, CSDInvalido
 
 facturacion_bp = Blueprint("facturacion", __name__, url_prefix="/api/v1/facturacion")
@@ -128,6 +128,92 @@ def subir_fiel():
     cfg.fiel_valido_hasta = meta["valido_hasta"]
     db.session.commit()
     return jsonify(_config_payload(cfg))
+
+
+def _rfc_ya_existe_en_finkok(message):
+    m = (message or "").lower()
+    return any(s in m for s in (
+        "already", "exist", "ya existe", "ya registrado", "registered"))
+
+
+@facturacion_bp.route("/configuracion/finkok/registrar", methods=["POST"])
+@require_auth
+@require_role("admin")
+def registrar_finkok():
+    cfg = _get_or_create_config()
+    if not cfg.csd_configurado:
+        return jsonify({"error": "Configura tu CSD primero"}), 400
+    if not cfg.rfc:
+        return jsonify({"error": "Configura el RFC del emisor primero"}), 400
+
+    username = current_app.config.get("FINKOK_USERNAME", "")
+    password = current_app.config.get("FINKOK_PASSWORD", "")
+    if not username or not password:
+        return jsonify({"error": "Credenciales de Finkok no configuradas"}), 500
+    environment = current_app.config.get("FINKOK_ENVIRONMENT", "test")
+
+    cer_bytes = cfg.csd_cer
+    key_bytes = crypto.decrypt(cfg.csd_key_cifrada)
+    passphrase = crypto.decrypt(cfg.csd_password_cifrada).decode()
+
+    if cfg.finkok_rfc_registrado == cfg.rfc:
+        res = registro_clientes.editar_cliente(
+            cfg.rfc, cer_bytes, key_bytes, passphrase,
+            username=username, password=password, environment=environment,
+            status="A",
+        )
+    else:
+        res = registro_clientes.agregar_cliente(
+            cfg.rfc, cer_bytes, key_bytes, passphrase,
+            username=username, password=password, environment=environment,
+            type_user="O",
+        )
+        if not res["success"] and _rfc_ya_existe_en_finkok(res["message"]):
+            # Ya estaba dado de alta: deja el estado listo para 'edit'.
+            cfg.finkok_rfc_registrado = cfg.rfc
+            db.session.commit()
+            return jsonify({
+                "success": False,
+                "message": "El RFC ya estaba registrado en Finkok. "
+                           "Usa 'Actualizar CSD en Finkok' para renovarlo.",
+            })
+
+    if res["success"]:
+        cfg.finkok_registrado_at = datetime.now(timezone.utc)
+        cfg.finkok_rfc_registrado = cfg.rfc
+        db.session.commit()
+
+    return jsonify({"success": res["success"], "message": res["message"]})
+
+
+@facturacion_bp.route("/configuracion/finkok/estado", methods=["GET"])
+@require_auth
+@require_role("admin")
+def estado_finkok():
+    cfg = _get_or_create_config()
+    if not cfg.rfc:
+        return jsonify({"configurado": False, "message": "Sin RFC configurado"})
+
+    username = current_app.config.get("FINKOK_USERNAME", "")
+    password = current_app.config.get("FINKOK_PASSWORD", "")
+    if not username or not password:
+        return jsonify({"configurado": False,
+                        "message": "Credenciales de Finkok no configuradas"})
+    environment = current_app.config.get("FINKOK_ENVIRONMENT", "test")
+
+    res = registro_clientes.consultar_cliente(
+        cfg.rfc, username=username, password=password, environment=environment,
+    )
+    return jsonify({
+        "configurado": True,
+        "registrado_at": cfg.finkok_registrado_at.isoformat()
+        if cfg.finkok_registrado_at else None,
+        "success": res["success"],
+        "status": res.get("status"),
+        "counter": res.get("counter"),
+        "credit": res.get("credit"),
+        "message": res.get("message", ""),
+    })
 
 
 # El logo del consultorio vive en ConfigConsultorio y se sube/consulta desde
