@@ -4,33 +4,62 @@
 
   let mrrChart = null;
 
+  // "2026-07" → "vs. jul". Se parsea por componentes en vez de con new Date(str)
+  // para no arrastrar el corrimiento de un día que sufren las cadenas de solo
+  // fecha en zonas detrás de UTC (mismo motivo que parseLocalDate en admin_shared).
+  function etiquetaMesAnterior(mesIso) {
+    const m = /^(\d{4})-(\d{2})$/.exec(mesIso || '');
+    if (!m) return null;
+    const d = new Date(+m[1], +m[2] - 1, 1);
+    return `vs. ${d.toLocaleDateString('es-MX', { month: 'short' })}`;
+  }
+
   async function loadKpis() {
     const data = await adminApi.get('/stats/overview');
     const grid = document.getElementById('kpi-grid');
     invDom.clearChildren(grid);
+    const etiquetaMes = etiquetaMesAnterior(data.mes_anterior);
     grid.appendChild(kpiCard({
       label: 'Clínicas totales',
       value: data.total_tenants,
       icon: 'building-2',
+      href: '/admin/tenants',
+      delta: data.total_tenants - data.total_tenants_mes_anterior,
+      deltaLabel: etiquetaMes,
     }));
     grid.appendChild(kpiCard({
       label: 'Activas',
       value: data.activos,
       icon: 'check-circle',
       hint: `${data.suspendidos} suspendidas, ${data.rechazados} rechazadas`,
+      href: '/admin/tenants?status=active',
     }));
     grid.appendChild(kpiCard({
       label: 'Pendientes',
       value: data.pendientes,
       icon: 'hourglass',
       hint: 'Esperando aprobación',
+      href: '/admin/tenants?status=pending',
     }));
     grid.appendChild(kpiCard({
       label: 'Nuevas este mes',
       value: data.nuevos_este_mes,
       icon: 'sparkles',
       hint: `${data.total_users} usuarios totales`,
+      href: '/admin/tenants?nuevas=mes',
+      delta: data.nuevos_este_mes - data.nuevos_mes_anterior,
+      deltaLabel: etiquetaMes,
     }));
+
+    if (data.en_mora > 0) {
+      grid.appendChild(kpiCard({
+        label: 'En mora',
+        value: data.en_mora,
+        icon: 'alert-triangle',
+        hint: 'Cobro vencido, sin pagar',
+        href: '/admin/tenants?sub_estado=mora',
+      }));
+    }
 
     if (data.en_gracia > 0) {
       grid.appendChild(kpiCard({
@@ -38,6 +67,7 @@
         value: data.en_gracia,
         icon: 'clock',
         hint: 'Cobro pendiente, en periodo de gracia',
+        href: '/admin/tenants?sub_estado=gracia',
       }));
     }
 
@@ -48,6 +78,7 @@
         value: data.subs_by_plan.reduce((sum, s) => sum + s.count, 0),
         icon: 'credit-card',
         hint: planHint,
+        href: '/admin/planes',
       }));
     }
 
@@ -60,11 +91,12 @@
     try {
       const r = await adminApi.get('/asientos?estado=pendiente');
       const n = (r.asientos || []).length;
-      grid.appendChild(adminUI.kpiCard({
+      grid.appendChild(kpiCard({
         label: 'Solicitudes recepcionista',
         value: String(n),
         icon: 'user-plus',
         hint: n ? 'Pendientes de aprobar' : 'Sin pendientes',
+        href: '/admin/solicitudes?estado=pendiente',
       }));
     } catch (_) {}
   }

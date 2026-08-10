@@ -329,12 +329,13 @@ def log_admin_action(action, *, target_type=None, target_id=None,
 # ── Tenants ──────────────────────────────────────────────────────────────────
 
 def _query_tenants(args):
-    """Aplica filtros (status, search, sub_estado) y orden (sort) a la lista de
-    clínicas. Usado por la ruta JSON y por el export CSV."""
+    """Aplica filtros (status, search, sub_estado, nuevas) y orden (sort) a la
+    lista de clínicas. Usado por la ruta JSON y por el export CSV."""
     status = args.get("status")
     search = (args.get("search") or "").strip()
     sub_estado = args.get("sub_estado")
     sort = args.get("sort") or "reciente"
+    nuevas = args.get("nuevas")
     today = date.today()
 
     q = _exclude_system(Tenant.query).outerjoin(
@@ -348,6 +349,9 @@ def _query_tenants(args):
             Tenant.name.ilike(like), Tenant.slug.ilike(like),
             Tenant.contact_email.ilike(like),
         ))
+
+    if nuevas == "mes":
+        q = q.filter(Tenant.created_at >= date(today.year, today.month, 1))
 
     if sub_estado == "activa":
         q = q.filter(Subscription.estado == SUBSCRIPTION_ACTIVA).filter(
@@ -1521,6 +1525,35 @@ def stats_overview():
         .count()
     )
 
+    en_mora = (
+        Subscription.query.join(Tenant)
+        .filter(Tenant.slug != SYSTEM_TENANT_SLUG)
+        .filter(Subscription.estado == SUBSCRIPTION_ACTIVA)
+        .filter(Subscription.proximo_cobro.isnot(None))
+        .filter(Subscription.proximo_cobro < today)
+        .count()
+    )
+
+    # El mes anterior se deriva restando un día al primero de este mes, lo que
+    # cruza el año correctamente sin aritmética de meses.
+    fin_mes_anterior = inicio_mes - timedelta(days=1)
+    inicio_mes_anterior = date(fin_mes_anterior.year, fin_mes_anterior.month, 1)
+
+    total_mes_anterior = base.filter(Tenant.created_at < inicio_mes).count()
+
+    # Compara la MISMA ventana transcurrida del mes anterior: el día 8 de este
+    # mes se compara contra los primeros 8 días del anterior. Sin esto, un mes
+    # recién empezado siempre parece una caída frente a uno completo.
+    dias_transcurridos = (today - inicio_mes).days + 1
+    fin_ventana_anterior = min(
+        inicio_mes_anterior + timedelta(days=dias_transcurridos),
+        inicio_mes,
+    )
+    nuevos_mes_anterior = base.filter(
+        Tenant.created_at >= inicio_mes_anterior,
+        Tenant.created_at < fin_ventana_anterior,
+    ).count()
+
     subs_by_plan = (
         db.session.query(Plan.nombre, func.count(Subscription.id))
         .join(Subscription, Subscription.plan_id == Plan.id)
@@ -1539,6 +1572,10 @@ def stats_overview():
         "total_users": int(total_users),
         "nuevos_este_mes": nuevos_mes,
         "en_gracia": en_gracia,
+        "en_mora": en_mora,
+        "total_tenants_mes_anterior": total_mes_anterior,
+        "nuevos_mes_anterior": nuevos_mes_anterior,
+        "mes_anterior": inicio_mes_anterior.strftime("%Y-%m"),
         "subs_by_plan": [{"plan": r[0], "count": int(r[1])} for r in subs_by_plan],
     })
 

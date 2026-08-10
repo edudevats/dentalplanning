@@ -1,0 +1,40 @@
+{% extends "admin/_layout_admin.html" %}
+{% block title %}Asientos de recepcionista — Panel SaaS{% endblock %}
+{% block admin_title %}Asientos de recepcionista{% endblock %}
+{% block admin_content %}
+
+<div class="space-y-6">
+
+  <div>
+    <h1 class="font-cs-display text-4xl font-bold text-cs-on-surface tracking-tight">Asientos de recepcionista</h1>
+    <p class="mt-1.5 text-sm text-cs-on-surface-var max-w-xl">Solicitudes de todas las clínicas. Aprueba, rechaza o cancela sin entrar a cada una.</p>
+  </div>
+
+  <div class="rounded-lg bg-cs-surface-container-lowest p-4 flex items-center gap-1 flex-wrap" id="estado-chips">
+    <button data-estado="pendiente" class="estado-chip active px-3 py-1.5 rounded-md text-xs font-semibold transition-colors cursor-pointer">Pendientes</button>
+    <button data-estado="aprobada" class="estado-chip px-3 py-1.5 rounded-md text-xs font-semibold transition-colors cursor-pointer">Aprobadas</button>
+    <button data-estado="activa" class="estado-chip px-3 py-1.5 rounded-md text-xs font-semibold transition-colors cursor-pointer">Activas</button>
+    <button data-estado="rechazada" class="estado-chip px-3 py-1.5 rounded-md text-xs font-semibold transition-colors cursor-pointer">Rechazadas</button>
+    <button data-estado="cancelada" class="estado-chip px-3 py-1.5 rounded-md text-xs font-semibold transition-colors cursor-pointer">Canceladas</button>
+    <button data-estado="" class="estado-chip px-3 py-1.5 rounded-md text-xs font-semibold transition-colors cursor-pointer">Todas</button>
+  </div>
+
+  <div class="rounded-lg bg-cs-surface-container-lowest p-5">
+    <div id="asientos-rows"></div>
+    <p id="empty-state" class="hidden text-center text-sm text-cs-on-surface-var py-10">No hay asientos con este estado.</p>
+  </div>
+
+</div>
+
+<style>
+  .estado-chip { background-color: var(--color-cs-surface-container); color: var(--color-cs-on-surface-var); }
+  .estado-chip:hover { background-color: var(--color-cs-surface-container-high); color: var(--color-cs-on-surface); }
+  .estado-chip.active { background-color: var(--color-cs-primary); color: var(--color-cs-on-primary); }
+</style>
+
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/admin/admin_asientos.js"></script>
+<script src="/static/js/admin/admin_solicitudes.js"></script>
+{% endblock %}

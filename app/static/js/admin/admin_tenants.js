@@ -3,12 +3,53 @@
   const { statusBadge, currency, formatDate, confirmAction, openModal,
           buildField, inputEl, selectEl, textareaEl } = window.adminUI;
 
+  const VALID_STATUS = ['', 'pending', 'active', 'suspended', 'rejected'];
+  const VALID_SUB = ['', 'activa', 'mora', 'gracia', 'vencida'];
+  const VALID_SORT = ['reciente', 'proximo_cobro', '-proximo_cobro', 'plan'];
+  const VALID_NUEVAS = ['', 'mes'];
+
   let currentSearch = '';
-  let currentStatus = new URL(window.location.href).searchParams.get('status') || '';
-  let plansCache = null;
-  let currentMode = 'tenants';
+  let currentStatus = '';
   let currentSubEstado = '';
   let currentSort = 'reciente';
+  let currentNuevas = '';
+  let plansCache = null;
+  let currentMode = 'tenants';
+
+  // Siembra el estado desde la query string. Valores desconocidos se descartan
+  // para no mandar basura al backend ni dejar chips en un estado imposible.
+  function readFiltersFromUrl() {
+    const p = new URL(window.location.href).searchParams;
+    const status = p.get('status') || '';
+    const sub = p.get('sub_estado') || '';
+    const sort = p.get('sort') || 'reciente';
+    const nuevas = p.get('nuevas') || '';
+    currentStatus = VALID_STATUS.includes(status) ? status : '';
+    currentSubEstado = VALID_SUB.includes(sub) ? sub : '';
+    currentSort = VALID_SORT.includes(sort) ? sort : 'reciente';
+    currentSearch = p.get('search') || '';
+    currentNuevas = VALID_NUEVAS.includes(nuevas) ? nuevas : '';
+  }
+
+  // Única fuente de los query params: la usan refresh(), syncUrl() y el export.
+  function buildParams() {
+    const params = new URLSearchParams();
+    if (currentSearch) params.set('search', currentSearch);
+    if (currentStatus) params.set('status', currentStatus);
+    if (currentSubEstado) params.set('sub_estado', currentSubEstado);
+    if (currentNuevas) params.set('nuevas', currentNuevas);
+    if (currentSort && currentSort !== 'reciente') params.set('sort', currentSort);
+    return params;
+  }
+
+  // replaceState y no pushState: filtrar no debe llenar el historial.
+  // En modo Personas los filtros de clínicas no describen lo que se ve en
+  // pantalla, así que no se escriben en la URL.
+  function syncUrl() {
+    if (currentMode === 'users') return;
+    const qs = buildParams().toString();
+    window.history.replaceState(null, '', qs ? `?${qs}` : window.location.pathname);
+  }
 
   async function loadPlans() {
     if (plansCache) return plansCache;
@@ -18,13 +59,8 @@
   }
 
   async function refresh() {
-    const params = new URLSearchParams();
-    if (currentSearch) params.set('search', currentSearch);
-    if (currentStatus) params.set('status', currentStatus);
-    if (currentSubEstado) params.set('sub_estado', currentSubEstado);
-    if (currentSort) params.set('sort', currentSort);
-    const qs = params.toString() ? `?${params.toString()}` : '';
-    const data = await adminApi.get(`/tenants${qs}`);
+    const qs = buildParams().toString();
+    const data = await adminApi.get(`/tenants${qs ? `?${qs}` : ''}`);
     renderRows(data.tenants || []);
   }
 
@@ -334,6 +370,7 @@
     search.placeholder = isUsers ? 'Buscar persona por nombre o email…' : 'Buscar por nombre, slug o email…';
     if (isUsers) refreshUsers().catch(err => Toast.show(err.message, 'error'));
     else refresh().catch(err => Toast.show(err.message, 'error'));
+    syncUrl();
   }
 
   function wireModeToggle() {
@@ -350,55 +387,68 @@
   // ── Filtros wiring ─────────────────────────────────────────────────────
   function wireFilters() {
     const searchInput = document.getElementById('filter-search');
+    searchInput.value = currentSearch;
     let timer;
     searchInput.addEventListener('input', (e) => {
       currentSearch = e.target.value;
       clearTimeout(timer);
       timer = setTimeout(() => {
+        syncUrl();
         if (currentMode === 'users') refreshUsers().catch(err => Toast.show(err.message, 'error'));
-        else refresh();
+        else refresh().catch(err => Toast.show(err.message, 'error'));
       }, 250);
     });
 
     document.querySelectorAll('.status-chip').forEach(chip => {
-      if (chip.dataset.status === currentStatus) {
-        document.querySelectorAll('.status-chip').forEach(c => c.classList.remove('active'));
-        chip.classList.add('active');
-      }
+      chip.classList.toggle('active', chip.dataset.status === currentStatus);
       chip.addEventListener('click', () => {
         document.querySelectorAll('.status-chip').forEach(c => c.classList.remove('active'));
         chip.classList.add('active');
         currentStatus = chip.dataset.status;
-        refresh();
+        syncUrl();
+        refresh().catch(err => Toast.show(err.message, 'error'));
       });
     });
 
     document.querySelectorAll('.sub-chip').forEach(chip => {
+      chip.classList.toggle('active', chip.dataset.sub === currentSubEstado);
       chip.addEventListener('click', () => {
         document.querySelectorAll('.sub-chip').forEach(c => c.classList.remove('active'));
         chip.classList.add('active');
         currentSubEstado = chip.dataset.sub;
-        refresh();
+        syncUrl();
+        refresh().catch(err => Toast.show(err.message, 'error'));
       });
     });
+
+    // Toggle suelto: prende y apaga, no pertenece a un grupo excluyente.
+    document.querySelectorAll('.nuevas-chip').forEach(chip => {
+      chip.classList.toggle('active', chip.dataset.nuevas === currentNuevas);
+      chip.addEventListener('click', () => {
+        currentNuevas = currentNuevas === chip.dataset.nuevas ? '' : chip.dataset.nuevas;
+        document.querySelectorAll('.nuevas-chip').forEach(c =>
+          c.classList.toggle('active', c.dataset.nuevas === currentNuevas));
+        syncUrl();
+        refresh().catch(err => Toast.show(err.message, 'error'));
+      });
+    });
+
     const sortSel = document.getElementById('sort-select');
+    sortSel.value = currentSort;
     sortSel.addEventListener('change', () => {
       currentSort = sortSel.value;
-      refresh();
+      syncUrl();
+      refresh().catch(err => Toast.show(err.message, 'error'));
     });
   }
 
   async function init() {
+    readFiltersFromUrl();
     wireFilters();
     wireModeToggle();
     document.getElementById('btn-export-csv').addEventListener('click', () => {
-      const params = new URLSearchParams();
-      if (currentSearch) params.set('search', currentSearch);
-      if (currentStatus) params.set('status', currentStatus);
-      if (currentSubEstado) params.set('sub_estado', currentSubEstado);
-      if (currentSort) params.set('sort', currentSort);
-      const qs = params.toString() ? `?${params.toString()}` : '';
-      adminApi.download(`/tenants/export.csv${qs}`, 'clinicas.csv');
+      const qs = buildParams().toString();
+      adminApi.download(`/tenants/export.csv${qs ? `?${qs}` : ''}`, 'clinicas.csv');
     });
     try {
       await refresh();

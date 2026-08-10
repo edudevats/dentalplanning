@@ -187,6 +187,11 @@ def admin_planes():
     return render_template("admin/planes.html")
 
 
+@frontend_bp.route("/admin/solicitudes")
+def admin_solicitudes():
+    return render_template("admin/solicitudes.html")
+
+
 @frontend_bp.route("/admin/auditoria")
 def admin_auditoria():
     return render_template("admin/auditoria.html")

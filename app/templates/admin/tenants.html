@@ -47,6 +47,9 @@
       <button data-sub="gracia" class="sub-chip px-3 py-1.5 rounded-md text-xs font-semibold transition-colors cursor-pointer">En gracia</button>
       <button data-sub="vencida" class="sub-chip px-3 py-1.5 rounded-md text-xs font-semibold transition-colors cursor-pointer">Vencida</button>
     </div>
+    <div class="flex items-center gap-1 flex-wrap" id="nuevas-chips">
+      <button data-nuevas="mes" class="nuevas-chip px-3 py-1.5 rounded-md text-xs font-semibold transition-colors cursor-pointer">Nuevas este mes</button>
+    </div>
     <div class="md:ml-auto flex items-center gap-2">
       <label class="text-xs font-semibold text-cs-on-surface-var">Orden</label>
       <select id="sort-select" class="px-3 py-1.5 rounded-lg bg-cs-surface-container text-sm text-cs-on-surface focus:outline-none focus:ring-2 focus:ring-cs-primary/30">
@@ -109,6 +112,9 @@
   .sub-chip { background-color: var(--color-cs-surface-container); color: var(--color-cs-on-surface-var); }
   .sub-chip:hover { background-color: var(--color-cs-surface-container-high); color: var(--color-cs-on-surface); }
   .sub-chip.active { background-color: var(--color-cs-primary); color: var(--color-cs-on-primary); }
+  .nuevas-chip { background-color: var(--color-cs-surface-container); color: var(--color-cs-on-surface-var); }
+  .nuevas-chip:hover { background-color: var(--color-cs-surface-container-high); color: var(--color-cs-on-surface); }
+  .nuevas-chip.active { background-color: var(--color-cs-primary); color: var(--color-cs-on-primary); }
 </style>
 
 {% endblock %}

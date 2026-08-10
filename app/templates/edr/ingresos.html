@@ -563,23 +563,44 @@ function applyStatsRole() {
 }
 
 async function init() {
-  try {
-    const [esp, mp, trat, est, sucs, me, fcfg] = await Promise.all([
-      API.get('/ajustes/especialistas'), API.get('/ajustes/metodos-pago'),
-      API.get('/tratamientos'), API.get('/ajustes/estrategias'),
-      API.get('/facturacion/sucursales'), API.get('/auth/me'),
-      API.get('/facturacion/configuracion'),
-    ]);
-    especialistas = esp ?? []; metodosPago = mp ?? []; tratamientos = Array.isArray(trat) ? trat : (trat.tratamientos || []); estrategias = est ?? []; sucursales = sucs ?? [];
-    facturacionActiva = Boolean(fcfg && fcfg.facturacion_activa);
-    userRole = (me && (me.user || me) || {}).role || null;
-    applyStatsRole();
-    populateDatalist(document.getElementById('dl-especialistas'), especialistas);
-    populateDatalist(document.getElementById('dl-tratamientos'), tratamientos);
-    populateSelect(document.getElementById('f-metodo'), metodosPago.map(m => ({ value: String(m.id), label: m.nombre })), '', 'Seleccionar metodo');
-    populateSelect(document.getElementById('f-estrategia'), estrategias.map(e => ({ value: String(e.id), label: e.nombre })), '', 'Seleccionar estrategia');
-    populateSelect(document.getElementById('f-sucursal'), sucursales.map(s => ({ value: String(s.id), label: s.nombre })), '', 'Seleccionar sucursal');
-  } catch {}
+  // allSettled y no all: un catálogo que falle no debe dejar sin autocompletado
+  // al resto del formulario (antes, un 500 en /facturacion/configuracion vaciaba
+  // especialistas, tratamientos y métodos de pago, en silencio).
+  const [esp, mp, trat, est, sucs, me, fcfg] = await Promise.allSettled([
+    API.get('/ajustes/especialistas'), API.get('/ajustes/metodos-pago'),
+    API.get('/tratamientos'), API.get('/ajustes/estrategias'),
+    API.get('/facturacion/sucursales'), API.get('/auth/me'),
+    API.get('/facturacion/configuracion'),
+  ]);
+  const ok = (r, fallback) => (r.status === 'fulfilled' && r.value != null) ? r.value : fallback;
+
+  especialistas = ok(esp, []);
+  metodosPago = ok(mp, []);
+  const tratRes = ok(trat, []);
+  tratamientos = Array.isArray(tratRes) ? tratRes : (tratRes.tratamientos || []);
+  estrategias = ok(est, []);
+  sucursales = ok(sucs, []);
+  // Si /facturacion/configuracion falla, el backend sigue siendo la fuente de verdad.
+  facturacionActiva = fcfg.status === 'fulfilled'
+    ? Boolean(fcfg.value && fcfg.value.facturacion_activa)
+    : true;
+  userRole = ((ok(me, {}).user || ok(me, {})) || {}).role || null;
+
+  applyStatsRole();
+  populateDatalist(document.getElementById('dl-especialistas'), especialistas);
+  populateDatalist(document.getElementById('dl-tratamientos'), tratamientos);
+  populateSelect(document.getElementById('f-metodo'), metodosPago.map(m => ({ value: String(m.id), label: m.nombre })), '', 'Seleccionar metodo');
+  populateSelect(document.getElementById('f-estrategia'), estrategias.map(e => ({ value: String(e.id), label: e.nombre })), '', 'Seleccionar estrategia');
+  populateSelect(document.getElementById('f-sucursal'), sucursales.map(s => ({ value: String(s.id), label: s.nombre })), '', 'Seleccionar sucursal');
+
+  // Fallar en voz alta: sin catálogos el autocompletado no puede funcionar.
+  const fallidos = [esp, mp, trat, est, sucs, me, fcfg].filter(r => r.status === 'rejected');
+  if (fallidos.length) {
+    console.error('Ingresos: catálogos que no cargaron', fallidos.map(r => r.reason));
+    if (!especialistas.length || !tratamientos.length) {
+      Toast.warning('No se pudieron cargar los catálogos; el autocompletado no estará disponible');
+    }
+  }
   fetchData();
 }
 

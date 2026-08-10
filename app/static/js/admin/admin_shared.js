@@ -48,6 +48,9 @@
     activa:    { label: 'Activa',      variant: 'primary' },
     vencida:   { label: 'Vencida',     variant: 'critical' },
     cancelada: { label: 'Cancelada',   variant: 'neutral' },
+    pendiente: { label: 'Pendiente',   variant: 'warning' },
+    aprobada:  { label: 'Aprobada',    variant: 'primary' },
+    rechazada: { label: 'Rechazada',   variant: 'neutral' },
   };
 
   function statusBadge(status) {
@@ -255,22 +258,58 @@
   }
 
   // ── KPI card builder ──────────────────────────────────────────────────────
-  function kpiCard({ label, value, icon = 'circle', hint = null }) {
-    const card = document.createElement('div');
+  // href → <a>; onClick → <button>; ninguno → <div> estático (comportamiento
+  // original, usado por admin_tenant_detail.js). Si vienen ambos, gana href.
+  function kpiCard({ label, value, icon = 'circle', hint = null, href = null, onClick = null,
+                     delta = null, deltaLabel = null }) {
+    let card;
+    if (href) {
+      card = document.createElement('a');
+      card.href = href;
+    } else if (onClick) {
+      card = document.createElement('button');
+      card.type = 'button';
+      card.addEventListener('click', onClick);
+    } else {
+      card = document.createElement('div');
+    }
+    const interactive = Boolean(href || onClick);
+
     card.className = 'rounded-lg bg-cs-surface-container-lowest p-5 flex flex-col gap-2';
+    if (interactive) {
+      card.className += ' group w-full text-left cursor-pointer transition-colors'
+        + ' hover:bg-cs-surface-container-low'
+        + ' focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cs-primary/40';
+    }
+
     const top = document.createElement('div');
     top.className = 'flex items-center justify-between';
     const l = document.createElement('span');
     l.className = 'text-xs font-semibold tracking-wide uppercase text-cs-on-surface-var';
     l.textContent = label;
+
     const ic = document.createElement('span');
     ic.className = 'inline-flex items-center justify-center w-8 h-8 rounded-md bg-cs-primary-container text-cs-on-primary-container';
     const i = document.createElement('i');
     i.setAttribute('data-lucide', icon);
     i.className = 'h-4 w-4';
     ic.appendChild(i);
+
     top.appendChild(l);
-    top.appendChild(ic);
+    if (interactive) {
+      // La flecha solo existe en tarjetas navegables; sin ella el <div> queda
+      // idéntico al original para los consumidores no interactivos.
+      const right = document.createElement('span');
+      right.className = 'inline-flex items-center gap-1.5';
+      const arrow = document.createElement('i');
+      arrow.setAttribute('data-lucide', 'arrow-up-right');
+      arrow.className = 'h-3.5 w-3.5 text-cs-on-surface-var opacity-0 group-hover:opacity-100 transition-opacity';
+      right.appendChild(arrow);
+      right.appendChild(ic);
+      top.appendChild(right);
+    } else {
+      top.appendChild(ic);
+    }
 
     const v = document.createElement('p');
     v.className = 'font-cs-display text-3xl font-bold text-cs-on-surface tracking-tight';
@@ -283,6 +322,16 @@
       h.className = 'text-xs text-cs-on-surface-var';
       h.textContent = hint;
       card.appendChild(h);
+    }
+    if (delta != null) {
+      const d = document.createElement('p');
+      const tono = delta > 0 ? 'text-cs-primary'
+                 : delta < 0 ? 'text-cs-error'
+                 : 'text-cs-on-surface-var';
+      d.className = `text-xs font-semibold ${tono}`;
+      const flecha = delta > 0 ? '↑' : delta < 0 ? '↓' : '=';
+      d.textContent = `${flecha} ${Math.abs(delta)}${deltaLabel ? ` ${deltaLabel}` : ''}`;
+      card.appendChild(d);
     }
     return card;
   }
