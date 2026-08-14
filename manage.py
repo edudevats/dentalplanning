@@ -52,18 +52,6 @@ def runserver(host, port, debug):
     app.run(host=host, port=port, debug=debug)
 
 
-# ── db commands (delegados a Flask-Migrate) ──────────────────────────────────
-
-@app.cli.command("db")
-@click.argument("action", required=False)
-@click.argument("args", nargs=-1)
-@click.pass_context
-def db_cmd(ctx, action, args):
-    """Alias conveniente — usa 'flask db <accion>' directamente."""
-    click.echo("Usa: flask db <accion>  (init | migrate | upgrade | downgrade | current | history)")
-    click.echo("Ejemplo: flask db upgrade")
-
-
 # ── shell ────────────────────────────────────────────────────────────────────
 
 @app.cli.command("shell")
@@ -189,7 +177,9 @@ if __name__ == "__main__":
     elif cmd == "db":
         # Delegar a flask-migrate via subprocess para mantener el contexto correcto
         import subprocess
-        flask_args = ["flask", "db"] + sys.argv[2:]
+        # Usa el mismo intérprete que ejecutó manage.py; depender del ejecutable
+        # global `flask` podía saltarse la venv o no encontrar el comando.
+        flask_args = [sys.executable, "-m", "flask", "db"] + sys.argv[2:]
         result = subprocess.run(flask_args, env={**__import__("os").environ, "FLASK_APP": "manage.py"})
         sys.exit(result.returncode)
 
@@ -221,6 +211,10 @@ if __name__ == "__main__":
             except Exception as e:
                 click.echo(f"  Error: {e}")
                 sys.exit(1)
+
+    elif cmd == "migrate-sqlite-to-mysql":
+        from scripts.migrate_sqlite_to_mysql import run_migration
+        run_migration()
 
     else:
         click.echo(f"Comando desconocido: {cmd}")
