@@ -1,27 +1,25 @@
-"""Regla central de IVA: cuándo grava un concepto y cuánto (IVA por encima)."""
+"""Regla central de IVA: cuándo grava un concepto y cuánto (IVA por encima).
+
+El IVA lo determina el tipo de servicio del tratamiento, no la razón social del
+consultorio: los tratamientos clínicos/terapéuticos están exentos (Art. 15-XIV
+LIVA) y solo los estéticos gravan 16%.
+"""
 
 TASA_IVA = 0.16
 
-NATURALEZA_MORAL_MERCANTIL = "moral_mercantil"
-NATURALEZA_FISICA_O_CIVIL = "fisica_o_civil"
 
-
-def grava_iva(naturaleza, tipo_servicio, factura):
+def grava_iva(tipo_servicio, factura):
     """True si el concepto debe gravar IVA 16%.
 
     - Sin factura → nunca grava.
-    - Persona Moral Mercantil → grava TODO.
-    - Persona Física / Moral Civil (o naturaleza no definida) → grava solo 'estetico'.
+    - Estético → grava.
+    - Clínico/terapéutico (o tipo no definido) → exento.
     """
-    if not factura:
-        return False
-    if naturaleza == NATURALEZA_MORAL_MERCANTIL:
-        return True
-    return tipo_servicio == "estetico"
+    return bool(factura) and tipo_servicio == "estetico"
 
 
-def iva_de(monto, naturaleza, tipo_servicio, factura):
+def iva_de(monto, tipo_servicio, factura):
     """IVA (por encima) del monto base. 0.0 si no grava."""
-    if grava_iva(naturaleza, tipo_servicio, factura):
+    if grava_iva(tipo_servicio, factura):
         return round((monto or 0.0) * TASA_IVA, 2)
     return 0.0

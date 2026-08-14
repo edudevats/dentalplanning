@@ -26,15 +26,12 @@ def siguiente_folio(tenant_id, sucursal_id):
 def recalcular_total(ticket):
     """Total del ticket = Σ (base + IVA por encima). IVA solo en facturables gravados."""
     from app.edr.models import Ingreso
-    from app.facturacion.models import ConfiguracionFiscal
     from app.facturacion.iva import iva_de
-    cfg = ConfiguracionFiscal.query.filter_by(tenant_id=ticket.tenant_id).first()
-    naturaleza = cfg.naturaleza_juridica if cfg else None
     ingresos = Ingreso.query.filter_by(ticket_id=ticket.id).all()
     total = 0.0
     for i in ingresos:
         base = i.monto or 0.0
-        total += base + iva_de(base, naturaleza, i.tipo_servicio, i.factura)
+        total += base + iva_de(base, i.tipo_servicio, i.factura)
     ticket.total = round(total, 2)
 
 

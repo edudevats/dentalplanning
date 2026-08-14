@@ -48,8 +48,7 @@ class Config:
 class DevelopmentConfig(Config):
     DEBUG = True
     SQLALCHEMY_DATABASE_URI = os.getenv(
-        "DATABASE_URL",
-        "mysql+pymysql://edudracos:Admin123$%@127.0.0.1:3306/dental_planning?charset=utf8mb4"
+        "DATABASE_URL", "sqlite:///dental_saas.db"
     )
 
 

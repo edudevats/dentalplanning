@@ -14,7 +14,6 @@ class ConfiguracionFiscal(db.Model):
     rfc = db.Column(db.String(13))
     razon_social = db.Column(db.String(255))
     regimen_fiscal = db.Column(db.String(5))  # clave SAT, p. ej. "626"
-    naturaleza_juridica = db.Column(db.String(20))  # moral_mercantil | fisica_o_civil
     # El logo de la clínica vive en ConfigConsultorio (lo usan también el ticket,
     # el portal y las cotizaciones). Se lee vía app/configuracion/logo.py.
     # Defaults para los conceptos del CFDI

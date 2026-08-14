@@ -11,7 +11,6 @@ from app.ajustes.models import DistribucionConfig, DistribucionCategoria, DIST_C
 from app.engine.pricing_engine import generar_dashboard_ganancias
 # parse_mes y el Estado de Resultados canónico viven en el núcleo contable
 from app.engine.accounting import parse_mes as _parse_mes, estado_resultados, filtro_mes, reparto_iva
-from app.facturacion.models import ConfiguracionFiscal
 from app.facturacion.iva import iva_de
 
 dashboard_bp = Blueprint("dashboard", __name__, url_prefix="/api/v1")
@@ -52,15 +51,12 @@ def resumen_mensual():
         *filtro_mes(Ingreso.fecha, year, month),
     ).all()
 
-    cfg_fiscal = ConfiguracionFiscal.query.filter_by(tenant_id=g.tenant_id).first()
-    naturaleza = cfg_fiscal.naturaleza_juridica if cfg_fiscal else None
-
     # Venta ajustada por ingreso: el IVA de un facturable gravado NO timbrado se
     # queda como ingreso; si está timbrado, el IVA se va al SAT (no es ingreso).
     venta_por_ingreso = {}
     iva_por_regresar_al_sat = 0.0
     for i in ingresos:
-        iva = iva_de(i.monto or 0.0, naturaleza, i.tipo_servicio, i.factura)
+        iva = iva_de(i.monto or 0.0, i.tipo_servicio, i.factura)
         timbrado = bool(i.ticket and i.ticket.estado == "timbrada")
         venta, iva_sat = reparto_iva(i.monto or 0.0, iva, timbrado)
         venta_por_ingreso[i.id] = venta

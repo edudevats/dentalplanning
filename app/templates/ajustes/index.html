@@ -208,12 +208,10 @@
               <p data-cat-desc class="text-xs text-text-muted font-body min-h-[1rem]"></p>
             </div>
             <div class="flex flex-col gap-1 md:col-span-2">
-              <label class="text-xs font-semibold text-text-muted font-body">Naturaleza jurídica (define cómo se cobra el IVA)</label>
-              <select name="naturaleza_juridica" class="border border-border rounded-lg px-3 py-2 text-sm font-body bg-surface focus:ring-2 focus:ring-primary-300 focus:border-primary-500 outline-none">
-                <option value="moral_mercantil">Persona Moral Mercantil (S.A., S. de R.L., S.A.P.I.) — grava 16% en todo</option>
-                <option value="fisica_o_civil">Persona Física o Moral Civil (S.C.) — exento en clínicos, 16% en estéticos</option>
-              </select>
-              <p class="text-xs text-text-muted font-body">Cámbiala aquí si la elegiste mal al configurar. Afecta el IVA de las próximas facturas.</p>
+              <p class="text-xs text-text-muted font-body">
+                El IVA se define por tratamiento: los clínicos/terapéuticos son exentos y los
+                estéticos gravan 16%. Cámbialo en la ficha de cada tratamiento.
+              </p>
             </div>
             <div class="md:col-span-2">
               <button type="submit" class="inline-flex items-center justify-center gap-2 rounded-lg font-medium font-body cursor-pointer bg-primary-500 hover:bg-primary-600 text-white px-4 py-2 text-sm min-h-[38px]">
@@ -383,24 +381,6 @@
           <li>Listo: desde Ingresos y Facturas se imprimirá automáticamente.</li>
         </ol>
       </div>
-    </div>
-  </div>
-</div>
-
-<!-- Naturaleza juridica modal -->
-<div id="modal-naturaleza" class="hidden fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
-  <div class="bg-surface rounded-2xl shadow-xl w-full max-w-lg p-6">
-    <h3 class="text-lg font-semibold mb-1">Configura tu facturación</h3>
-    <p class="text-sm text-text-muted mb-4">¿Cuál es la naturaleza jurídica del consultorio? Define cómo se cobra el IVA.</p>
-    <div class="space-y-3">
-      <button data-nat="moral_mercantil" class="nat-opt w-full text-left border border-border rounded-xl p-4 hover:bg-surface-hover">
-        <div class="font-semibold">Persona Moral Mercantil</div>
-        <div class="text-sm text-text-muted">S.A. de C.V., S. de R.L., S.A.P.I. → grava 16% en todo.</div>
-      </button>
-      <button data-nat="fisica_o_civil" class="nat-opt w-full text-left border border-border rounded-xl p-4 hover:bg-surface-hover">
-        <div class="font-semibold">Persona Física o Persona Moral Civil (S.C.)</div>
-        <div class="text-sm text-text-muted">Exento en tratamientos clínicos; 16% solo en estéticos.</div>
-      </button>
     </div>
   </div>
 </div>
@@ -1310,7 +1290,7 @@
       const cfg = await API.get('/facturacion/configuracion');
       pintarEstadoFacturacion(cfg);
       const form = document.getElementById('form-config');
-      for (const k of ['rfc', 'razon_social', 'regimen_fiscal', 'clave_prod_serv_default', 'clave_unidad_default', 'naturaleza_juridica']) {
+      for (const k of ['rfc', 'razon_social', 'regimen_fiscal', 'clave_prod_serv_default', 'clave_unidad_default']) {
         const el = form.querySelector(`[name=${k}]`);
         if (el && cfg[k] != null) el.value = cfg[k];
       }
@@ -1329,9 +1309,6 @@
         fielEstado.textContent = cfg.fiel_configurada
           ? `FIEL vigente hasta ${cfg.fiel_valido_hasta ? cfg.fiel_valido_hasta.slice(0, 10) : '—'}`
           : 'Aún no has subido tu e.firma (necesaria para cancelar).';
-      }
-      if (!cfg.naturaleza_juridica) {
-        document.getElementById('modal-naturaleza').classList.remove('hidden');
       }
       renderFinkok(cfg);
     } catch (e) {
@@ -1561,15 +1538,6 @@
     await cargarConfigFiscal();
     Toast.success('FIEL subida correctamente');
   });
-
-  document.querySelectorAll('.nat-opt').forEach(btn => btn.addEventListener('click', async () => {
-    try {
-      await API.put('/facturacion/configuracion', { naturaleza_juridica: btn.dataset.nat });
-      document.getElementById('modal-naturaleza').classList.add('hidden');
-      Toast.success('Configuración guardada');
-      cargarConfigFiscal();
-    } catch (e) { Toast.error(e.message || 'Error al guardar'); }
-  }));
 
   // ── SUCURSALES ────────────────────────────────────────────
   const SUC_FIELDS = [

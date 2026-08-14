@@ -344,8 +344,6 @@ def resumen_iva_tickets():
     ticket usa el mismo iva_de() por concepto (0 si el ingreso no es facturable).
     """
     year, month = parse_mes(request.args.get("mes"))
-    cfg = ConfiguracionFiscal.query.filter_by(tenant_id=g.tenant_id).first()
-    naturaleza = cfg.naturaleza_juridica if cfg else None
 
     tickets = Ticket.query.options(joinedload(Ticket.ingresos)).filter(
         Ticket.tenant_id == g.tenant_id,
@@ -355,7 +353,7 @@ def resumen_iva_tickets():
     iva_generado = iva_reclamado = iva_cancelado = 0.0
     for t in tickets:
         iva_t = sum(
-            iva_de(i.monto or 0.0, naturaleza, i.tipo_servicio, i.factura)
+            iva_de(i.monto or 0.0, i.tipo_servicio, i.factura)
             for i in t.ingresos
         )
         if t.estado == TICKET_CANCELADA:

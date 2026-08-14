@@ -53,7 +53,6 @@ def cargar_signer_fiel(cfg):
 def _conceptos_cfdi(ticket, cfg):
     """Conceptos del CFDI: cada uno con valor_unitario = monto (base) y Tasa/Exento."""
     from app.facturacion.iva import grava_iva, TASA_IVA
-    naturaleza = cfg.naturaleza_juridica if cfg else None
     conceptos = []
     for ing in ticket.ingresos:
         c = {
@@ -65,7 +64,7 @@ def _conceptos_cfdi(ticket, cfg):
             "valor_unitario": float(ing.monto or 0),
             "objeto_imp": "02",
         }
-        if grava_iva(naturaleza, ing.tipo_servicio, ing.factura):
+        if grava_iva(ing.tipo_servicio, ing.factura):
             c["tipo_factor"] = "Tasa"
             c["tasa_iva"] = TASA_IVA
         else:
@@ -76,14 +75,11 @@ def _conceptos_cfdi(ticket, cfg):
 
 def desglose_ticket(ticket):
     """Devuelve {subtotal, iva, total, conceptos:[{nombre, base, iva, importe}]}."""
-    from app.facturacion.models import ConfiguracionFiscal
     from app.facturacion.iva import iva_de
-    cfg = ConfiguracionFiscal.query.filter_by(tenant_id=ticket.tenant_id).first()
-    naturaleza = cfg.naturaleza_juridica if cfg else None
     conceptos, subtotal, iva_total = [], 0.0, 0.0
     for i in ticket.ingresos:
         base = round(i.monto or 0.0, 2)
-        iva = iva_de(base, naturaleza, i.tipo_servicio, i.factura)
+        iva = iva_de(base, i.tipo_servicio, i.factura)
         subtotal += base
         iva_total += iva
         conceptos.append({
