@@ -171,6 +171,25 @@
     </div>
   </div>
 </div>
+
+<!-- Comentario (solo lectura) -->
+<div id="modal-comentario" class="hidden fixed inset-0 z-50 overflow-y-auto">
+  <div class="flex min-h-full items-end sm:items-center justify-center p-4">
+    <div class="fixed inset-0 bg-black/40" onclick="Modal.close('modal-comentario')"></div>
+    <div class="relative bg-surface rounded-2xl shadow-xl w-full max-w-md">
+      <div class="flex items-center justify-between px-6 py-4 border-b border-border">
+        <h2 class="text-base font-semibold font-heading text-text-primary">Comentario</h2>
+        <button type="button" onclick="Modal.close('modal-comentario')" class="p-2 rounded-lg text-text-muted hover:bg-surface-hover transition-colors cursor-pointer"><i data-lucide="x" class="h-4 w-4"></i></button>
+      </div>
+      <div class="px-6 py-5">
+        <p id="comentario-texto" class="text-sm text-text-secondary font-body whitespace-pre-wrap break-words max-h-64 overflow-auto"></p>
+        <div class="flex justify-end gap-3 mt-6 pt-4 border-t border-border">
+          <button type="button" onclick="Modal.close('modal-comentario')" class="inline-flex items-center justify-center gap-2 rounded-lg font-medium font-body cursor-pointer border border-border bg-surface hover:bg-surface-hover text-text-secondary px-4 py-2 text-sm min-h-[38px]">Cerrar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
@@ -289,6 +308,9 @@ document.getElementById('sel-year').addEventListener('change', e => { selYear = 
 
 function findName(list, id) { return list.find(i => String(i.id) === String(id))?.nombre ?? '-'; }
 
+// Un comentario de solo espacios no cuenta: no debe teñir la fila.
+function tieneComentario(row) { return !!String(row.comentarios || '').trim(); }
+
 // Resuelve el texto escrito (nombre) -> objeto del catálogo (autocompletado).
 function findByName(list, name) {
   const n = (name || '').trim().toLowerCase();
@@ -321,7 +343,19 @@ function updateStats() {
 
 function renderTable_() {
   const cols = [
-    { key: 'fecha', label: 'Fecha', render: v => formatDate(v) },
+    { key: 'fecha', label: 'Fecha', render: (v, row) => {
+      if (!tieneComentario(row)) return formatDate(v);
+      const wrap = domEl('div', 'flex items-center gap-1.5');
+      const btn = domEl('button', 'shrink-0 rounded p-1.5 text-primary-600 hover:text-primary-700 transition-colors cursor-pointer');
+      btn.type = 'button';
+      btn.title = String(row.comentarios).trim();   // tooltip nativo, sin JS extra
+      btn.setAttribute('aria-label', 'Ver comentario');
+      btn.appendChild(domIcon('message-square-text', 'h-4 w-4'));
+      btn.addEventListener('click', () => openComentario(row));
+      wrap.appendChild(btn);
+      wrap.appendChild(domEl('span', '', formatDate(v)));
+      return wrap;
+    } },
     { key: 'paciente', label: 'Paciente' },
     { key: 'tratamiento_id', label: 'Tratamiento', render: (v, row) => v ? findName(tratamientos, v) : (row.nombre_tratamiento || '-') },
     { key: 'especialista_id', label: 'Especialista', render: v => findName(especialistas, v) },
@@ -352,7 +386,9 @@ function renderTable_() {
   // La recepcionista solo ve los ingresos de hoy; el resto de roles ve todo el mes.
   const rows = (userRole === 'recepcionista') ? rowsHoy() : tableData;
   const empty = (userRole === 'recepcionista') ? 'No hay ingresos registrados hoy' : 'No hay ingresos registrados';
-  renderTable('table-wrap', cols, rows, empty, false);
+  renderTable('table-wrap', cols, rows, empty, false, {
+    rowClass: row => tieneComentario(row) ? 'bg-primary-50 hover:bg-primary-100' : '',
+  });
   lucide.createIcons();
 }
 
@@ -419,6 +455,12 @@ function openEdit(row) {
 }
 
 function openDel(row) { editingId = row.id; Modal.open('modal-del'); }
+
+function openComentario(row) {
+  // textContent y no innerHTML: el comentario es texto libre del usuario.
+  document.getElementById('comentario-texto').textContent = String(row.comentarios || '').trim();
+  Modal.open('modal-comentario');
+}
 
 async function handleSave() {
   const fecha = document.getElementById('f-fecha').value;

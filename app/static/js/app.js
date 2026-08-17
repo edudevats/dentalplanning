@@ -686,7 +686,11 @@ function badgeEl(text, variant = 'neutral') {
 
 // ── Table renderer ────────────────────────────────────────────────────────────
 // columns: [{ key, label, align, render(val, row) → string | safe() }]
-function renderTable(containerId, columns, data, emptyMessage, loading) {
+// options: { rowClass(row) → string } clases extra para el <tr> de esa fila.
+//   Si rowClass devuelve algo, se omite el hover por defecto y lo aporta el
+//   llamador: dos utilidades hover:bg-* con la misma especificidad se resuelven
+//   por orden de aparicion en el CSS generado, y no queremos depender de eso.
+function renderTable(containerId, columns, data, emptyMessage, loading, options = {}) {
   const container = document.getElementById(containerId);
   if (!container) return;
 
@@ -734,7 +738,10 @@ function renderTable(containerId, columns, data, emptyMessage, loading) {
   } else {
     data.forEach(rowData => {
       const tr = document.createElement('tr');
-      tr.className = 'border-b border-border hover:bg-surface-hover transition-colors duration-100';
+      const extraCls = options.rowClass ? (options.rowClass(rowData) || '') : '';
+      tr.className = extraCls
+        ? 'border-b border-border transition-colors duration-100 ' + extraCls
+        : 'border-b border-border hover:bg-surface-hover transition-colors duration-100';
       columns.forEach(col => {
         const td = document.createElement('td');
         td.className = `px-4 py-3 text-text-primary ${alignCls(col.align)}`;
