@@ -158,6 +158,22 @@
     h.textContent = 'Datos generales';
     card.appendChild(h);
 
+    // Sobre-cupo: más usuarios de un rol que asientos pagados. Lo calcula el
+    // backend en _serialize_tenant, porque la capacidad depende de los asientos
+    // activos y esta vista no los tiene cargados.
+    const ETIQUETA_ROL_CUPO = {
+      recepcionista: 'recepcionistas',
+      asistente: 'asistentes dentales',
+    };
+    (tenant.sobre_cupo || []).forEach(rol => {
+      const alerta = document.createElement('p');
+      alerta.className = 'text-xs font-semibold text-cs-error';
+      alerta.textContent =
+        `Sobre-cupo: esta clínica tiene más ${ETIQUETA_ROL_CUPO[rol] || rol} `
+        + 'activos que asientos pagados.';
+      card.appendChild(alerta);
+    });
+
     const nameInput = inputEl('text', 'name', tenant.name);
     const emailInput = inputEl('email', 'contact_email', tenant.contact_email || '');
 
@@ -245,6 +261,19 @@
         badge.textContent = 'Contraseña temporal';
         tdEmail.appendChild(badge);
       }
+      // Permisos del asistente, en solo lectura: el super-admin diagnostica,
+      // no reparte permisos internos del tenant.
+      if (u.role === 'asistente') {
+        const permisos = u.permisos || {};
+        const resumen = Object.keys(permisos).length
+          ? Object.entries(permisos).map(([r, n]) => `${r}: ${n}`).join(' · ')
+          : 'sin permisos';
+        const chip = document.createElement('span');
+        chip.className = 'block mt-1 text-[10px] text-cs-on-surface-var';
+        chip.textContent = resumen;
+        chip.title = 'Permisos otorgados por el administrador de la clínica';
+        tdEmail.appendChild(chip);
+      }
       tr.appendChild(tdEmail);
 
       // Rol
@@ -257,15 +286,26 @@
         const sel = selectEl('role', [
           { value: 'admin', label: 'Admin' },
           { value: 'recepcionista', label: 'Recepcionista' },
+          { value: 'asistente', label: 'Asistente dental' },
         ], u.role);
         sel.classList.add('text-xs', 'py-1');
         sel.disabled = !u.is_active;
         sel.addEventListener('change', async () => {
           const prev = u.role;
           try {
-            await adminApi.put(`/users/${u.id}/role`, { role: sel.value });
+            const res = await adminApi.put(`/users/${u.id}/role`, { role: sel.value });
             u.role = sel.value;
-            Toast.show('Rol actualizado', 'success');
+            u.permisos = res.permisos || {};
+            if (res.sobre_cupo) {
+              Toast.show(
+                `Rol actualizado, pero la clínica quedó sobre-cupo en ${res.sobre_cupo_rol}: `
+                + 'tiene más usuarios de ese tipo que asientos pagados.',
+                'warning'
+              );
+            } else {
+              Toast.show('Rol actualizado', 'success');
+            }
+            renderUsers();
           } catch (err) {
             sel.value = prev;
             Toast.show(err.message || 'No se pudo cambiar el rol', 'error');

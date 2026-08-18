@@ -20,6 +20,7 @@ from app.superadmin.models import (
     SUBSCRIPTION_ACTIVA, SUBSCRIPTION_GRACIA, SUBSCRIPTION_VENCIDA,
 )
 from app.auth import seats_service
+from app.middleware.permisos import ROLE_ASISTENTE, PERMISOS_MINIMOS
 from app.clip.service import ClipAPIError
 from app.clip.billing import (
     add_one_month, calculate_variable_breakdown, create_variable_charge,
@@ -83,6 +84,19 @@ def _serialize_tenant(t, *, with_counts=False):
     }
     if with_counts:
         out["users_count"] = User.query.filter_by(tenant_id=t.id).count()
+        # is_active=True: debe contar lo mismo que seats_service.usuarios_actuales
+        # (usado para sobre_cupo), o un tenant con usuarios deshabilitados mostraría
+        # más usuarios "de un rol" de los que en realidad están activos.
+        out["users_por_rol"] = {
+            rol: User.query.filter_by(tenant_id=t.id, role=rol, is_active=True).count()
+            for rol in ("admin", "recepcionista", "asistente")
+        }
+        # El sobre-cupo se calcula aquí y no en el JS: la capacidad depende de
+        # los asientos activos, que el frontend de la ficha no tiene a mano.
+        out["sobre_cupo"] = [
+            rol for rol in seats_service.ROLES_CON_ASIENTO
+            if seats_service.sobre_cupo(t.id, rol)
+        ]
         out["tratamientos_count"] = Tratamiento.query.filter_by(tenant_id=t.id).count()
         out["materiales_count"] = Material.query.filter_by(tenant_id=t.id).count()
         last = (
@@ -526,6 +540,7 @@ def tenant_users(tenant_id):
         "users": [
             {
                 "id": u.id, "email": u.email, "name": u.name, "role": u.role,
+                "permisos": u.permisos or {},
                 "is_superuser": u.is_superuser, "is_active": u.is_active,
                 "must_change_password": u.must_change_password,
                 "last_login": u.last_login.isoformat() if u.last_login else None,
@@ -609,17 +624,47 @@ def change_user_role(user_id):
 
     old_role = user.role
     user.role = new_role
+
+    # Normaliza el JSON de permisos en la transición. Sin esto, un usuario
+    # promovido a asistente entraría con {} y, siendo deny-by-default, quedaría
+    # encerrado sin acceso ni a Inventario; y uno que sale del rol dejaría
+    # permisos huérfanos que revivirían si algún día vuelve.
+    permisos_antes = user.permisos or {}
+    permisos_normalizados = False
+    if new_role == ROLE_ASISTENTE and old_role != ROLE_ASISTENTE:
+        user.permisos = dict(PERMISOS_MINIMOS)
+        permisos_normalizados = True
+    elif old_role == ROLE_ASISTENTE and new_role != ROLE_ASISTENTE:
+        user.permisos = {}
+        permisos_normalizados = True
+
+    details = {"old_role": old_role, "new_role": new_role}
+    if permisos_normalizados:
+        # Solo se registra el detalle de permisos cuando la transición
+        # realmente los tocó (entrada/salida de asistente).
+        details["permisos_antes"] = permisos_antes
+        details["permisos_despues"] = user.permisos or {}
+
     log_admin_action("user.role_change", target_type="user", target_id=user.id,
                      tenant_id=user.tenant_id,
                      summary=f"Cambió rol de {old_role} a {new_role}",
-                     details={"old_role": old_role, "new_role": new_role})
+                     details=details)
     db.session.commit()
-    return jsonify({
+
+    out = {
         "id": user.id, "email": user.email, "name": user.name, "role": user.role,
+        "permisos": user.permisos or {},
         "is_superuser": user.is_superuser,
         "must_change_password": user.must_change_password,
         "created_at": user.created_at.isoformat() if user.created_at else None,
-    })
+    }
+    # El super-admin puede exceder la capacidad de asientos (es su privilegio de
+    # soporte), pero el sobre-cupo queda marcado para poder cobrarlo después.
+    if new_role in seats_service.ROLES_CON_ASIENTO and \
+            seats_service.sobre_cupo(user.tenant_id, new_role):
+        out["sobre_cupo"] = True
+        out["sobre_cupo_rol"] = new_role
+    return jsonify(out)
 
 
 @superadmin_bp.route("/users/<int:user_id>/active", methods=["PUT"])
@@ -1785,6 +1830,17 @@ def export_tenants_csv():
 
 # ── Asientos de recepcionista ────────────────────────────────────────────────
 
+_ETIQUETA_ROL_ASIENTO = {
+    seats_service.ROL_RECEPCIONISTA: "recepcionista",
+    seats_service.ROL_ASISTENTE: "asistente dental",
+}
+
+
+def _etiqueta_rol_asiento(rol):
+    """Etiqueta legible en español para el rol de un asiento, para la bitácora."""
+    return _ETIQUETA_ROL_ASIENTO.get(rol, rol)
+
+
 def _serialize_asiento_admin(a):
     d = seats_service.serialize_asiento(a, with_usuario=True)
     d["tenant_name"] = a.tenant.name if a.tenant else None
@@ -1821,7 +1877,8 @@ def aprobar_asiento_endpoint(asiento_id):
     except seats_service.SeatError as e:
         return jsonify({"error": str(e)}), 400
     log_admin_action("asiento.aprobar", target_type="asiento", target_id=a.id,
-                     tenant_id=a.tenant_id, summary="Aprobó un asiento de recepcionista")
+                     tenant_id=a.tenant_id,
+                     summary=f"Aprobó un asiento de {_etiqueta_rol_asiento(a.rol)}")
     db.session.commit()
     return jsonify(_serialize_asiento_admin(a))
 
@@ -1836,7 +1893,8 @@ def rechazar_asiento_endpoint(asiento_id):
     except seats_service.SeatError as e:
         return jsonify({"error": str(e)}), 400
     log_admin_action("asiento.rechazar", target_type="asiento", target_id=a.id,
-                     tenant_id=a.tenant_id, summary="Rechazó un asiento de recepcionista")
+                     tenant_id=a.tenant_id,
+                     summary=f"Rechazó un asiento de {_etiqueta_rol_asiento(a.rol)}")
     db.session.commit()
     return jsonify(_serialize_asiento_admin(a))
 
@@ -1856,7 +1914,7 @@ def activar_manual_endpoint(asiento_id):
         fecha=data.get("fecha") or date.today(),
         monto=monto,
         metodo="transferencia",
-        comentarios=data.get("comentarios") or "Asiento recepcionista (manual)",
+        comentarios=data.get("comentarios") or f"Asiento {_etiqueta_rol_asiento(a.rol)} (manual)",
         registrado_por_id=g.current_user.id,
     )
     db.session.add(payment)
@@ -1873,7 +1931,8 @@ def cancelar_asiento_admin_endpoint(asiento_id):
     a = AsientoRecepcionista.query.get_or_404(asiento_id)
     seats_service.cancelar_asiento(a)
     log_admin_action("asiento.cancelar", target_type="asiento", target_id=a.id,
-                     tenant_id=a.tenant_id, summary="Canceló un asiento de recepcionista")
+                     tenant_id=a.tenant_id,
+                     summary=f"Canceló un asiento de {_etiqueta_rol_asiento(a.rol)}")
     db.session.commit()
     return jsonify(_serialize_asiento_admin(a))
 

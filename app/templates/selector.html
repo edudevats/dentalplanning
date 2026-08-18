@@ -170,8 +170,20 @@
         'btn-cobranza': ['cobranza', 'crm'],
       };
       let hasLocked = false;
+      const permisos = user.permisos || {};
+      const esAsistente = user.role === 'asistente';
+      const recursoDeTarjeta = {
+        'btn-inventario': 'inventario',
+        'btn-finanzas-personales': 'finanzas_personales',
+        'btn-crm': 'crm',
+        'btn-cobranza': 'cobranza',
+      };
       Object.entries(gated).forEach(([id, required]) => {
-        if (isSuperuser || required.every(slug => mods.includes(slug))) return;
+        const tienePlan = isSuperuser || required.every(slug => mods.includes(slug));
+        // El asistente además necesita el permiso por usuario; Finanzas
+        // Personales nunca lo tiene.
+        const tienePermiso = !esAsistente || Boolean(permisos[recursoDeTarjeta[id]]);
+        if (tienePlan && tienePermiso) return;
         hasLocked = true;
         const card = document.getElementById(id);
         if (!card) return;
@@ -180,9 +192,36 @@
         card.style.pointerEvents = 'none';
         const badge = document.createElement('span');
         badge.className = 'absolute top-3 right-3 px-2 py-0.5 rounded-md text-[10px] font-bold uppercase bg-white/20 text-white/70';
-        badge.textContent = 'No incluido';
+        badge.textContent = tienePlan ? 'Sin permiso' : 'No incluido';
         card.appendChild(badge);
       });
+      if (esAsistente) {
+        // La tarjeta apunta a /dashboard, que no es un recurso otorgable: un
+        // asistente que entre ahí sería rebotado. Se reapunta al primer destino
+        // contable que sí tenga, y solo se bloquea si no tiene ninguno.
+        const RUTA_CONTABLE = [
+          ['edr.ingresos', '/ingresos'],
+          ['edr.gastos', '/gastos'],
+          ['edr.pagos_doctores', '/pagos-doctores'],
+          ['facturacion', '/facturas'],
+          ['tratamientos', '/tratamientos'],
+          ['catalogo', '/materiales'],
+          ['reportes', '/reportes/resumen'],
+        ];
+        const destino = RUTA_CONTABLE.find(([recurso]) => permisos[recurso]);
+        const card = document.getElementById('btn-contable');
+        if (card) {
+          if (destino) {
+            card.href = destino[1];
+          } else {
+            card.removeAttribute('href');
+            card.style.opacity = '0.4';
+            card.style.pointerEvents = 'none';
+          }
+        }
+      }
+      // El botón de mejorar plan es del admin; el asistente no compra planes.
+      if (esAsistente) hasLocked = false;
       if (hasLocked) {
         const cta = document.getElementById('upgrade-cta');
         if (cta) { cta.classList.remove('hidden'); lucide.createIcons(); }

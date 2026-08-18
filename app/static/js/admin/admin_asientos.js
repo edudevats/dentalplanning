@@ -79,6 +79,18 @@
     info.appendChild(txt);
     info.appendChild(statusBadge(a.estado));
 
+    // Tipo de asiento: distingue el add-on de recepcionista del de asistente.
+    const ETIQUETA_ASIENTO = {
+      recepcionista: 'Recepcionista',
+      asistente: 'Asistente dental',
+    };
+    const rolBadge = document.createElement('span');
+    rolBadge.className =
+      'inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold '
+      + 'bg-cs-surface-container-high text-cs-on-surface-var';
+    rolBadge.textContent = ETIQUETA_ASIENTO[a.rol] || a.rol || 'Recepcionista';
+    info.appendChild(rolBadge);
+
     if (showTenant && a.created_at) {
       const fecha = document.createElement('span');
       fecha.className = 'text-xs text-cs-on-surface-var';

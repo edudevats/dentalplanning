@@ -100,6 +100,8 @@ lucide.createIcons();
     window.location.href = '/admin';
   } else if (user && user.role === 'recepcionista') {
     window.location.href = '/ingresos';
+  } else if (user && user.role === 'asistente') {
+    window.location.href = '/inventario';
   } else {
     window.location.href = '/selector';
   }
@@ -147,11 +149,16 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
     if (data.user && data.user.is_superuser === true) {
       window.location.href = '/admin';
     } else if (data.user && data.user.must_change_password) {
-      // Contrasena temporal: ir a una pagina con layout para forzar el cambio.
-      window.location.href = '/dashboard';
+      // Contrasena temporal: ir a una pagina con layout que el rol pueda cargar.
+      // El asistente no tiene acceso a /dashboard, asi que iria a un 403.
+      window.location.href =
+        data.user.role === 'asistente' ? '/inventario' :
+        data.user.role === 'recepcionista' ? '/ingresos' : '/dashboard';
     } else if (data.user && data.user.role === 'recepcionista') {
       // La recepcionista no usa el selector de sistema: directo a Registro de Ingresos.
       window.location.href = '/ingresos';
+    } else if (data.user && data.user.role === 'asistente') {
+      window.location.href = '/inventario';
     } else {
       window.location.href = '/selector';
     }

@@ -2,60 +2,93 @@ from datetime import datetime, timezone
 from app.extensions import db
 from app.auth.models import User
 from app.superadmin.models import (
-    Plan, AsientoRecepcionista, ADDON_TIPO_RECEPCIONISTA,
+    Plan, AsientoRecepcionista, ADDON_TIPO_RECEPCIONISTA, ADDON_TIPO_ASISTENTE,
     ASIENTO_PENDIENTE, ASIENTO_APROBADA, ASIENTO_ACTIVA,
     ASIENTO_RECHAZADA, ASIENTO_CANCELADA,
 )
 from app.clip.service import cancel_subscription, ClipAPIError
 
 
+ROL_RECEPCIONISTA = "recepcionista"
+ROL_ASISTENTE = "asistente"
+ROLES_CON_ASIENTO = (ROL_RECEPCIONISTA, ROL_ASISTENTE)
+
+ADDON_POR_ROL = {
+    ROL_RECEPCIONISTA: ADDON_TIPO_RECEPCIONISTA,
+    ROL_ASISTENTE: ADDON_TIPO_ASISTENTE,
+}
+
+
 class SeatError(Exception):
     """Error de negocio en la gestión de asientos (mapear a 409/400 en las rutas)."""
 
 
-def get_addon_plan():
+def get_addon_plan(rol=ROL_RECEPCIONISTA):
     return Plan.query.filter_by(
-        addon_tipo=ADDON_TIPO_RECEPCIONISTA, activo=True
+        addon_tipo=ADDON_POR_ROL[rol], activo=True
     ).first()
 
 
-def capacidad_recepcionistas(tenant_id):
+def capacidad(tenant_id, rol=ROL_RECEPCIONISTA):
+    """1 usuario gratis del rol + un cupo por cada asiento activo de ese rol."""
     activos = AsientoRecepcionista.query.filter_by(
-        tenant_id=tenant_id, estado=ASIENTO_ACTIVA
+        tenant_id=tenant_id, estado=ASIENTO_ACTIVA, rol=rol
     ).count()
     return 1 + activos
 
 
-def recepcionistas_actuales(tenant_id):
+def usuarios_actuales(tenant_id, rol=ROL_RECEPCIONISTA):
     return User.query.filter_by(
-        tenant_id=tenant_id, role="recepcionista", is_active=True
+        tenant_id=tenant_id, role=rol, is_active=True
     ).count()
 
 
+def puede_crear(tenant_id, rol=ROL_RECEPCIONISTA):
+    return usuarios_actuales(tenant_id, rol) < capacidad(tenant_id, rol)
+
+
+def sobre_cupo(tenant_id, rol):
+    """El tenant tiene más usuarios de ese rol que asientos pagados."""
+    return usuarios_actuales(tenant_id, rol) > capacidad(tenant_id, rol)
+
+
+# ── Wrappers de compatibilidad ────────────────────────────────────────────────
+# Los llamadores y tests existentes siguen funcionando sin tocarse.
+
+def capacidad_recepcionistas(tenant_id):
+    return capacidad(tenant_id, ROL_RECEPCIONISTA)
+
+
+def recepcionistas_actuales(tenant_id):
+    return usuarios_actuales(tenant_id, ROL_RECEPCIONISTA)
+
+
 def puede_crear_recepcionista(tenant_id):
-    return recepcionistas_actuales(tenant_id) < capacidad_recepcionistas(tenant_id)
+    return puede_crear(tenant_id, ROL_RECEPCIONISTA)
 
 
-def asiento_libre_activo(tenant_id):
+def asiento_libre_activo(tenant_id, rol=ROL_RECEPCIONISTA):
     return AsientoRecepcionista.query.filter_by(
-        tenant_id=tenant_id, estado=ASIENTO_ACTIVA, usuario_id=None
+        tenant_id=tenant_id, estado=ASIENTO_ACTIVA, usuario_id=None, rol=rol
     ).first()
 
 
-def tiene_asiento_abierto(tenant_id):
+def tiene_asiento_abierto(tenant_id, rol=ROL_RECEPCIONISTA):
     return AsientoRecepcionista.query.filter(
         AsientoRecepcionista.tenant_id == tenant_id,
+        AsientoRecepcionista.rol == rol,
         AsientoRecepcionista.estado.in_([ASIENTO_PENDIENTE, ASIENTO_APROBADA]),
     ).first() is not None
 
 
-def solicitar_asiento(tenant_id, user_id):
-    if puede_crear_recepcionista(tenant_id):
-        raise SeatError("Aún tienes cupo para crear un recepcionista")
-    if tiene_asiento_abierto(tenant_id):
+def solicitar_asiento(tenant_id, user_id, rol=ROL_RECEPCIONISTA):
+    if puede_crear(tenant_id, rol):
+        raise SeatError("Aún tienes cupo para crear un usuario de este tipo")
+    if tiene_asiento_abierto(tenant_id, rol):
         raise SeatError("Ya tienes una solicitud de asiento en curso")
     a = AsientoRecepcionista(
-        tenant_id=tenant_id, estado=ASIENTO_PENDIENTE, solicitado_por_id=user_id
+        tenant_id=tenant_id, estado=ASIENTO_PENDIENTE, rol=rol,
+        solicitado_por_id=user_id,
     )
     db.session.add(a)
     db.session.commit()
@@ -65,9 +98,9 @@ def solicitar_asiento(tenant_id, user_id):
 def aprobar_asiento(asiento, super_admin_id):
     if asiento.estado != ASIENTO_PENDIENTE:
         raise SeatError("El asiento no está pendiente")
-    plan = get_addon_plan()
+    plan = get_addon_plan(asiento.rol)
     if not plan or not plan.precio_mensual:
-        raise SeatError("No hay plan de recepcionista adicional configurado")
+        raise SeatError("No hay plan configurado para este tipo de asiento")
     asiento.estado = ASIENTO_APROBADA
     asiento.monto = plan.precio_mensual
     asiento.aprobado_por_id = super_admin_id
@@ -96,10 +129,13 @@ def activar_asiento(asiento, pago_metodo, clip_subscription_id=None):
     return asiento
 
 
-def activar_por_clip(tenant_id, clip_subscription_id):
-    a = AsientoRecepcionista.query.filter_by(
+def activar_por_clip(tenant_id, clip_subscription_id, rol=None):
+    q = AsientoRecepcionista.query.filter_by(
         tenant_id=tenant_id, estado=ASIENTO_APROBADA, clip_subscription_id=None
-    ).order_by(AsientoRecepcionista.created_at).first()
+    )
+    if rol:
+        q = q.filter_by(rol=rol)
+    a = q.order_by(AsientoRecepcionista.created_at).first()
     if not a:
         return False
     activar_asiento(a, "clip", clip_subscription_id)
@@ -141,6 +177,7 @@ def serialize_asiento(asiento, with_usuario=False):
     out = {
         "id": asiento.id,
         "tenant_id": asiento.tenant_id,
+        "rol": asiento.rol,
         "estado": asiento.estado,
         "monto": asiento.monto,
         "pago_metodo": asiento.pago_metodo,

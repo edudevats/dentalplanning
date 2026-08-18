@@ -327,10 +327,16 @@
       <div class="bg-surface rounded-xl border border-border shadow-sm">
         <div class="px-5 py-4 border-b border-border flex items-center justify-between">
           <h3 class="text-sm font-semibold font-heading text-text-primary">Usuarios del consultorio</h3>
-          <button id="btn-add-user" type="button"
-            class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-accent-600 hover:bg-accent-700 text-white text-xs font-medium font-body transition-colors cursor-pointer">
-            <i data-lucide="user-plus" class="h-3.5 w-3.5"></i> Agregar recepcionista
-          </button>
+          <div class="flex items-center gap-2">
+            <button id="btn-add-user" type="button"
+              class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-accent-600 hover:bg-accent-700 text-white text-xs font-medium font-body transition-colors cursor-pointer">
+              <i data-lucide="user-plus" class="h-3.5 w-3.5"></i> Agregar recepcionista
+            </button>
+            <button type="button" id="btn-add-asistente"
+                    class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border bg-surface hover:bg-surface-hover text-xs font-medium font-body text-text-primary transition-colors cursor-pointer">
+              <i data-lucide="stethoscope" class="h-3.5 w-3.5"></i> Agregar asistente dental
+            </button>
+          </div>
         </div>
         <div id="users-list" class="divide-y divide-border"></div>
         <p class="text-xs text-text-muted font-body px-5 py-3">
@@ -1685,15 +1691,33 @@
       const info = domEl('div', 'flex-1 min-w-0');
       info.appendChild(domEl('p', 'text-sm font-medium text-text-primary truncate', u.name));
       info.appendChild(domEl('p', 'text-xs text-text-muted truncate', u.email));
+      const ETIQUETA_ROL = {
+        admin: 'Administrador',
+        recepcionista: 'Recepcionista',
+        asistente: 'Asistente dental',
+      };
+      const COLOR_ROL = {
+        admin: 'bg-primary-50 text-primary-700',
+        recepcionista: 'bg-accent-50 text-accent-700',
+        asistente: 'bg-emerald-50 text-emerald-700',
+      };
       const roleBadge = domEl('span',
         'inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ' +
-        (u.role === 'admin' ? 'bg-primary-50 text-primary-700' : 'bg-accent-50 text-accent-700'),
-        u.role === 'admin' ? 'Administrador' : 'Recepcionista');
+        (COLOR_ROL[u.role] || 'bg-surface-hover text-text-muted'),
+        ETIQUETA_ROL[u.role] || u.role);
       row.appendChild(info);
       row.appendChild(roleBadge);
-      if (u.role === 'recepcionista') {
+
+      if (u.role === 'asistente') {
+        const perm = domEl('button', 'p-1.5 rounded-md text-text-muted hover:text-primary-600 hover:bg-primary-50 transition-colors cursor-pointer');
+        perm.type = 'button'; perm.title = 'Editar permisos';
+        perm.appendChild(domIcon('shield-check', 'h-4 w-4'));
+        perm.addEventListener('click', () => openPermisosModal(u));
+        row.appendChild(perm);
+      }
+      if (u.role === 'recepcionista' || u.role === 'asistente') {
         const del = domEl('button', 'p-1.5 rounded-md text-text-muted hover:text-danger-600 hover:bg-danger-50 transition-colors cursor-pointer');
-        del.type = 'button'; del.title = 'Eliminar recepcionista';
+        del.type = 'button'; del.title = 'Eliminar usuario';
         del.appendChild(domIcon('trash-2', 'h-4 w-4'));
         del.addEventListener('click', () => deleteUsuario(u));
         row.appendChild(del);
@@ -1723,6 +1747,23 @@
     }
     addBtn.classList.toggle('opacity-50', addBtn.disabled);
     addBtn.classList.toggle('cursor-not-allowed', addBtn.disabled);
+
+    // Cupo de asistentes: se consulta aparte porque la capacidad es por rol.
+    const btnAsis = document.getElementById('btn-add-asistente');
+    if (btnAsis) {
+      let seatAsis = { capacidad: 1, usados: 0 };
+      let cupoConocido = true;
+      try { seatAsis = await API.get('/auth/asientos?rol=asistente'); }
+      catch { cupoConocido = false; }
+      const cupoAsis = cupoConocido && seatAsis.usados < seatAsis.capacidad;
+      btnAsis.disabled = !cupoAsis;
+      btnAsis.title = !cupoConocido
+        ? 'No se pudo verificar el cupo de asistentes. Intenta de nuevo.'
+        : (cupoAsis ? '' : 'Necesitas un asiento adicional para otro asistente');
+      btnAsis.onclick = cupoAsis ? openAddAsistenteModal : null;
+      btnAsis.classList.toggle('opacity-50', !cupoAsis);
+      btnAsis.classList.toggle('cursor-not-allowed', !cupoAsis);
+    }
 
     renderSeats(seatInfo);
     lucide.createIcons();
@@ -1776,6 +1817,68 @@
     } catch (e) { Toast.error(e?.error || 'No se pudo cancelar'); }
   }
 
+  // Catálogo de permisos, cacheado tras la primera lectura.
+  let _catalogoPermisos = null;
+  async function getCatalogoPermisos() {
+    if (!_catalogoPermisos) {
+      const data = await API.get('/auth/permisos/catalogo');
+      _catalogoPermisos = data.recursos || [];
+    }
+    return _catalogoPermisos;
+  }
+
+  // Pinta una fila por recurso con tres estados: sin acceso / ver / editar.
+  function renderMatrizPermisos(container, catalogo, permisos) {
+    container.replaceChildren();
+    const titulo = domEl('p', 'text-sm font-medium text-text-secondary mb-2 font-body',
+                         'Permisos');
+    container.appendChild(titulo);
+
+    catalogo.forEach(item => {
+      const fila = domEl('div', 'flex items-center gap-3 py-2 border-b border-border last:border-0');
+      const label = domEl('span', 'flex-1 text-sm text-text-primary', item.label);
+      fila.appendChild(label);
+
+      if (!item.disponible) {
+        fila.appendChild(domEl('span',
+          'text-xs px-2 py-0.5 rounded-full bg-surface-hover text-text-muted',
+          'No incluido en tu plan'));
+        fila.classList.add('opacity-50');
+        container.appendChild(fila);
+        return;
+      }
+
+      const sel = document.createElement('select');
+      sel.className = 'rounded-lg border border-border px-2 py-1.5 text-xs font-body bg-surface';
+      sel.dataset.recurso = item.recurso;
+      [['', 'Sin acceso'], ['ver', 'Ver'], ['editar', 'Editar']].forEach(([v, t]) => {
+        const opt = document.createElement('option');
+        opt.value = v; opt.textContent = t;
+        sel.appendChild(opt);
+      });
+      sel.value = (permisos && permisos[item.recurso]) || '';
+
+      if (item.fijo) {
+        // Inventario es el mínimo del rol: siempre en editar, no editable.
+        sel.value = 'editar';
+        sel.disabled = true;
+        fila.appendChild(domEl('span', 'text-xs text-text-muted mr-2', 'Siempre'));
+      }
+      fila.appendChild(sel);
+      container.appendChild(fila);
+    });
+  }
+
+  // Lee la matriz. Los `select` deshabilitados (inventario) también se leen: el
+  // backend los normaliza de todas formas.
+  function leerMatrizPermisos() {
+    const out = {};
+    document.querySelectorAll('#matriz-permisos select[data-recurso]').forEach(sel => {
+      if (sel.value) out[sel.dataset.recurso] = sel.value;
+    });
+    return out;
+  }
+
   function openAddUserModal() {
     const body = document.getElementById('modal-crud-body');
     body.replaceChildren();
@@ -1803,6 +1906,114 @@
     save.appendChild(domIcon('save', 'h-4 w-4'));
     save.appendChild(domEl('span', '', 'Crear'));
     save.addEventListener('click', saveUsuario);
+    footer.appendChild(cancel); footer.appendChild(save);
+    body.appendChild(footer);
+    Modal.open('modal-crud');
+    lucide.createIcons();
+  }
+
+  async function openAddAsistenteModal() {
+    const body = document.getElementById('modal-crud-body');
+    body.replaceChildren();
+    document.getElementById('modal-crud-title').textContent = 'Nuevo asistente dental';
+    const fields = [
+      { id: 'na-name', label: 'Nombre', type: 'text' },
+      { id: 'na-email', label: 'Correo', type: 'email' },
+      { id: 'na-pass', label: 'Contraseña temporal', type: 'password' },
+    ];
+    fields.forEach(f => {
+      const wrap = domEl('div', '');
+      wrap.appendChild(domEl('label', 'block text-sm font-medium text-text-secondary mb-1 font-body', f.label));
+      const inp = document.createElement('input');
+      inp.id = f.id; inp.type = f.type;
+      inp.className = 'block w-full rounded-lg border border-border px-3 py-2.5 text-sm font-body bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-500 min-h-[44px]';
+      wrap.appendChild(inp);
+      body.appendChild(wrap);
+    });
+
+    const matriz = domEl('div', 'pt-2');
+    matriz.id = 'matriz-permisos';
+    body.appendChild(matriz);
+    let catalogo;
+    try {
+      catalogo = await getCatalogoPermisos();
+    } catch (e) {
+      Toast.error(mensajeError(e, 'No se pudieron cargar los permisos. Intenta de nuevo.'));
+      return;
+    }
+    renderMatrizPermisos(matriz, catalogo, {});
+
+    const footer = domEl('div', 'flex justify-end gap-3 pt-2');
+    const cancel = domEl('button', 'inline-flex items-center gap-2 px-4 py-2.5 rounded-lg border border-border bg-surface hover:bg-surface-hover text-sm font-medium font-body text-text-primary transition-colors cursor-pointer min-h-[44px]', 'Cancelar');
+    cancel.type = 'button';
+    cancel.addEventListener('click', () => Modal.close('modal-crud'));
+    const save = domEl('button', 'inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-accent-600 hover:bg-accent-700 text-white text-sm font-medium font-body transition-colors cursor-pointer min-h-[44px]');
+    save.type = 'button';
+    save.appendChild(domIcon('save', 'h-4 w-4'));
+    save.appendChild(domEl('span', '', 'Crear'));
+    save.addEventListener('click', saveAsistente);
+    footer.appendChild(cancel); footer.appendChild(save);
+    body.appendChild(footer);
+    Modal.open('modal-crud');
+    lucide.createIcons();
+  }
+
+  let _savingAsistente = false;
+  async function saveAsistente() {
+    if (_savingAsistente) return;
+    const payload = {
+      name: document.getElementById('na-name').value.trim(),
+      email: document.getElementById('na-email').value.trim(),
+      password: document.getElementById('na-pass').value,
+      role: 'asistente',
+      permisos: leerMatrizPermisos(),
+    };
+    if (!payload.name || !payload.email || !payload.password) {
+      Toast.warning('Completa todos los campos'); return;
+    }
+    _savingAsistente = true;
+    try {
+      await API.post('/auth/users', payload);
+      Toast.success('Asistente dental creado');
+      Modal.close('modal-crud');
+      loadUsuarios();
+    } catch (e) { Toast.error(mensajeError(e, 'Error al crear')); }
+    finally { _savingAsistente = false; }
+  }
+
+  async function openPermisosModal(u) {
+    const body = document.getElementById('modal-crud-body');
+    body.replaceChildren();
+    document.getElementById('modal-crud-title').textContent = 'Permisos de ' + u.name;
+
+    const matriz = domEl('div', '');
+    matriz.id = 'matriz-permisos';
+    body.appendChild(matriz);
+    let catalogo;
+    try {
+      catalogo = await getCatalogoPermisos();
+    } catch (e) {
+      Toast.error(mensajeError(e, 'No se pudieron cargar los permisos. Intenta de nuevo.'));
+      return;
+    }
+    renderMatrizPermisos(matriz, catalogo, u.permisos || {});
+
+    const footer = domEl('div', 'flex justify-end gap-3 pt-2');
+    const cancel = domEl('button', 'inline-flex items-center gap-2 px-4 py-2.5 rounded-lg border border-border bg-surface hover:bg-surface-hover text-sm font-medium font-body text-text-primary transition-colors cursor-pointer min-h-[44px]', 'Cancelar');
+    cancel.type = 'button';
+    cancel.addEventListener('click', () => Modal.close('modal-crud'));
+    const save = domEl('button', 'inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-accent-600 hover:bg-accent-700 text-white text-sm font-medium font-body transition-colors cursor-pointer min-h-[44px]');
+    save.type = 'button';
+    save.appendChild(domIcon('save', 'h-4 w-4'));
+    save.appendChild(domEl('span', '', 'Guardar'));
+    save.addEventListener('click', async () => {
+      try {
+        await API.put('/auth/users/' + u.id, { permisos: leerMatrizPermisos() });
+        Toast.success('Permisos actualizados');
+        Modal.close('modal-crud');
+        loadUsuarios();
+      } catch (e) { Toast.error(mensajeError(e, 'Error al guardar')); }
+    });
     footer.appendChild(cancel); footer.appendChild(save);
     body.appendChild(footer);
     Modal.open('modal-crud');

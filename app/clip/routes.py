@@ -107,12 +107,39 @@ def _handle_checkout_event(data, status):
         db.session.commit()
 
 
-def _es_precio_addon_recepcionista(price_id):
+def _rol_de_precio_addon(price_id):
+    """Rol cuyo plan add-on corresponde a este price_id, o None si no es un add-on.
+
+    Devuelve el rol y no un booleano porque el activador necesita saber QUÉ tipo
+    de asiento activar: un tenant puede tener aprobados y esperando pago un
+    asiento de recepcionista y otro de asistente al mismo tiempo.
+
+    Si por un error de configuración del superadmin dos planes add-on activos
+    comparten el mismo clip_price_id, la ambigüedad no se resuelve en silencio:
+    se registra una advertencia con todos los roles en conflicto y se devuelve
+    el primero. No se aborta la activación por un problema de configuración:
+    peor que activar el asiento equivocado es no activar ninguno y dejar al
+    cliente pagando sin nada.
+    """
     if not price_id:
-        return False
-    from app.auth.seats_service import get_addon_plan
-    plan = get_addon_plan()
-    return bool(plan and plan.clip_price_id and plan.clip_price_id == price_id)
+        return None
+    from app.auth.seats_service import get_addon_plan, ROLES_CON_ASIENTO
+    roles_coincidentes = []
+    for rol in ROLES_CON_ASIENTO:
+        plan = get_addon_plan(rol)
+        if plan and plan.clip_price_id and plan.clip_price_id == price_id:
+            roles_coincidentes.append(rol)
+    if not roles_coincidentes:
+        return None
+    if len(roles_coincidentes) > 1:
+        current_app.logger.warning(
+            "Clip: clip_price_id=%s coincide con mas de un plan add-on activo "
+            "(roles=%s). Hay dos planes add-on activos con el mismo "
+            "clip_price_id; corrige la configuracion de planes en el "
+            "superadmin. Se usara el rol '%s'.",
+            price_id, roles_coincidentes, roles_coincidentes[0],
+        )
+    return roles_coincidentes[0]
 
 
 def _handle_subscription_event(data, status):
@@ -125,12 +152,13 @@ def _handle_subscription_event(data, status):
     if not clip_sub_id:
         return
 
-    if _es_precio_addon_recepcionista(price_id):
+    rol_addon = _rol_de_precio_addon(price_id)
+    if rol_addon:
         from app.auth.seats_service import activar_por_clip
         if status == "ACTIVE" and email:
             user = User.query.filter(db.func.lower(User.email) == email).first()
             if user:
-                activar_por_clip(user.tenant_id, clip_sub_id)
+                activar_por_clip(user.tenant_id, clip_sub_id, rol_addon)
         elif status in ("INACTIVE", "CANCELLED", "CANCELED"):
             from app.superadmin.models import AsientoRecepcionista, ASIENTO_CANCELADA
             a = AsientoRecepcionista.query.filter_by(clip_subscription_id=clip_sub_id).first()

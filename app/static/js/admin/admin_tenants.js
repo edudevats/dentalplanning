@@ -336,7 +336,14 @@
 
       const tdRole = document.createElement('td');
       tdRole.className = 'px-4 py-3.5 text-cs-on-surface-var';
-      tdRole.textContent = u.is_superuser ? 'super-admin' : (u.role || '—');
+      const ETIQUETA_ROL = {
+        admin: 'Admin',
+        recepcionista: 'Recepcionista',
+        asistente: 'Asistente dental',
+      };
+      tdRole.textContent = u.is_superuser
+        ? 'super-admin'
+        : (ETIQUETA_ROL[u.role] || u.role || '—');
 
       const tdClinic = document.createElement('td');
       tdClinic.className = 'px-4 py-3.5 text-cs-on-surface';

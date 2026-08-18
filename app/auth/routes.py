@@ -13,6 +13,9 @@ from app.auth.models import (
 )
 from app.auth.schemas import RegisterSchema, LoginSchema, UserCreateSchema, UserUpdateSchema, ChangePasswordSchema
 from app.middleware.tenant import require_auth, require_role
+from app.middleware.permisos import (
+    CATALOGO, ROLE_ASISTENTE, RECURSO_INVENTARIO, normalizar_permisos,
+)
 from app.middleware.rate_limit import rate_limit
 from app.configuracion.models import ConfigConsultorio
 from app.ajustes.models import DistribucionConfig, ensure_impuesto_concepto
@@ -262,6 +265,7 @@ def _user_dump(u):
         "email": u.email,
         "name": u.name,
         "role": u.role,
+        "permisos": u.permisos or {},
         "is_active": u.is_active,
         "must_change_password": u.must_change_password,
         "last_login": u.last_login.isoformat() if u.last_login else None,
@@ -276,31 +280,63 @@ def listar_users():
     return jsonify([_user_dump(u) for u in users])
 
 
+@auth_bp.route("/permisos/catalogo", methods=["GET"])
+@require_auth
+@require_role("admin")
+def catalogo_permisos():
+    """Catálogo de recursos otorgables, con lo que el plan del tenant permite.
+
+    Evita duplicar el catálogo en el JS de Ajustes.
+    """
+    tenant = db.session.get(Tenant, g.tenant_id)
+    modulos = tenant.allowed_modules if tenant else []
+    return jsonify({
+        "recursos": [
+            {
+                "recurso": recurso,
+                "label": meta["label"],
+                "disponible": all(slug in modulos for slug in meta["modulos"]),
+                "fijo": recurso == RECURSO_INVENTARIO,
+            }
+            for recurso, meta in CATALOGO.items()
+        ]
+    })
+
+
 @auth_bp.route("/users", methods=["POST"])
 @require_auth
 @require_role("admin")
 def crear_user():
     data = UserCreateSchema().load(request.get_json() or {})
+    rol = data["role"]
     if User.query.filter_by(email=data["email"]).first():
         return jsonify({"error": "Este email ya está registrado"}), 409
-    if not seats_service.puede_crear_recepcionista(g.tenant_id):
+    if not seats_service.puede_crear(g.tenant_id, rol):
+        etiqueta = "asistente" if rol == ROLE_ASISTENTE else "recepcionista"
         return jsonify({
-            "error": "Necesitas un asiento de pago activo para agregar otro "
-                     "recepcionista. Solicítalo desde esta sección."
+            "error": f"Necesitas un asiento de pago activo para agregar otro "
+                     f"{etiqueta}. Solicítalo desde esta sección."
         }), 409
-    era_primero = seats_service.recepcionistas_actuales(g.tenant_id) == 0
+    era_primero = seats_service.usuarios_actuales(g.tenant_id, rol) == 0
+    permisos = {}
+    if rol == ROLE_ASISTENTE:
+        tenant = db.session.get(Tenant, g.tenant_id)
+        permisos = normalizar_permisos(
+            data["permisos"], modulos_permitidos=tenant.allowed_modules if tenant else []
+        )
     user = User(
         tenant_id=g.tenant_id,
         email=data["email"],
         name=data["name"],
-        role="recepcionista",
+        role=rol,
+        permisos=permisos,
         must_change_password=True,
     )
     user.set_password(data["password"])
     db.session.add(user)
     db.session.flush()
     if not era_primero:
-        libre = seats_service.asiento_libre_activo(g.tenant_id)
+        libre = seats_service.asiento_libre_activo(g.tenant_id, rol)
         if libre:
             libre.usuario_id = user.id
     db.session.commit()
@@ -322,6 +358,11 @@ def actualizar_user(user_id):
     if data.get("password"):
         user.set_password(data["password"])
         user.must_change_password = True
+    if "permisos" in data and user.role == ROLE_ASISTENTE:
+        tenant = db.session.get(Tenant, g.tenant_id)
+        user.permisos = normalizar_permisos(
+            data["permisos"], modulos_permitidos=tenant.allowed_modules if tenant else []
+        )
     db.session.commit()
     return jsonify(_user_dump(user))
 
@@ -345,16 +386,22 @@ def eliminar_user(user_id):
 @require_auth
 @require_role("admin")
 def listar_asientos():
+    rol = request.args.get("rol", "recepcionista")
+    if rol not in seats_service.ROLES_CON_ASIENTO:
+        return jsonify({"error": "Rol no válido"}), 400
     asientos = seats_service.AsientoRecepcionista.query.filter_by(
-        tenant_id=g.tenant_id
+        tenant_id=g.tenant_id, rol=rol
     ).order_by(seats_service.AsientoRecepcionista.created_at.desc()).all()
-    plan = seats_service.get_addon_plan()
+    plan = seats_service.get_addon_plan(rol)
     return jsonify({
-        "capacidad": seats_service.capacidad_recepcionistas(g.tenant_id),
-        "usados": seats_service.recepcionistas_actuales(g.tenant_id),
+        "rol": rol,
+        "capacidad": seats_service.capacidad(g.tenant_id, rol),
+        "usados": seats_service.usuarios_actuales(g.tenant_id, rol),
         "precio_addon": plan.precio_mensual if plan else None,
         "subscription_link": plan.clip_subscription_link if plan else None,
-        "asientos": [seats_service.serialize_asiento(a, with_usuario=True) for a in asientos],
+        "asientos": [
+            seats_service.serialize_asiento(a, with_usuario=True) for a in asientos
+        ],
     })
 
 
@@ -362,8 +409,11 @@ def listar_asientos():
 @require_auth
 @require_role("admin")
 def solicitar_asiento_endpoint():
+    rol = (request.get_json(silent=True) or {}).get("rol", "recepcionista")
+    if rol not in seats_service.ROLES_CON_ASIENTO:
+        return jsonify({"error": "Rol no válido"}), 400
     try:
-        a = seats_service.solicitar_asiento(g.tenant_id, g.current_user.id)
+        a = seats_service.solicitar_asiento(g.tenant_id, g.current_user.id, rol)
     except seats_service.SeatError as e:
         return jsonify({"error": str(e)}), 409
     return jsonify(seats_service.serialize_asiento(a)), 201
@@ -442,6 +492,7 @@ def me():
         "email": user.email,
         "name": user.name,
         "role": user.role,
+        "permisos": user.permisos or {},
         "is_superuser": user.is_superuser,
         "tenant": {
             "id": user.tenant.id,

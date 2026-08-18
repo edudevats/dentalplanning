@@ -1,6 +1,25 @@
 from marshmallow import Schema, fields, validate, validates, ValidationError
 import re
 
+from app.middleware.permisos import CATALOGO, NIVELES, ROLE_ASISTENTE
+
+
+class PermisosField(fields.Field):
+    """Mapa {recurso: nivel} validado contra el catálogo cerrado."""
+
+    def _deserialize(self, value, attr, data, **kwargs):
+        if not isinstance(value, dict):
+            raise ValidationError("Los permisos deben ser un objeto")
+        for recurso, nivel in value.items():
+            if recurso not in CATALOGO:
+                raise ValidationError(f"Recurso desconocido: {recurso}")
+            if nivel not in NIVELES:
+                raise ValidationError(
+                    f"Nivel no válido para {recurso}: {nivel}. "
+                    f"Usa uno de: {', '.join(NIVELES)}"
+                )
+        return value
+
 
 def _validate_password_strength(password):
     """Enforce min 8 chars, at least 1 uppercase, 1 lowercase, 1 digit."""
@@ -37,6 +56,11 @@ class UserCreateSchema(Schema):
     email = fields.Email(required=True)
     name = fields.Str(required=True, validate=validate.Length(min=2, max=200))
     password = fields.Str(required=True, validate=validate.Length(min=8))
+    role = fields.Str(
+        load_default="recepcionista",
+        validate=validate.OneOf(["recepcionista", ROLE_ASISTENTE]),
+    )
+    permisos = PermisosField(load_default=dict)
 
     @validates("password")
     def validate_password(self, value, **kwargs):
@@ -47,6 +71,7 @@ class UserUpdateSchema(Schema):
     name = fields.Str(validate=validate.Length(min=2, max=200))
     is_active = fields.Bool()
     password = fields.Str(validate=validate.Length(min=8))
+    permisos = PermisosField()
 
     @validates("password")
     def validate_password(self, value, **kwargs):

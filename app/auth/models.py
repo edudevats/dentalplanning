@@ -65,7 +65,11 @@ class User(db.Model):
     tenant_id = db.Column(db.Integer, db.ForeignKey("tenants.id"), nullable=False)
     email = db.Column(db.String(255), unique=True, nullable=False)
     password_hash = db.Column(db.String(255), nullable=False)
-    role = db.Column(db.String(20), default="recepcionista")  # admin / recepcionista
+    role = db.Column(db.String(20), default="recepcionista")  # admin / recepcionista / asistente
+    # Permisos por recurso para el rol `asistente`: {"<recurso>": "ver"|"editar"}.
+    # Nullable en BD porque MySQL no admite DEFAULT en columnas JSON; leer
+    # siempre como `user.permisos or {}`.
+    permisos = db.Column(db.JSON, nullable=True, default=dict)
     is_superuser = db.Column(db.Boolean, default=False, nullable=False)
     name = db.Column(db.String(200), nullable=False)
     must_change_password = db.Column(db.Boolean, default=False, nullable=False)

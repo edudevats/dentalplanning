@@ -107,7 +107,10 @@ class ChangeUserRoleSchema(Schema):
     class Meta:
         unknown = EXCLUDE
 
-    role = fields.Str(required=True, validate=validate.OneOf(["admin", "recepcionista"]))
+    role = fields.Str(
+        required=True,
+        validate=validate.OneOf(["admin", "recepcionista", "asistente"]),
+    )
 
 
 class ToggleActiveSchema(Schema):

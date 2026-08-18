@@ -7,6 +7,7 @@ from app.auth.models import (
     User, TENANT_STATUS_ACTIVE, TENANT_STATUS_PENDING,
     TENANT_STATUS_SUSPENDED, TENANT_STATUS_REJECTED,
 )
+from app.middleware.permisos import ROLE_ASISTENTE
 
 # (método, regex de ruta) que el rol recepcionista puede llamar. Resto → 403.
 _RECEP_RULES = [
@@ -126,11 +127,17 @@ def require_auth(f):
         if blocked is not None:
             return blocked
 
+        from app.middleware.permisos import check_asistente_access
+        blocked = check_asistente_access()
+        if blocked is not None:
+            return blocked
+
         blocked = check_recepcionista_access()
         if blocked is not None:
             return blocked
 
         return f(*args, **kwargs)
+    decorated.__wrapped_por__ = getattr(f, "__wrapped_por__", ()) + ("require_auth",)
     return decorated
 
 
@@ -140,9 +147,17 @@ def require_role(*roles):
         def decorated(*args, **kwargs):
             if not hasattr(g, "current_user"):
                 return jsonify({"error": "No autenticado"}), 401
+            # El asistente no se valida contra esta lista. Sus permisos son por
+            # usuario y ya los resolvió check_asistente_access() dentro de
+            # require_auth, que responde 403 si la ruta no le corresponde. Estas
+            # listas de roles se escribieron antes de que el rol existiera, así
+            # que no lo mencionan y lo bloquearían aunque el motor lo autorice.
+            if g.current_user.role == ROLE_ASISTENTE:
+                return f(*args, **kwargs)
             if g.current_user.role not in roles:
                 return jsonify({"error": "Permisos insuficientes"}), 403
             return f(*args, **kwargs)
+        decorated.__wrapped_por__ = getattr(f, "__wrapped_por__", ()) + ("require_role",)
         return decorated
     return decorator
 

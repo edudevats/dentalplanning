@@ -11,6 +11,7 @@ SUBSCRIPTION_ESTADOS = (SUBSCRIPTION_ACTIVA, SUBSCRIPTION_VENCIDA, SUBSCRIPTION_
 PAYMENT_METODOS = ("transferencia", "efectivo", "tarjeta", "clip", "otro")
 
 ADDON_TIPO_RECEPCIONISTA = "recepcionista"
+ADDON_TIPO_ASISTENTE = "asistente"
 
 ASIENTO_PENDIENTE = "pendiente"
 ASIENTO_RECHAZADA = "rechazada"
@@ -150,6 +151,7 @@ class AsientoRecepcionista(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     tenant_id = db.Column(db.Integer, db.ForeignKey("tenants.id"), nullable=False, index=True)
     estado = db.Column(db.String(20), nullable=False, default=ASIENTO_PENDIENTE)
+    rol = db.Column(db.String(20), nullable=False, default="recepcionista")
     solicitado_por_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
     aprobado_por_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
     aprobado_at = db.Column(db.DateTime, nullable=True)

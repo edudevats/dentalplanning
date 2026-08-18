@@ -794,7 +794,8 @@ async function loadUserInfo() {
     document.querySelectorAll('[data-user-initials]').forEach(el => { el.textContent = initials; });
 
     window.__userRole = user.role || null;
-    applyRoleNav(user.role);
+    window.__userPermisos = user.permisos || {};
+    applyRoleNav(user);
 
     SubscriptionPopup.check(data);
     return user;
@@ -810,19 +811,79 @@ async function loadUserInfo() {
 }
 
 // ── Gating de navegación por rol ──────────────────────────────────────────────
-function applyRoleNav(role) {
-  if (role !== 'recepcionista') return;
-  const allowed = ['/ingresos', '/facturas'];
-  // Ocultar la opción "Cambiar de Sistema"
-  document.querySelectorAll('aside a[href="/selector"]').forEach(a => {
-    const wrap = a.closest('div');
-    if (wrap) wrap.style.display = 'none';
-  });
+// Recepcionista: lista fija (su allowlist vive hardcodeada en el backend).
+// Asistente: se deriva de sus permisos por usuario.
+const NAV_POR_RECURSO = {
+  'inventario': ['/inventario'],
+  'crm': ['/crm'],
+  'cobranza': ['/cotizaciones'],
+  'facturacion': ['/facturas'],
+  'tratamientos': ['/tratamientos'],
+  'catalogo': ['/materiales'],
+  'reportes': ['/reportes/resumen', '/reportes/marketing'],
+  'ajustes': ['/ajustes'],
+  'edr.ingresos': ['/ingresos'],
+  'edr.gastos': ['/gastos'],
+  'edr.pagos_doctores': ['/pagos-doctores'],
+};
+
+function rutasPermitidas(user) {
+  if (user.role === 'recepcionista') return ['/ingresos', '/facturas'];
+  if (user.role === 'asistente') {
+    const permisos = user.permisos || {};
+    const rutas = [];
+    Object.keys(permisos).forEach(recurso => {
+      (NAV_POR_RECURSO[recurso] || []).forEach(r => rutas.push(r));
+    });
+    return rutas;
+  }
+  return null; // admin y super-admin: sin restricción
+}
+
+function applyRoleNav(user) {
+  // Acepta el objeto usuario; se tolera una cadena por compatibilidad.
+  if (typeof user === 'string') user = { role: user };
+  if (!user) return;
+  const allowed = rutasPermitidas(user);
+  if (!allowed) return;
+
+  const esAsistente = user.role === 'asistente';
+
+  // El asistente conserva "Cambiar de Sistema" si tiene más de un módulo; la
+  // recepcionista nunca lo ve.
+  const multiModulo = esAsistente && allowed.length > 1;
+  if (!multiModulo) {
+    document.querySelectorAll('aside a[href="/selector"]').forEach(a => {
+      // En el shell general el enlace vive en su propio div (nada que
+      // preservar). En Inventario y CRM ese div también envuelve
+      // "Configuracion" y el bloque de avatar/nombre del usuario, así que
+      // ahí solo se oculta el enlace para no esconder la identidad.
+      const wrap = a.closest('div');
+      const soloEsteEnlace = wrap && wrap.children.length === 1 && wrap.children[0] === a;
+      if (soloEsteEnlace) {
+        wrap.style.display = 'none';
+      } else {
+        a.style.display = 'none';
+      }
+    });
+  }
+
   // Ocultar cada ítem de nav que no esté permitido
   document.querySelectorAll('aside nav li').forEach(li => {
     const link = li.querySelector('[data-nav-path]');
     const path = link ? link.getAttribute('data-nav-path') : null;
-    if (!path || !allowed.includes(path)) li.style.display = 'none';
+    if (!path || !allowed.some(a => path === a || path.startsWith(a + '/'))) {
+      li.style.display = 'none';
+    }
+  });
+  // Los shells de Inventario y CRM no envuelven sus enlaces en <li>, así que
+  // el recorrido de arriba no los alcanza. Se ocultan directamente.
+  document.querySelectorAll('aside nav [data-nav-path]').forEach(link => {
+    if (link.closest('li')) return;  // ya lo trató el bloque anterior
+    const path = link.getAttribute('data-nav-path');
+    if (!allowed.some(a => path === a || path.startsWith(a + '/'))) {
+      link.style.display = 'none';
+    }
   });
   // Ocultar encabezados de sección que quedaron sin ítems visibles
   document.querySelectorAll('aside nav > div').forEach(group => {
@@ -830,9 +891,29 @@ function applyRoleNav(role) {
       .some(li => li.style.display !== 'none');
     if (!visible) group.style.display = 'none';
   });
-  // Redirección suave si está en una página no permitida
+
+  // En el shell de inventario, ocultar Ajustes si no tiene ese permiso.
+  if (esAsistente && !allowed.includes('/ajustes')) {
+    document.querySelectorAll('aside a[href="/ajustes"]').forEach(a => {
+      a.style.display = 'none';
+    });
+  }
+
+  // Redirección de rescate: si está en una página que no le corresponde, se le
+  // lleva a uno de sus destinos válidos. Se prefiere Inventario por ser el
+  // módulo por defecto del rol; si no lo tuviera, cualquier ruta suya sirve
+  // más que rebotarlo a una página que tampoco puede abrir.
   const here = window.location.pathname;
-  if (!allowed.includes(here)) window.location.replace('/ingresos');
+  const dentro = allowed.some(a => here === a || here.startsWith(a + '/'));
+  if (!dentro) {
+    let destino;
+    if (esAsistente) {
+      destino = allowed.includes('/inventario') ? '/inventario' : allowed[0];
+    } else {
+      destino = '/ingresos';
+    }
+    if (destino) window.location.replace(destino);
+  }
 }
 
 // ── Menú de usuario (top bar) + cambiar contraseña ────────────────────────────
