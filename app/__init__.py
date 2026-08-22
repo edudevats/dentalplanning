@@ -41,6 +41,7 @@ def create_app(config_name=None):
     from app.portal.routes import portal_bp
     from app.crm.routes import crm_bp
     from app.cobranza.routes import cobranza_bp
+    from app.caja.routes import caja_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(catalogo_bp)
@@ -58,6 +59,7 @@ def create_app(config_name=None):
     app.register_blueprint(portal_bp)
     app.register_blueprint(crm_bp)
     app.register_blueprint(cobranza_bp)
+    app.register_blueprint(caja_bp)
 
     # Error handlers
     from app.middleware.error_handlers import register_error_handlers
