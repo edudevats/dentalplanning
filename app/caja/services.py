@@ -239,3 +239,221 @@ def reabrir_corte(tenant_id, usuario_id, corte_id, motivo):
     ))
     db.session.commit()
     return corte
+
+
+CONCEPTO_ENMASCARADO = "Salida autorizada por administración"
+
+
+def metodo_efectivo(tenant_id):
+    """El método de tipo efectivo del tenant. Estable: el de menor id."""
+    metodo = MetodoPago.query.filter_by(
+        tenant_id=tenant_id, tipo=TIPO_EFECTIVO,
+    ).order_by(MetodoPago.id).first()
+    if metodo is None:
+        raise CajaError(
+            "No hay ningún método de pago marcado como efectivo. "
+            "Márcalo en Ajustes → Métodos de Pago.",
+            codigo="sin_metodo_efectivo",
+        )
+    return metodo
+
+
+def registrar_salida(tenant_id, usuario_id, *, fecha, concepto_nombre, monto,
+                     sucursal_id):
+    """Salida chica de efectivo del cajón. Es un GastoOperativo normal."""
+    concepto = (concepto_nombre or "").strip()
+    if not concepto:
+        raise CajaError("Escribe de qué fue la salida", codigo="concepto_requerido")
+    try:
+        importe = round(float(monto), 2)
+    except (TypeError, ValueError):
+        raise CajaError("El monto no es un número válido", codigo="monto_invalido")
+    if importe <= 0:
+        raise CajaError("El monto debe ser mayor a cero", codigo="monto_invalido")
+
+    metodo = metodo_efectivo(tenant_id)
+    gasto = GastoOperativo(
+        tenant_id=tenant_id, fecha=fecha, concepto_nombre=concepto,
+        tipo="variable", monto=importe, metodo_pago_id=metodo.id,
+        sucursal_id=sucursal_id, created_by=usuario_id, sale_de_caja=True,
+    )
+    db.session.add(gasto)
+    db.session.commit()
+    return gasto
+
+
+def listar_salidas(tenant_id, sucursal_id, fecha, *, enmascarar_para=None):
+    """Salidas de caja del día.
+
+    `enmascarar_para` es el id de la recepcionista: ve TODAS las salidas —si no,
+    su lista no cuadraría con la tarjeta "Gastos del día", que las suma todas—
+    pero el concepto de las que no registró ella se sustituye, porque podría ser
+    sensible.
+    """
+    salidas = GastoOperativo.query.filter(
+        GastoOperativo.tenant_id == tenant_id,
+        GastoOperativo.fecha == fecha,
+        GastoOperativo.sale_de_caja.is_(True),
+        _filtro_sucursal(GastoOperativo.sucursal_id, sucursal_id),
+    ).order_by(GastoOperativo.id).all()
+
+    filas = []
+    for s in salidas:
+        propia = enmascarar_para is None or s.created_by == enmascarar_para
+        filas.append({
+            "id": s.id,
+            "concepto": s.concepto_nombre if propia else CONCEPTO_ENMASCARADO,
+            "monto": round(float(s.monto or 0), 2),
+            "propia": propia,
+        })
+    return filas
+
+
+def eliminar_salida(tenant_id, gasto_id, *, solo_de_usuario=None):
+    """Borra una salida. `solo_de_usuario` limita a las propias (recepción)."""
+    gasto = GastoOperativo.query.filter_by(
+        id=gasto_id, tenant_id=tenant_id, sale_de_caja=True,
+    ).first()
+    if gasto is None:
+        raise CajaError("Salida no encontrada", codigo="no_encontrado")
+    if solo_de_usuario is not None and gasto.created_by != solo_de_usuario:
+        raise CajaError("Esa salida no es tuya", codigo="ajena")
+    db.session.delete(gasto)
+    db.session.commit()
+
+
+def historico(tenant_id, desde, hasta, solo_sucursal=None):
+    """Una fila por (fecha, sucursal) con movimientos en el rango.
+
+    Incluye los días SIN cerrar, que son justamente la señal que el admin
+    necesita. Usa dos agregados sobre todo el rango en vez de un resumen_dia
+    por día: con un mes de rango, lo segundo serían decenas de consultas.
+
+    OJO con `solo_sucursal`: aquí `None` significa "todas las sucursales", al
+    revés que el `sucursal_id=None` de `resumen_dia`, que es el corte concreto
+    "Sin sucursal". Por eso el parámetro se llama distinto — el admin quiere ver
+    el mes completo de toda la clínica por default.
+    """
+    from sqlalchemy import func
+
+    filtro_suc_ing = (
+        [] if solo_sucursal is None
+        else [Ingreso.sucursal_id == solo_sucursal]
+    )
+    filtro_suc_gas = (
+        [] if solo_sucursal is None
+        else [GastoOperativo.sucursal_id == solo_sucursal]
+    )
+
+    # (fecha, sucursal, tipo) -> monto, comisión
+    # OJO: se agrupa por la expresión completa de coalesce, no por el alias
+    # "tipo" — SQLite no siempre resuelve un GROUP BY por el label.
+    tipo_expr = func.coalesce(MetodoPago.tipo, "sin_clasificar")
+    ingresos = db.session.query(
+        Ingreso.fecha, Ingreso.sucursal_id,
+        tipo_expr.label("tipo"),
+        func.sum(Ingreso.monto), func.sum(Ingreso.comision_bancaria),
+    ).outerjoin(MetodoPago, Ingreso.metodo_pago_id == MetodoPago.id).filter(
+        Ingreso.tenant_id == tenant_id,
+        Ingreso.fecha >= desde, Ingreso.fecha <= hasta,
+        *filtro_suc_ing,
+    ).group_by(Ingreso.fecha, Ingreso.sucursal_id, tipo_expr).all()
+
+    salidas = db.session.query(
+        GastoOperativo.fecha, GastoOperativo.sucursal_id,
+        func.sum(GastoOperativo.monto),
+    ).filter(
+        GastoOperativo.tenant_id == tenant_id,
+        GastoOperativo.fecha >= desde, GastoOperativo.fecha <= hasta,
+        GastoOperativo.sale_de_caja.is_(True),
+        *filtro_suc_gas,
+    ).group_by(GastoOperativo.fecha, GastoOperativo.sucursal_id).all()
+
+    dias = {}
+
+    def _dia(fecha, suc_id):
+        clave = (fecha, suc_id)
+        if clave not in dias:
+            dias[clave] = {
+                "fecha": fecha, "sucursal_id": suc_id,
+                "total_efectivo": 0.0, "total_tarjeta": 0.0,
+                "total_transferencia": 0.0, "total_otro": 0.0,
+                "comision_tarjeta": 0.0, "salidas_efectivo": 0.0,
+                "sin_clasificar_monto": 0.0,
+            }
+        return dias[clave]
+
+    for fecha, suc_id, tipo, monto, comision in ingresos:
+        d = _dia(fecha, suc_id)
+        if tipo == "sin_clasificar":
+            d["sin_clasificar_monto"] += float(monto or 0)
+            continue
+        llave = f"total_{tipo}" if tipo in TIPOS_METODO else "total_otro"
+        d[llave] += float(monto or 0)
+        if tipo == TIPO_TARJETA:
+            d["comision_tarjeta"] += float(comision or 0)
+
+    for fecha, suc_id, monto in salidas:
+        _dia(fecha, suc_id)["salidas_efectivo"] += float(monto or 0)
+
+    cortes = {
+        (c.fecha, c.sucursal_id): c
+        for c in CorteCaja.query.filter(
+            CorteCaja.tenant_id == tenant_id,
+            CorteCaja.fecha >= desde, CorteCaja.fecha <= hasta,
+        ).all()
+        if solo_sucursal is None or c.sucursal_id == solo_sucursal
+    }
+
+    filas = []
+    for clave, d in dias.items():
+        for k in ("total_efectivo", "total_tarjeta", "total_transferencia",
+                  "total_otro", "comision_tarjeta", "salidas_efectivo",
+                  "sin_clasificar_monto"):
+            d[k] = round(d[k], 2)
+
+        vivo_esperado = round(d["total_efectivo"] - d["salidas_efectivo"], 2)
+        corte = cortes.get(clave)
+
+        if corte is None or not corte.cerrado:
+            d.update({
+                "corte_id": corte.id if corte else None,
+                "estado": "sin_cerrar",
+                "total_dia": round(
+                    d["total_efectivo"] + d["total_tarjeta"]
+                    + d["total_transferencia"] + d["total_otro"], 2),
+                "esperado_efectivo": vivo_esperado,
+                "efectivo_contado": None,
+                "diferencia": None,
+                "cerrado_por": None,
+                "cerrado_at": None,
+                "comentario": None,
+                "movimientos_posteriores": False,
+                "delta_efectivo": 0.0,
+            })
+        else:
+            # La fila muestra la foto FIRMADA; el delta compara contra lo vivo.
+            delta = round(vivo_esperado - corte.esperado_efectivo, 2)
+            d.update({
+                "corte_id": corte.id,
+                "estado": "cerrado",
+                "total_efectivo": corte.total_efectivo,
+                "total_tarjeta": corte.total_tarjeta,
+                "total_transferencia": corte.total_transferencia,
+                "total_otro": corte.total_otro,
+                "comision_tarjeta": corte.comision_tarjeta,
+                "salidas_efectivo": corte.salidas_efectivo,
+                "total_dia": corte.total_dia,
+                "esperado_efectivo": corte.esperado_efectivo,
+                "efectivo_contado": corte.efectivo_contado,
+                "diferencia": corte.diferencia,
+                "cerrado_por": corte.usuario.name if corte.usuario else None,
+                "cerrado_at": corte.cerrado_at,
+                "comentario": corte.comentario,
+                "movimientos_posteriores": delta != 0,
+                "delta_efectivo": delta,
+            })
+        filas.append(d)
+
+    filas.sort(key=lambda f: (f["fecha"], f["sucursal_id"] or 0), reverse=True)
+    return filas
