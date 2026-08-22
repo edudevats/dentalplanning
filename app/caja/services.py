@@ -6,6 +6,7 @@ totales. Las rutas solo traducen HTTP.
 """
 from datetime import datetime, timezone
 
+from sqlalchemy import func
 from sqlalchemy.orm import joinedload
 
 from app.ajustes.models import (
@@ -334,8 +335,6 @@ def historico(tenant_id, desde, hasta, solo_sucursal=None):
     "Sin sucursal". Por eso el parámetro se llama distinto — el admin quiere ver
     el mes completo de toda la clínica por default.
     """
-    from sqlalchemy import func
-
     filtro_suc_ing = (
         [] if solo_sucursal is None
         else [Ingreso.sucursal_id == solo_sucursal]
@@ -404,6 +403,12 @@ def historico(tenant_id, desde, hasta, solo_sucursal=None):
         ).all()
         if solo_sucursal is None or c.sucursal_id == solo_sucursal
     }
+
+    # Un corte cerrado sin movimientos ese día también es una fila del reporte:
+    # un día flojo cerrado en cero tiene que poder distinguirse de un día que
+    # nadie cerró, que es la señal más valiosa del histórico.
+    for fecha_corte, suc_corte in cortes:
+        _dia(fecha_corte, suc_corte)
 
     filas = []
     for clave, d in dias.items():
