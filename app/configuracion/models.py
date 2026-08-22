@@ -23,6 +23,10 @@ class ConfigConsultorio(db.Model):
     # Tasa de impuesto SOLO informativa (estimación de impuestos a pagar).
     # No se resta de la utilidad ni se usa en ningún otro cálculo de la app.
     tasa_impuesto_pct = db.Column(db.Float, default=0, nullable=False)
+    # Diferencia en pesos que el corte de caja tolera sin exigir comentario.
+    # Default 0: cualquier descuadre, aunque sea de un peso, pide explicación.
+    tolerancia_corte_caja = db.Column(db.Float, nullable=False, default=0,
+                                      server_default="0")
     # Logo de la clínica. Vive aquí (y no en ConfiguracionFiscal) porque lo usan
     # el ticket impreso, el CFDI, el portal de autofacturación y las
     # cotizaciones. Se lee siempre vía app/configuracion/logo.py.

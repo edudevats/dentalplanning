@@ -81,6 +81,7 @@ def create_app(config_name=None):
         from app.facturacion import models as facturacion_models  # noqa: F401
         from app.crm import models as crm_models  # noqa: F401
         from app.cobranza import models as cobranza_models  # noqa: F401
+        from app.caja import models as caja_models  # noqa: F401
 
     # Health check
     @app.route("/api/v1/health")

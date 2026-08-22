@@ -838,10 +838,29 @@
       cols: [
         { key: 'nombre', label: 'Nombre' },
         { key: 'comision_pct', label: 'Comision %', align: 'right', render: v => domEl('span', 'tabular-nums', v + '%') },
+        { key: 'tipo', label: 'Tipo', render: v => {
+            // 'otro' se ve atenuado: significa "sin clasificar" y es lo que el admin debe corregir.
+            const etiquetas = { efectivo: 'Efectivo', tarjeta: 'Tarjeta',
+                                transferencia: 'Transferencia', otro: 'Otro' };
+            return domEl('span', v === 'otro' ? 'text-text-muted' : '',
+                         etiquetas[v] || 'Otro');
+          } },
       ],
       fields: [
         { key: 'nombre', label: 'Nombre', type: 'text' },
         { key: 'comision_pct', label: 'Comision (%)', type: 'number', step: '0.1', min: '0', max: '100' },
+        { key: 'tipo', label: 'Tipo (para el corte de caja)', type: 'select',
+          options: [
+            // `otro` va PRIMERO a propósito: el <select> del CRUD no honra
+            // `defaultValue`, así que la primera opción es el default real. Y el
+            // default tiene que ser el conservador — un método que nadie
+            // clasificó no debe contarse como efectivo, porque inflaría el
+            // corte y le generaría un faltante fantasma a la recepcionista.
+            { value: 'otro', label: 'Otro' },
+            { value: 'efectivo', label: 'Efectivo' },
+            { value: 'tarjeta', label: 'Tarjeta' },
+            { value: 'transferencia', label: 'Transferencia' },
+          ], defaultValue: 'otro' },
       ],
     },
     'gastos-conceptos': {

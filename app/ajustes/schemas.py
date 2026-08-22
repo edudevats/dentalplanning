@@ -1,5 +1,7 @@
 from marshmallow import Schema, fields, validate, validates_schema, ValidationError, EXCLUDE
 
+from app.ajustes.models import TIPOS_METODO, TIPO_OTRO
+
 
 class EspecialistaSchema(Schema):
     class Meta:
@@ -18,6 +20,11 @@ class MetodoPagoSchema(Schema):
     id = fields.Int(dump_only=True)
     nombre = fields.Str(required=True, validate=validate.Length(min=1, max=100))
     comision_pct = fields.Float(load_default=0, validate=validate.Range(min=0, max=100))
+    # Qué es este método para el corte de caja. `otro` no cuenta como efectivo.
+    tipo = fields.Str(
+        load_default=TIPO_OTRO,
+        validate=validate.OneOf(TIPOS_METODO),
+    )
 
 
 class GastoConceptoSchema(Schema):

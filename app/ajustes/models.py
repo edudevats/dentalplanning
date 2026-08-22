@@ -1,6 +1,12 @@
 from datetime import datetime, timezone
 from app.extensions import db
 
+TIPO_EFECTIVO = "efectivo"
+TIPO_TARJETA = "tarjeta"
+TIPO_TRANSFERENCIA = "transferencia"
+TIPO_OTRO = "otro"
+TIPOS_METODO = (TIPO_EFECTIVO, TIPO_TARJETA, TIPO_TRANSFERENCIA, TIPO_OTRO)
+
 
 class Especialista(db.Model):
     __tablename__ = "especialistas"
@@ -23,6 +29,11 @@ class MetodoPago(db.Model):
     tenant_id = db.Column(db.Integer, db.ForeignKey("tenants.id"), nullable=False)
     nombre = db.Column(db.String(100), nullable=False)
     comision_pct = db.Column(db.Float, default=0)
+    # Qué es este método para efectos del corte de caja. El nombre lo pone la
+    # clínica ("Terminal BBVA", "SPEI"), así que el nombre no basta para saber
+    # qué es efectivo. Default conservador: `otro` no cuenta como efectivo.
+    tipo = db.Column(db.String(20), nullable=False, default=TIPO_OTRO,
+                     server_default=TIPO_OTRO)
 
     __table_args__ = (
         db.UniqueConstraint("tenant_id", "nombre", name="uq_tenant_metodo_pago"),

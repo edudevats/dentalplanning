@@ -60,9 +60,20 @@ class GastoOperativo(db.Model):
     concepto_nombre = db.Column(db.String(200))
     tipo = db.Column(db.String(20), default="fijo")  # fijo / variable
     monto = db.Column(db.Float, nullable=False)
+    metodo_pago_id = db.Column(
+        db.Integer, db.ForeignKey("metodos_pago.id"), nullable=True
+    )
+    sucursal_id = db.Column(db.Integer, db.ForeignKey("sucursales.id"), nullable=True)
+    created_by = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
+    # True solo cuando el dinero salió del cajón de recepción. Se deriva del
+    # tipo del método (efectivo ⇒ True), nunca lo teclea el usuario; el admin
+    # puede desmarcarlo para un pago en efectivo que NO salió de ese cajón.
+    sale_de_caja = db.Column(db.Boolean, nullable=False, default=False,
+                             server_default=db.text("0"))
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
 
     concepto = db.relationship("GastoConcepto", backref="gastos")
+    metodo_pago = db.relationship("MetodoPago")
 
     __table_args__ = (
         db.Index("ix_gastos_operativos_tenant_fecha", "tenant_id", "fecha"),
