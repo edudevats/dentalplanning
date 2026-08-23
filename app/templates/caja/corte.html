@@ -1,0 +1,296 @@
+{% extends "layout.html" %}
+{% block page_title %}Corte de Caja{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+  <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+    <div>
+      <h1 class="text-2xl font-bold font-heading text-text-primary">Corte de Caja</h1>
+      <p id="fecha-hoy" class="text-sm text-text-secondary font-body mt-1"></p>
+    </div>
+    <div class="flex items-center gap-3 flex-wrap">
+      <!-- Selector de sucursal: se revela solo si el tenant tiene 2+ sucursales (independiente del rol) -->
+      <div id="wrap-sucursal" class="hidden">
+        <select id="sel-sucursal" class="rounded-lg border border-border px-3 py-2 text-sm font-body bg-surface focus:ring-2 focus:ring-primary-300 focus:border-primary-500 outline-none min-h-[38px] w-48"></select>
+      </div>
+    </div>
+  </div>
+
+  <!-- Vista de recepción: oculta por defecto, se revela para todos los roles con acceso a la página -->
+  <div id="vista-recepcion" class="hidden space-y-6">
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div class="bg-surface rounded-xl border border-border p-5 shadow-sm">
+        <div class="flex items-center justify-between">
+          <p class="text-sm font-medium text-text-secondary font-body">Efectivo</p>
+          <div class="h-9 w-9 rounded-lg bg-primary-50 flex items-center justify-center"><i data-lucide="banknote" class="h-4 w-4 text-primary-600"></i></div>
+        </div>
+        <p class="mt-3 text-2xl font-bold font-heading tabular-nums text-text-primary" id="stat-efectivo">$0.00</p>
+      </div>
+      <div class="bg-surface rounded-xl border border-border p-5 shadow-sm">
+        <div class="flex items-center justify-between">
+          <p class="text-sm font-medium text-text-secondary font-body">Tarjeta</p>
+          <div class="h-9 w-9 rounded-lg bg-primary-50 flex items-center justify-center"><i data-lucide="credit-card" class="h-4 w-4 text-primary-600"></i></div>
+        </div>
+        <p class="mt-3 text-2xl font-bold font-heading tabular-nums text-text-primary" id="stat-tarjeta">$0.00</p>
+        <p class="mt-1 text-xs text-text-muted font-body" id="stat-tarjeta-neto"></p>
+      </div>
+      <div class="bg-surface rounded-xl border border-border p-5 shadow-sm">
+        <div class="flex items-center justify-between">
+          <p class="text-sm font-medium text-text-secondary font-body">Transferencia</p>
+          <div class="h-9 w-9 rounded-lg bg-primary-50 flex items-center justify-center"><i data-lucide="arrow-left-right" class="h-4 w-4 text-primary-600"></i></div>
+        </div>
+        <p class="mt-3 text-2xl font-bold font-heading tabular-nums text-text-primary" id="stat-transferencia">$0.00</p>
+      </div>
+      <div class="bg-surface rounded-xl border border-border p-5 shadow-sm">
+        <div class="flex items-center justify-between">
+          <p class="text-sm font-medium text-text-secondary font-body">Gastos del día</p>
+          <div class="h-9 w-9 rounded-lg bg-warning-50 flex items-center justify-center"><i data-lucide="trending-down" class="h-4 w-4 text-warning-600"></i></div>
+        </div>
+        <p class="mt-3 text-2xl font-bold font-heading tabular-nums text-warning-600" id="stat-salidas">$0.00</p>
+      </div>
+    </div>
+
+    <!-- Bloque destacado: efectivo a entregar -->
+    <div id="bloque-entregar" class="bg-primary-50 border border-primary-200 rounded-xl p-6 text-center">
+      <p class="text-sm font-medium text-primary-700 font-body">Efectivo a entregar</p>
+      <p class="mt-2 text-4xl font-bold font-heading text-primary-800" id="stat-entregar">$0.00</p>
+      <p class="mt-1 text-sm text-primary-600 font-body" id="leyenda-entregar"></p>
+    </div>
+
+    <!-- Aviso: ingresos sin método de pago (bloquean el cierre) -->
+    <div id="aviso-sin-clasificar" class="hidden bg-warning-50 border border-warning-100 rounded-xl p-4">
+      <div class="flex items-start gap-3">
+        <i data-lucide="alert-triangle" class="h-5 w-5 text-warning-600 shrink-0 mt-0.5"></i>
+        <div class="flex-1 min-w-0">
+          <p class="text-sm font-medium text-warning-600 font-body">Hay ingresos sin método de pago. Asígnales uno para poder cerrar la caja.</p>
+          <ul id="lista-sin-clasificar" class="mt-2 text-sm text-text-secondary font-body space-y-1 list-disc list-inside"></ul>
+          <a href="/ingresos" class="mt-2 inline-flex items-center gap-1 text-sm font-medium text-primary-600 hover:text-primary-700 font-body">
+            Ir a Ingresos <i data-lucide="arrow-right" class="h-3.5 w-3.5"></i>
+          </a>
+        </div>
+      </div>
+    </div>
+
+    <!-- Salidas de caja -->
+    <div class="bg-surface rounded-xl border border-border shadow-sm p-5">
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="text-base font-semibold font-heading text-text-primary">Salidas de caja</h2>
+        <button type="button" id="btn-nueva-salida" onclick="abrirNuevaSalida()"
+          class="inline-flex items-center justify-center gap-2 rounded-lg font-medium font-body cursor-pointer bg-primary-500 hover:bg-primary-600 text-white px-4 py-2 text-sm min-h-[38px]">
+          <i data-lucide="plus" class="h-4 w-4"></i> Nueva salida
+        </button>
+      </div>
+      <div id="tabla-salidas"></div>
+    </div>
+
+    <!-- Ingresos de hoy (solo lectura: se editan desde /ingresos) -->
+    <div class="bg-surface rounded-xl border border-border shadow-sm p-5">
+      <h2 class="text-base font-semibold font-heading text-text-primary mb-4">Ingresos de hoy</h2>
+      <div id="tabla-ingresos"></div>
+    </div>
+
+    <!-- Bloque de cierre -->
+    <div id="bloque-cierre" class="bg-surface rounded-xl border border-border shadow-sm p-5 space-y-4">
+      <h2 class="text-base font-semibold font-heading text-text-primary">Cerrar caja</h2>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div>
+          <label class="block text-sm font-medium text-text-secondary mb-1 font-body">Efectivo contado</label>
+          <input id="f-contado" type="text" inputmode="decimal" placeholder="0.00"
+            class="block w-full rounded-lg border border-border px-3 py-2.5 text-sm font-body min-h-[44px] bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-500" />
+          <p id="etiqueta-diferencia" class="mt-1 text-sm font-medium font-body"></p>
+        </div>
+        <div class="hidden">
+          <label class="block text-sm font-medium text-text-secondary mb-1 font-body">Comentario</label>
+          <textarea id="f-comentario" rows="2" placeholder="La diferencia se sale de tolerancia: explica qué pasó"
+            class="block w-full rounded-lg border border-border px-3 py-2.5 text-sm font-body bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-500"></textarea>
+        </div>
+      </div>
+      <div class="flex items-center justify-between gap-3 pt-2 border-t border-border">
+        <p id="motivo-bloqueo" class="text-sm text-text-muted font-body"></p>
+        <button type="button" id="btn-cerrar" onclick="abrirConfirmarCierre()" disabled
+          class="inline-flex items-center justify-center gap-2 rounded-lg font-medium font-body cursor-pointer bg-primary-500 hover:bg-primary-600 text-white px-5 py-2.5 text-sm min-h-[44px] shrink-0 opacity-50 cursor-not-allowed">
+          <i data-lucide="lock" class="h-4 w-4"></i> Cerrar caja
+        </button>
+      </div>
+    </div>
+
+    <!-- Sello de cierre: reemplaza el bloque de cierre cuando el día ya está cerrado -->
+    <div id="sello-cerrado" class="hidden bg-accent-50 border border-accent-200 rounded-xl p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div class="flex items-center gap-3">
+        <i data-lucide="check-circle-2" class="h-6 w-6 text-accent-700 shrink-0"></i>
+        <p id="sello-texto" class="text-sm font-medium text-accent-700 font-body"></p>
+      </div>
+      <button type="button" id="btn-imprimir" onclick="imprimirComprobante()"
+        class="inline-flex items-center justify-center gap-2 rounded-lg font-medium font-body cursor-pointer border border-border bg-surface hover:bg-surface-hover text-text-secondary px-4 py-2 text-sm min-h-[38px] shrink-0">
+        <i data-lucide="printer" class="h-4 w-4"></i> Imprimir
+      </button>
+    </div>
+  </div>
+
+  <!-- Vista de administración: histórico de cortes, detalle y reapertura -->
+  <div id="vista-admin" class="hidden space-y-6">
+    <div class="bg-surface rounded-xl border border-border shadow-sm p-5 space-y-4">
+      <div class="flex items-center justify-between flex-wrap gap-3">
+        <h2 class="text-base font-semibold font-heading text-text-primary">Histórico de cortes</h2>
+        <div class="flex items-center gap-3 flex-wrap">
+          <input id="f-desde" type="date" aria-label="Desde"
+            class="rounded-lg border border-border px-3 py-2 text-sm font-body bg-surface focus:ring-2 focus:ring-primary-300 focus:border-primary-500 outline-none min-h-[38px]" />
+          <span class="text-text-muted text-sm font-body">a</span>
+          <input id="f-hasta" type="date" aria-label="Hasta"
+            class="rounded-lg border border-border px-3 py-2 text-sm font-body bg-surface focus:ring-2 focus:ring-primary-300 focus:border-primary-500 outline-none min-h-[38px]" />
+        </div>
+      </div>
+      <div id="tabla-historico"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: nueva salida de caja -->
+<div id="modal-salida" class="hidden fixed inset-0 z-50 overflow-y-auto">
+  <div class="flex min-h-full items-end sm:items-center justify-center p-4">
+    <div class="fixed inset-0 bg-black/40" onclick="Modal.close('modal-salida')"></div>
+    <div class="relative bg-surface rounded-2xl shadow-xl w-full max-w-md">
+      <div class="flex items-center justify-between px-6 py-4 border-b border-border">
+        <h2 class="text-base font-semibold font-heading text-text-primary">Nueva salida de caja</h2>
+        <button type="button" onclick="Modal.close('modal-salida')" class="p-2 rounded-lg text-text-muted hover:bg-surface-hover transition-colors cursor-pointer"><i data-lucide="x" class="h-4 w-4"></i></button>
+      </div>
+      <div class="px-6 py-5 space-y-4">
+        <div>
+          <label class="block text-sm font-medium text-text-secondary mb-1 font-body">Concepto</label>
+          <input id="f-salida-concepto" type="text" placeholder="¿De qué fue la salida?"
+            class="block w-full rounded-lg border border-border px-3 py-2.5 text-sm font-body min-h-[44px] bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-500" />
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-text-secondary mb-1 font-body">Monto</label>
+          <input id="f-salida-monto" type="text" inputmode="decimal" placeholder="0.00"
+            class="block w-full rounded-lg border border-border px-3 py-2.5 text-sm font-body min-h-[44px] bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-500" />
+        </div>
+      </div>
+      <div class="flex justify-end gap-3 px-6 py-4 border-t border-border">
+        <button type="button" onclick="Modal.close('modal-salida')" class="inline-flex items-center justify-center gap-2 rounded-lg font-medium font-body cursor-pointer border border-border bg-surface hover:bg-surface-hover text-text-secondary px-4 py-2 text-sm min-h-[38px]">Cancelar</button>
+        <button type="button" onclick="guardarSalida()" class="inline-flex items-center justify-center gap-2 rounded-lg font-medium font-body cursor-pointer bg-primary-500 hover:bg-primary-600 text-white px-4 py-2 text-sm min-h-[38px]">Guardar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: confirmar eliminar salida (mismo patrón que edr/ingresos.html#modal-del) -->
+<div id="modal-eliminar-salida" class="hidden fixed inset-0 z-50 overflow-y-auto">
+  <div class="flex min-h-full items-end sm:items-center justify-center p-4">
+    <div class="fixed inset-0 bg-black/40" onclick="Modal.close('modal-eliminar-salida')"></div>
+    <div class="relative bg-surface rounded-2xl shadow-xl w-full max-w-md">
+      <div class="flex items-center justify-between px-6 py-4 border-b border-border">
+        <h2 class="text-base font-semibold font-heading text-text-primary">Eliminar salida</h2>
+        <button type="button" onclick="Modal.close('modal-eliminar-salida')" class="p-2 rounded-lg text-text-muted hover:bg-surface-hover transition-colors cursor-pointer"><i data-lucide="x" class="h-4 w-4"></i></button>
+      </div>
+      <div class="px-6 py-5">
+        <p class="text-sm text-text-secondary font-body">Esta acción no se puede deshacer. Se eliminará permanentemente este registro de salida de caja.</p>
+        <div class="flex justify-end gap-3 mt-6 pt-4 border-t border-border">
+          <button type="button" onclick="Modal.close('modal-eliminar-salida')" class="inline-flex items-center justify-center gap-2 rounded-lg font-medium font-body cursor-pointer border border-border bg-surface hover:bg-surface-hover text-text-secondary px-4 py-2 text-sm min-h-[38px]">Cancelar</button>
+          <button type="button" id="btn-confirmar-eliminar-salida" onclick="confirmarEliminarSalida()" class="inline-flex items-center justify-center gap-2 rounded-lg font-medium font-body cursor-pointer bg-danger-500 hover:bg-danger-600 text-white px-4 py-2 text-sm min-h-[38px]"><span id="texto-confirmar-eliminar-salida">Eliminar</span></button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: confirmar cierre de caja -->
+<div id="modal-confirmar-cierre" class="hidden fixed inset-0 z-50 overflow-y-auto">
+  <div class="flex min-h-full items-end sm:items-center justify-center p-4">
+    <div class="fixed inset-0 bg-black/40" onclick="Modal.close('modal-confirmar-cierre')"></div>
+    <div class="relative bg-surface rounded-2xl shadow-xl w-full max-w-md">
+      <div class="flex items-center justify-between px-6 py-4 border-b border-border">
+        <h2 class="text-base font-semibold font-heading text-text-primary">Confirmar cierre de caja</h2>
+        <button type="button" onclick="Modal.close('modal-confirmar-cierre')" class="p-2 rounded-lg text-text-muted hover:bg-surface-hover transition-colors cursor-pointer"><i data-lucide="x" class="h-4 w-4"></i></button>
+      </div>
+      <div class="px-6 py-5 space-y-3">
+        <p class="text-sm text-text-secondary font-body">Esta acción cierra el día. No se podrán registrar más ingresos ni salidas hasta que un administrador reabra la caja.</p>
+        <div class="rounded-lg border border-border divide-y divide-border">
+          <div class="flex items-center justify-between px-4 py-2.5 text-sm font-body">
+            <span class="text-text-secondary">Esperado</span>
+            <span id="confirmar-esperado" class="font-medium tabular-nums">$0.00</span>
+          </div>
+          <div class="flex items-center justify-between px-4 py-2.5 text-sm font-body">
+            <span class="text-text-secondary">Contado</span>
+            <span id="confirmar-contado" class="font-medium tabular-nums">$0.00</span>
+          </div>
+          <div class="flex items-center justify-between px-4 py-2.5 text-sm font-body">
+            <span class="text-text-secondary">Diferencia</span>
+            <span id="confirmar-diferencia" class="font-medium tabular-nums"></span>
+          </div>
+        </div>
+      </div>
+      <div class="flex justify-end gap-3 px-6 py-4 border-t border-border">
+        <button type="button" onclick="Modal.close('modal-confirmar-cierre')" class="inline-flex items-center justify-center gap-2 rounded-lg font-medium font-body cursor-pointer border border-border bg-surface hover:bg-surface-hover text-text-secondary px-4 py-2 text-sm min-h-[38px]">Cancelar</button>
+        <button type="button" onclick="confirmarCierre()" class="inline-flex items-center justify-center gap-2 rounded-lg font-medium font-body cursor-pointer bg-primary-500 hover:bg-primary-600 text-white px-4 py-2 text-sm min-h-[38px]">Confirmar cierre</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: detalle de un corte del histórico (solo admin) -->
+<div id="modal-detalle" class="hidden fixed inset-0 z-50 overflow-y-auto">
+  <div class="flex min-h-full items-end sm:items-center justify-center p-4">
+    <div class="fixed inset-0 bg-black/40" onclick="Modal.close('modal-detalle')"></div>
+    <div class="relative bg-surface rounded-2xl shadow-xl w-full max-w-2xl">
+      <div class="flex items-center justify-between px-6 py-4 border-b border-border">
+        <h2 class="text-base font-semibold font-heading text-text-primary">Detalle del corte</h2>
+        <button type="button" onclick="Modal.close('modal-detalle')" class="p-2 rounded-lg text-text-muted hover:bg-surface-hover transition-colors cursor-pointer"><i data-lucide="x" class="h-4 w-4"></i></button>
+      </div>
+      <div id="detalle-cuerpo" class="px-6 py-5 space-y-5 max-h-[70vh] overflow-y-auto">
+        <div id="detalle-aviso" class="hidden bg-warning-50 border border-warning-100 rounded-lg p-3 text-sm text-warning-600 font-body"></div>
+        <div id="detalle-totales" class="rounded-lg border border-border divide-y divide-border text-sm font-body"></div>
+        <div>
+          <h3 class="text-sm font-semibold font-heading text-text-primary mb-2">Ingresos</h3>
+          <div id="detalle-ingresos"></div>
+        </div>
+        <div>
+          <h3 class="text-sm font-semibold font-heading text-text-primary mb-2">Salidas</h3>
+          <div id="detalle-salidas"></div>
+        </div>
+        <div>
+          <h3 class="text-sm font-semibold font-heading text-text-primary mb-2">Bitácora</h3>
+          <ul id="detalle-eventos" class="text-sm text-text-secondary font-body space-y-1 list-disc list-inside"></ul>
+        </div>
+      </div>
+      <div class="flex justify-end gap-3 px-6 py-4 border-t border-border">
+        <button type="button" onclick="Modal.close('modal-detalle')" class="inline-flex items-center justify-center gap-2 rounded-lg font-medium font-body cursor-pointer border border-border bg-surface hover:bg-surface-hover text-text-secondary px-4 py-2 text-sm min-h-[38px]">Cerrar</button>
+        <button type="button" id="btn-reabrir" onclick="abrirReabrir()"
+          class="inline-flex items-center justify-center gap-2 rounded-lg font-medium font-body cursor-pointer bg-warning-500 hover:bg-warning-600 text-white px-4 py-2 text-sm min-h-[38px]">
+          <i data-lucide="unlock" class="h-4 w-4"></i> Reabrir corte
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: motivo de la reapertura -->
+<div id="modal-reabrir" class="hidden fixed inset-0 z-50 overflow-y-auto">
+  <div class="flex min-h-full items-end sm:items-center justify-center p-4">
+    <div class="fixed inset-0 bg-black/40" onclick="Modal.close('modal-reabrir')"></div>
+    <div class="relative bg-surface rounded-2xl shadow-xl w-full max-w-md">
+      <div class="flex items-center justify-between px-6 py-4 border-b border-border">
+        <h2 class="text-base font-semibold font-heading text-text-primary">Reabrir corte</h2>
+        <button type="button" onclick="Modal.close('modal-reabrir')" class="p-2 rounded-lg text-text-muted hover:bg-surface-hover transition-colors cursor-pointer"><i data-lucide="x" class="h-4 w-4"></i></button>
+      </div>
+      <div class="px-6 py-5 space-y-4">
+        <p class="text-sm text-text-secondary font-body">El día vuelve a captura: la recepcionista podrá registrar ingresos y salidas de nuevo hasta que se recierre. Explica por qué se reabre.</p>
+        <div>
+          <label class="block text-sm font-medium text-text-secondary mb-1 font-body">Motivo</label>
+          <textarea id="f-motivo" rows="3" placeholder="¿Por qué se reabre este corte?"
+            class="block w-full rounded-lg border border-border px-3 py-2.5 text-sm font-body bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-500"></textarea>
+        </div>
+      </div>
+      <div class="flex justify-end gap-3 px-6 py-4 border-t border-border">
+        <button type="button" onclick="Modal.close('modal-reabrir')" class="inline-flex items-center justify-center gap-2 rounded-lg font-medium font-body cursor-pointer border border-border bg-surface hover:bg-surface-hover text-text-secondary px-4 py-2 text-sm min-h-[38px]">Cancelar</button>
+        <button type="button" onclick="confirmarReapertura()" class="inline-flex items-center justify-center gap-2 rounded-lg font-medium font-body cursor-pointer bg-warning-500 hover:bg-warning-600 text-white px-4 py-2 text-sm min-h-[38px]">Reabrir</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/caja/corte_ux.js') }}"></script>
+<script src="{{ url_for('static', filename='js/caja/corte.js') }}"></script>
+{% endblock %}

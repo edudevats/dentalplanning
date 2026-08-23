@@ -47,14 +47,38 @@
     </div>
   </div>
 
-  <!-- Stats (recepcionista): oculto por defecto, se revela solo para el rol recepcionista -->
+  <!-- Stats (recepcionista): oculto por defecto, se revela solo para el rol recepcionista.
+       Las cuatro tarjetas salen de /caja/corte (Task 13): mismos totales que /corte-caja,
+       una sola fuente de verdad para lo que la recepcionista tiene que entregar. -->
   <div id="stats-recepcion" class="hidden grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
     <div class="bg-surface rounded-xl border border-border p-5 shadow-sm">
       <div class="flex items-center justify-between">
-        <p class="text-sm font-medium text-text-secondary font-body">Ingresos de hoy</p>
-        <div class="h-9 w-9 rounded-lg bg-primary-50 flex items-center justify-center"><i data-lucide="calendar-check" class="h-4 w-4 text-primary-600"></i></div>
+        <p class="text-sm font-medium text-text-secondary font-body">Efectivo de hoy</p>
+        <div class="h-9 w-9 rounded-lg bg-primary-50 flex items-center justify-center"><i data-lucide="banknote" class="h-4 w-4 text-primary-600"></i></div>
       </div>
-      <p class="mt-3 text-2xl font-bold font-heading tabular-nums text-text-primary" id="stat-diario">$0.00</p>
+      <p class="mt-3 text-2xl font-bold font-heading tabular-nums text-text-primary" id="stat-recep-efectivo">$0.00</p>
+    </div>
+    <div class="bg-surface rounded-xl border border-border p-5 shadow-sm">
+      <div class="flex items-center justify-between">
+        <p class="text-sm font-medium text-text-secondary font-body">Tarjeta de hoy</p>
+        <div class="h-9 w-9 rounded-lg bg-primary-50 flex items-center justify-center"><i data-lucide="credit-card" class="h-4 w-4 text-primary-600"></i></div>
+      </div>
+      <p class="mt-3 text-2xl font-bold font-heading tabular-nums text-text-primary" id="stat-recep-tarjeta">$0.00</p>
+    </div>
+    <div class="bg-surface rounded-xl border border-border p-5 shadow-sm">
+      <div class="flex items-center justify-between">
+        <p class="text-sm font-medium text-text-secondary font-body">Transferencia de hoy</p>
+        <div class="h-9 w-9 rounded-lg bg-primary-50 flex items-center justify-center"><i data-lucide="arrow-left-right" class="h-4 w-4 text-primary-600"></i></div>
+      </div>
+      <p class="mt-3 text-2xl font-bold font-heading tabular-nums text-text-primary" id="stat-recep-transferencia">$0.00</p>
+    </div>
+    <div class="bg-surface rounded-xl border border-border p-5 shadow-sm">
+      <div class="flex items-center justify-between">
+        <p class="text-sm font-medium text-text-secondary font-body">Efectivo a entregar</p>
+        <div class="h-9 w-9 rounded-lg bg-primary-50 flex items-center justify-center"><i data-lucide="wallet" class="h-4 w-4 text-primary-600"></i></div>
+      </div>
+      <p class="mt-3 text-2xl font-bold font-heading tabular-nums text-text-primary" id="stat-recep-entregar">$0.00</p>
+      <a href="/corte-caja" class="text-xs text-primary-600 hover:text-primary-700 font-body">Ir al corte de caja →</a>
     </div>
   </div>
 
@@ -269,12 +293,21 @@ function rowsHoy() {
   return tableData.filter(r => String(r.fecha || '').slice(0, 10) === hoy);
 }
 
-// Total bruto de los ingresos registrados hoy. Solo para recepcionista.
-function updateDailyStat() {
-  const el = document.getElementById('stat-diario');
-  if (!el) return;
-  const total = rowsHoy().reduce((s, r) => s + Number(r.monto || 0), 0);
-  el.textContent = fmt(total);
+// Las cuatro tarjetas salen del mismo endpoint que la página de corte: una sola
+// fuente de verdad. Sumarlas aquí a mano volvería a divergir en cuanto cambie
+// una regla del corte (una comisión, un método reclasificado, etc.).
+async function updateDailyStat() {
+  try {
+    const r = await API.get('/caja/corte?fecha=' + todayLocalISO());
+    document.getElementById('stat-recep-efectivo').textContent = fmt(r.totales.efectivo);
+    document.getElementById('stat-recep-tarjeta').textContent = fmt(r.totales.tarjeta);
+    document.getElementById('stat-recep-transferencia').textContent =
+      fmt(r.totales.transferencia);
+    document.getElementById('stat-recep-entregar').textContent =
+      fmt(r.esperado_efectivo);
+  } catch {
+    // Sin corte disponible las tarjetas quedan en cero; la tabla sigue sirviendo.
+  }
 }
 
 async function imprimirTicket(ticketId) {
@@ -418,15 +451,13 @@ function openCreate() {
   selSuc.value = sucursales.length === 1 ? String(sucursales[0].id) : '';
   document.getElementById('f-descuento').value = '0';
 
-  // pre-select default payment method (preferably Efectivo, otherwise the first one)
-  let defaultMetodoId = '';
-  if (metodosPago.length > 0) {
-    const efectivo = metodosPago.find(m => m.nombre.toLowerCase().includes('efectivo'));
-    defaultMetodoId = efectivo ? String(efectivo.id) : String(metodosPago[0].id);
-  }
-
   ['f-tratamiento','f-especialista','f-estrategia'].forEach(id => document.getElementById(id).value = '');
-  document.getElementById('f-metodo').value = defaultMetodoId;
+  // Sin default: el método de pago es el dato sobre el que se construye el
+  // corte de caja, y adivinar "Efectivo" aquí generaba faltantes fantasma
+  // cuando el cobro real era con tarjeta o transferencia. Quien captura elige;
+  // si lo olvida, el ingreso cae en "sin_clasificar" y el corte bloquea el
+  // cierre hasta que se corrija (en vez de perderse en silencio).
+  document.getElementById('f-metodo').value = '';
   Modal.open('modal-form');
 }
 

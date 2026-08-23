@@ -1,0 +1,85 @@
+/* Reglas del corte de caja, sin DOM ni red: se prueban con `node --test`.
+   Mismo patrón que app/static/js/factura_ux.js. */
+(function (root) {
+  "use strict";
+
+  function redondear(n) {
+    return Math.round((n + Number.EPSILON) * 100) / 100;
+  }
+
+  /* Acepta "4250", "4250.50", "4250,50" y "4,250.50". Null si no es un monto
+     válido. Cero SÍ es válido: una caja vacía es un dato, no un campo sin llenar. */
+  function normalizarMonto(texto) {
+    if (texto === null || texto === undefined) return null;
+    var limpio = String(texto).trim();
+    if (!limpio) return null;
+    // Se quitan los separadores de miles y se unifica la coma decimal.
+    limpio = limpio.replace(/\s/g, "");
+    if (limpio.indexOf(",") > -1 && limpio.indexOf(".") > -1) {
+      limpio = limpio.replace(/,/g, "");
+    } else {
+      limpio = limpio.replace(",", ".");
+    }
+    if (!/^\d+(\.\d+)?$/.test(limpio)) return null;
+    var n = Number(limpio);
+    if (!isFinite(n) || n < 0) return null;
+    return redondear(n);
+  }
+
+  function diferencia(resumen, contadoTexto) {
+    var contado = normalizarMonto(contadoTexto);
+    if (contado === null) return null;
+    return redondear(contado - Number(resumen.esperado_efectivo || 0));
+  }
+
+  function excedeTolerancia(resumen, contadoTexto) {
+    var dif = diferencia(resumen, contadoTexto);
+    if (dif === null) return false;
+    return Math.abs(dif) > Number(resumen.tolerancia || 0);
+  }
+
+  /* Única fuente de verdad de si el botón "Cerrar caja" se habilita.
+     El servidor vuelve a validar todo: esto es cortesía, no seguridad. */
+  function puedeCerrar(resumen, contadoTexto, comentarioTexto) {
+    if (resumen.estado === "cerrado") {
+      return { ok: false, motivo: "La caja de este día ya fue cerrada" };
+    }
+    if ((resumen.sin_clasificar || []).length) {
+      return {
+        ok: false,
+        motivo: "Hay ingresos sin método de pago: asígnales uno antes de cerrar",
+      };
+    }
+    if (normalizarMonto(contadoTexto) === null) {
+      return { ok: false, motivo: "Escribe cuánto efectivo contaste" };
+    }
+    var comentario = String(comentarioTexto || "").trim();
+    if (excedeTolerancia(resumen, contadoTexto) && !comentario) {
+      return { ok: false, motivo: "La diferencia necesita un comentario" };
+    }
+    return { ok: true, motivo: null };
+  }
+
+  function etiquetaDiferencia(dif) {
+    var n = Number(dif || 0);
+    if (n < 0) {
+      return { texto: "Faltan $" + Math.abs(n).toFixed(2),
+               clase: "text-danger-600" };
+    }
+    if (n > 0) {
+      return { texto: "Sobran $" + n.toFixed(2), clase: "text-warning-600" };
+    }
+    return { texto: "La caja cuadra", clase: "text-accent-700" };
+  }
+
+  var CorteUX = {
+    normalizarMonto: normalizarMonto,
+    diferencia: diferencia,
+    excedeTolerancia: excedeTolerancia,
+    puedeCerrar: puedeCerrar,
+    etiquetaDiferencia: etiquetaDiferencia,
+  };
+
+  if (typeof module !== "undefined" && module.exports) module.exports = CorteUX;
+  root.CorteUX = CorteUX;
+})(typeof window !== "undefined" ? window : globalThis);

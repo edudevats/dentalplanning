@@ -72,6 +72,11 @@ def pagos_doctores():
     return render_template('edr/pagos_doctores.html', page='pagos-doctores')
 
 
+@frontend_bp.route('/corte-caja')
+def corte_caja():
+    return render_template('caja/corte.html', page='corte-caja')
+
+
 @frontend_bp.route('/facturas')
 def facturas():
     return render_template('facturas/list.html', page='facturas')

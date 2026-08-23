@@ -825,10 +825,11 @@ const NAV_POR_RECURSO = {
   'edr.ingresos': ['/ingresos'],
   'edr.gastos': ['/gastos'],
   'edr.pagos_doctores': ['/pagos-doctores'],
+  'caja': ['/corte-caja'],
 };
 
 function rutasPermitidas(user) {
-  if (user.role === 'recepcionista') return ['/ingresos', '/facturas'];
+  if (user.role === 'recepcionista') return ['/ingresos', '/facturas', '/corte-caja'];
   if (user.role === 'asistente') {
     const permisos = user.permisos || {};
     const rutas = [];
