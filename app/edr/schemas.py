@@ -46,6 +46,15 @@ class GastoOperativoSchema(Schema):
         validate=validate.OneOf(["fijo", "variable"]),
     )
     monto = fields.Float(required=True, validate=validate.Range(min=0))
+    # Obligatorio: sin saber con qué se pagó, el corte no puede saber cuánto
+    # queda en el cajón.
+    metodo_pago_id = fields.Int(required=True)
+    sucursal_id = fields.Int(allow_none=True, load_default=None)
+    # El cliente lo propone; el servidor lo decide (ver _resolver_salida_caja).
+    sale_de_caja = fields.Bool(load_default=None, allow_none=True)
+    metodo_pago_nombre = fields.Str(dump_only=True)
+    metodo_pago_tipo = fields.Str(dump_only=True)
+    created_by = fields.Int(dump_only=True)
     created_at = fields.DateTime(dump_only=True)
 
 

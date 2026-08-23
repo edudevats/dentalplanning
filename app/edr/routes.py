@@ -1,4 +1,5 @@
 from flask import Blueprint, request, jsonify, g
+from marshmallow import ValidationError
 from sqlalchemy.orm import joinedload, selectinload
 from app.extensions import db
 from app.middleware.tenant import require_auth, require_role
@@ -63,6 +64,17 @@ def crear_ingreso():
     schema = IngresoSchema()
     data = schema.load(body)
 
+    # Import local: app.caja.services importa de app.edr.models, y un import a
+    # nivel de módulo aquí crearía un ciclo.
+    from app.caja import services as caja_services
+    try:
+        caja_services.exigir_dia_abierto(
+            g.tenant_id, data.get("sucursal_id"), data["fecha"],
+            es_admin=g.current_user.role == "admin",
+        )
+    except caja_services.CajaError as exc:
+        return jsonify({"error": exc.mensaje, "codigo": exc.codigo}), 409
+
     # Sin módulo CRM no se acepta paciente_id (evita FKs cross-tenant sin validar)
     if data.get("paciente_id") and not crm_activo(g.tenant_id):
         data["paciente_id"] = None
@@ -119,6 +131,28 @@ def actualizar_ingreso(ingreso_id):
 
     schema = IngresoSchema(partial=True)
     data = schema.load(request.get_json() or {})
+
+    # Import local: app.caja.services importa de app.edr.models, y un import a
+    # nivel de módulo aquí crearía un ciclo.
+    from app.caja import services as caja_services
+    es_admin = g.current_user.role == "admin"
+    destino_fecha = data.get("fecha", ingreso.fecha)
+    # "sucursal_id" in data, no .get(): mover un ingreso a "sin sucursal" manda
+    # None explícito, y .get() no distinguiría eso de "no lo mandaron".
+    destino_sucursal = (data["sucursal_id"] if "sucursal_id" in data
+                        else ingreso.sucursal_id)
+    # Solo los dos pares REALES: donde el ingreso está y a dónde va. El
+    # producto cartesiano de fechas x sucursales evaluaba combinaciones que
+    # nunca existieron (p. ej. la fecha origen con la sucursal destino) y
+    # bloqueaba ediciones legítimas citando un corte ajeno al movimiento.
+    pares = {(ingreso.fecha, ingreso.sucursal_id),
+             (destino_fecha, destino_sucursal)}
+    try:
+        for f, s in pares:
+            caja_services.exigir_dia_abierto(g.tenant_id, s, f, es_admin=es_admin)
+    except caja_services.CajaError as exc:
+        return jsonify({"error": exc.mensaje, "codigo": exc.codigo}), 409
+
     if data.get("paciente_id") and not crm_activo(g.tenant_id):
         data.pop("paciente_id")
     for key, value in data.items():
@@ -181,16 +215,50 @@ def eliminar_ingreso(ingreso_id):
 
 # ── GASTOS OPERATIVOS ──
 
+def _resolver_metodo(metodo_pago_id):
+    """El método debe existir y ser del tenant. Devuelve el objeto o None."""
+    from app.ajustes.models import MetodoPago
+    if metodo_pago_id is None:
+        return None
+    return MetodoPago.query.filter_by(
+        id=metodo_pago_id, tenant_id=g.tenant_id).first()
+
+
+def _resolver_salida_caja(metodo, propuesto):
+    """Qué baja el efectivo del cajón.
+
+    No es un campo que el usuario llene a mano: si el método no es efectivo,
+    es False sin excepción. Si lo es, True salvo que el admin lo desmarque —
+    el caso "pagué en efectivo pero de la caja fuerte, no del cajón".
+    """
+    from app.ajustes.models import TIPO_EFECTIVO
+    if metodo is None or metodo.tipo != TIPO_EFECTIVO:
+        return False
+    return True if propuesto is None else bool(propuesto)
+
+
+def _enrich_gasto(gasto, schema=None):
+    schema = schema or GastoOperativoSchema()
+    data = schema.dump(gasto)
+    data["metodo_pago_nombre"] = gasto.metodo_pago.nombre if gasto.metodo_pago else None
+    data["metodo_pago_tipo"] = gasto.metodo_pago.tipo if gasto.metodo_pago else None
+    return data
+
+
 @edr_bp.route("/gastos", methods=["GET"])
 @require_auth
 def listar_gastos():
     year, month = _parse_mes(request.args.get("mes"))
-    gastos = GastoOperativo.query.filter(
+    # eager-load el método para no hacer una consulta por fila en _enrich_gasto
+    gastos = GastoOperativo.query.options(
+        joinedload(GastoOperativo.metodo_pago),
+    ).filter(
         GastoOperativo.tenant_id == g.tenant_id,
         *filtro_mes(GastoOperativo.fecha, year, month),
     ).order_by(GastoOperativo.fecha).all()
 
-    return jsonify(GastoOperativoSchema(many=True).dump(gastos))
+    schema = GastoOperativoSchema()
+    return jsonify([_enrich_gasto(x, schema) for x in gastos])
 
 
 @edr_bp.route("/gastos", methods=["POST"])
@@ -198,11 +266,21 @@ def listar_gastos():
 @require_role("admin")
 def crear_gasto():
     schema = GastoOperativoSchema()
-    data = schema.load(request.get_json() or {})
-    gasto = GastoOperativo(tenant_id=g.tenant_id, **data)
+    try:
+        data = schema.load(request.get_json() or {})
+    except ValidationError as err:
+        return jsonify({"error": "Datos inválidos", "detalles": err.messages}), 400
+    metodo = _resolver_metodo(data.get("metodo_pago_id"))
+    if metodo is None:
+        return jsonify({
+            "error": "Datos inválidos",
+            "detalles": {"metodo_pago_id": ["Método de pago no válido"]},
+        }), 400
+    data["sale_de_caja"] = _resolver_salida_caja(metodo, data.get("sale_de_caja"))
+    gasto = GastoOperativo(tenant_id=g.tenant_id, created_by=g.current_user.id, **data)
     db.session.add(gasto)
     db.session.commit()
-    return jsonify(schema.dump(gasto)), 201
+    return jsonify(_enrich_gasto(gasto)), 201
 
 
 @edr_bp.route("/gastos/<int:gasto_id>", methods=["PUT"])
@@ -213,11 +291,50 @@ def actualizar_gasto(gasto_id):
         id=gasto_id, tenant_id=g.tenant_id
     ).first_or_404()
     schema = GastoOperativoSchema(partial=True)
-    data = schema.load(request.get_json() or {})
+    try:
+        data = schema.load(request.get_json() or {})
+    except ValidationError as err:
+        return jsonify({"error": "Datos inválidos", "detalles": err.messages}), 400
+
+    from app.ajustes.models import TIPO_EFECTIVO
+    # El método ANTES de aplicar el PUT: hace falta para saber si el False
+    # guardado fue una decisión del admin o solo la consecuencia de que el
+    # método no era efectivo.
+    metodo_previo = _resolver_metodo(gasto.metodo_pago_id)
+    previo_era_efectivo = (metodo_previo is not None
+                          and metodo_previo.tipo == TIPO_EFECTIVO)
+
+    # El método puede haber cambiado en este PUT o venir del gasto existente.
+    # Se valida ANTES de mutar `gasto` con el loop de abajo: si no, el setattr
+    # deja un FK posiblemente ajeno a medio aplicar y puede disparar un
+    # autoflush con ese valor inválido antes de que lo rechacemos.
+    nuevo_metodo_id = data.get("metodo_pago_id", gasto.metodo_pago_id)
+    metodo = _resolver_metodo(nuevo_metodo_id)
+    if nuevo_metodo_id is not None and metodo is None:
+        return jsonify({
+            "error": "Datos inválidos",
+            "detalles": {"metodo_pago_id": ["Método de pago no válido"]},
+        }), 400
+
     for key, value in data.items():
         setattr(gasto, key, value)
+
+    # Si el PUT no manda `sale_de_caja`, se PRESERVA el valor guardado SOLO si
+    # el método anterior ya era de tipo efectivo -si no, ese False nunca fue
+    # una decisión de nadie, era la consecuencia forzada del método anterior,
+    # y al corregir el método el default debe volver a aplicar. Si sí manda
+    # `sale_de_caja`, es una decisión de este PUT y tiene prioridad: preservar
+    # el valor guardado en ese caso revertiría en silencio la decisión del
+    # admin y a la recepcionista le aparecería un faltante que no es suyo.
+    if "sale_de_caja" in data:
+        propuesto = data["sale_de_caja"]
+    elif previo_era_efectivo:
+        propuesto = gasto.sale_de_caja
+    else:
+        propuesto = None
+    gasto.sale_de_caja = _resolver_salida_caja(metodo, propuesto)
     db.session.commit()
-    return jsonify(GastoOperativoSchema().dump(gasto))
+    return jsonify(_enrich_gasto(gasto))
 
 
 @edr_bp.route("/gastos/<int:gasto_id>", methods=["DELETE"])

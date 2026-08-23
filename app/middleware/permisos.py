@@ -96,6 +96,11 @@ CATALOGO = {
         "label": "EDR · Pagos a doctores",
         "modulos": (),
     },
+    "caja": {
+        "rutas": (("caja", ()),),
+        "label": "Corte de caja",
+        "modulos": (),
+    },
 }
 
 # Blueprints que deliberadamente no participan del catálogo. `finanzas_personales`
@@ -134,6 +139,10 @@ RUTAS_CRITICAS = (
     ("POST", "/api/v1/ajustes/distribucion/categorias"),
     ("PUT", "/api/v1/ajustes/distribucion/categorias"),
     ("DELETE", "/api/v1/ajustes/distribucion/categorias"),
+    # Corte de caja: reabrir un corte firmado y ver el histórico son del admin,
+    # aunque el asistente tenga `editar` sobre el recurso.
+    ("POST", "/api/v1/caja/reabrir"),
+    ("GET", "/api/v1/caja/cortes"),
 )
 
 

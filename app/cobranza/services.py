@@ -1118,12 +1118,18 @@ def registrar_devolucion(tenant_id, user_id, cotizacion_id, data):
             )
         metodo = _validar_metodo_pago(tenant_id, data.get("metodo_pago_id"))
 
+        from app.ajustes.models import TIPO_EFECTIVO
         gasto = GastoOperativo(
             tenant_id=tenant_id,
             fecha=data["fecha"],
             tipo="variable",
             monto=monto,
             concepto_nombre=f"Devolución {cot.folio}",
+            # El dinero devuelto en efectivo sale del cajón: que baje solo el
+            # corte, sin que nadie lo capture dos veces.
+            metodo_pago_id=metodo.id if metodo else None,
+            sale_de_caja=bool(metodo and metodo.tipo == TIPO_EFECTIVO),
+            created_by=user_id,
         )
         db.session.add(gasto)
         db.session.flush()

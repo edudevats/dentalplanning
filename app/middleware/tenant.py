@@ -59,6 +59,13 @@ _RECEP_RULES = [
     ("GET", r"/api/v1/cobranza/cotizaciones/\d+/estado-cuenta\.pdf"),
     ("GET", r"/api/v1/cobranza/cotizaciones/\d+/pdf"),
     ("GET", r"/api/v1/cobranza/resumen"),
+    # Corte de caja: consulta el día, registra salidas chicas de efectivo y
+    # cierra. El histórico y la reapertura son del admin y quedan FUERA.
+    ("GET", r"/api/v1/caja/corte"),
+    ("POST", r"/api/v1/caja/corte"),
+    ("GET", r"/api/v1/caja/salidas"),
+    ("POST", r"/api/v1/caja/salidas"),
+    ("DELETE", r"/api/v1/caja/salidas/\d+"),
 ]
 RECEPCIONISTA_ALLOWLIST = [(m, re.compile("^" + p + "/?$")) for m, p in _RECEP_RULES]
 

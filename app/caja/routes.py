@@ -12,7 +12,10 @@ from app.middleware.tenant import require_auth, require_role
 caja_bp = Blueprint("caja", __name__, url_prefix="/api/v1/caja")
 
 # Códigos de negocio que significan conflicto de estado, no dato inválido.
-_CODIGOS_409 = {"ya_cerrado", "sin_clasificar", "sin_metodo_efectivo", "ya_abierto"}
+_CODIGOS_409 = {
+    "ya_cerrado", "sin_clasificar", "sin_metodo_efectivo", "ya_abierto",
+    "dia_cerrado",
+}
 _CODIGOS_404 = {"no_encontrado"}
 _CODIGOS_403 = {"ajena"}
 
@@ -39,9 +42,26 @@ def _fecha_arg(nombre="fecha", default=None):
         return None
 
 
+class _SucursalInvalida(Exception):
+    """sucursal_id no es numérico.
+
+    No podemos copiar el patrón de _fecha_arg (usar None como señal de
+    "inválido") porque aquí None es un valor legítimo: significa "sin
+    sucursal", es decir el corte de los movimientos que no tienen sucursal
+    asignada, que es un corte real y no un error. Por eso la señal de
+    "inválido" necesita ser algo distinto de None, y una excepción propia
+    que la ruta capture es lo más simple.
+    """
+
+
 def _sucursal_arg():
     valor = request.args.get("sucursal_id")
-    return int(valor) if valor not in (None, "", "null") else None
+    if valor in (None, "", "null"):
+        return None
+    try:
+        return int(valor)
+    except ValueError:
+        raise _SucursalInvalida()
 
 
 def _es_recepcion():
@@ -79,7 +99,10 @@ def ver_corte():
     fecha = _fecha_arg()
     if fecha is None:
         return jsonify({"error": "Fecha inválida"}), 400
-    sucursal_id = _sucursal_arg()
+    try:
+        sucursal_id = _sucursal_arg()
+    except _SucursalInvalida:
+        return jsonify({"error": "Sucursal inválida"}), 400
 
     resumen = services.resumen_dia(g.tenant_id, sucursal_id, fecha)
     resumen["salidas"] = services.listar_salidas(
@@ -150,7 +173,11 @@ def listar_cortes():
     hasta = _fecha_arg("hasta", default=hoy)
     if desde is None or hasta is None:
         return jsonify({"error": "Fecha inválida"}), 400
-    filas = services.historico(g.tenant_id, desde, hasta, _sucursal_arg())
+    try:
+        sucursal_id = _sucursal_arg()
+    except _SucursalInvalida:
+        return jsonify({"error": "Sucursal inválida"}), 400
+    filas = services.historico(g.tenant_id, desde, hasta, sucursal_id)
     for f in filas:
         f["fecha"] = f["fecha"].isoformat()
         if f["cerrado_at"]:
@@ -193,8 +220,12 @@ def listar_salidas():
     fecha = _fecha_arg()
     if fecha is None:
         return jsonify({"error": "Fecha inválida"}), 400
+    try:
+        sucursal_id = _sucursal_arg()
+    except _SucursalInvalida:
+        return jsonify({"error": "Sucursal inválida"}), 400
     salidas = services.listar_salidas(
-        g.tenant_id, _sucursal_arg(), fecha,
+        g.tenant_id, sucursal_id, fecha,
         enmascarar_para=g.current_user.id if _es_recepcion() else None,
     )
     return jsonify({"salidas": salidas})
@@ -208,6 +239,13 @@ def crear_salida():
         data = SalidaSchema().load(request.get_json() or {})
     except ValidationError as err:
         return jsonify({"error": "Datos inválidos", "detalles": err.messages}), 400
+    try:
+        services.exigir_dia_abierto(
+            g.tenant_id, data["sucursal_id"], data["fecha"],
+            es_admin=g.current_user.role == "admin",
+        )
+    except services.CajaError as exc:
+        return _error(exc)
     try:
         gasto = services.registrar_salida(
             g.tenant_id, g.current_user.id, fecha=data["fecha"],
@@ -226,6 +264,18 @@ def crear_salida():
 @require_auth
 @require_role("admin", "recepcionista", "asistente")
 def borrar_salida(gasto_id):
+    # Hay que saber de qué día es la salida antes de poder validar el candado.
+    from app.edr.models import GastoOperativo
+    gasto = GastoOperativo.query.filter_by(
+        id=gasto_id, tenant_id=g.tenant_id, sale_de_caja=True).first()
+    if gasto is not None:
+        try:
+            services.exigir_dia_abierto(
+                g.tenant_id, gasto.sucursal_id, gasto.fecha,
+                es_admin=g.current_user.role == "admin",
+            )
+        except services.CajaError as exc:
+            return _error(exc)
     try:
         services.eliminar_salida(
             g.tenant_id, gasto_id,

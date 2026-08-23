@@ -17,6 +17,9 @@ class ConfigSchema(Schema):
     numero_unidades = fields.Int(dump_only=True)
     # Tasa de impuesto informativa (estimación). Editable.
     tasa_impuesto_pct = fields.Float(validate=validate.Range(min=0, max=100))
+    # Diferencia en pesos que el corte de caja tolera sin exigir comentario.
+    tolerancia_corte_caja = fields.Float(
+        load_default=0, validate=validate.Range(min=0))
     # Calculados (read only)
     horas_semana = fields.Float(dump_only=True)
     horas_mes = fields.Float(dump_only=True)

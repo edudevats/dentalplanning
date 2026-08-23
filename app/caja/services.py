@@ -462,3 +462,19 @@ def historico(tenant_id, desde, hasta, solo_sucursal=None):
 
     filas.sort(key=lambda f: (f["fecha"], f["sucursal_id"] or 0), reverse=True)
     return filas
+
+
+def exigir_dia_abierto(tenant_id, sucursal_id, fecha, *, es_admin=False):
+    """Frena la captura sobre un día ya cerrado.
+
+    El admin sí pasa: puede corregir un día cerrado, y el histórico lo marca
+    como "con movimientos posteriores" comparando la foto contra lo vivo.
+    """
+    if es_admin:
+        return
+    if corte_cerrado(tenant_id, sucursal_id, fecha):
+        raise CajaError(
+            f"La caja del {fecha.strftime('%d/%m/%Y')} ya fue cerrada. "
+            "Pide al administrador que la reabra.",
+            codigo="dia_cerrado",
+        )

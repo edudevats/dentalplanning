@@ -327,6 +327,20 @@ def registrar_pago(cotizacion_id):
         return jsonify({
             "error": "Sólo un administrador puede registrar pagos históricos"
         }), 403
+
+    # Import local: app.caja.services importa de app.edr.models, y un import a
+    # nivel de módulo aquí crearía un ciclo.
+    from app.caja import services as caja_services
+    try:
+        # El abono nace sin sucursal propia: cae en el corte de la cotización,
+        # que hoy es siempre el de "Sin sucursal".
+        caja_services.exigir_dia_abierto(
+            g.tenant_id, None, data["fecha"],
+            es_admin=g.current_user.role == "admin",
+        )
+    except caja_services.CajaError as exc:
+        return jsonify({"error": exc.mensaje, "codigo": exc.codigo}), 409
+
     data["idempotency_key"] = request.headers.get("Idempotency-Key")
     pago = services.registrar_pago(
         g.tenant_id, g.current_user.id, cotizacion_id, data,
