@@ -6,7 +6,7 @@ totales. Las rutas solo traducen HTTP.
 """
 from datetime import datetime, timezone
 
-from sqlalchemy import func
+from sqlalchemy import func, true
 from sqlalchemy.orm import joinedload
 
 from app.ajustes.models import (
@@ -30,8 +30,32 @@ class CajaError(Exception):
         self.datos = datos or {}
 
 
-def _filtro_sucursal(columna, sucursal_id):
-    """`sucursal_id = NULL` es un valor, no un comodín: es el corte "Sin sucursal"."""
+def sucursal_separa_cajas(tenant_id):
+    """¿La sucursal parte el día en varias cajas? Solo si de verdad hay varias.
+
+    Con una sola sucursal —o ninguna— la clínica tiene UNA caja al día, pero sus
+    ingresos NO se guardan todos igual: la pantalla de captura preselecciona la
+    única sucursal que existe (`edr/ingresos.html`, openCreate), mientras que la
+    página del corte solo aprende qué sucursal pedir a través de un selector que
+    únicamente aparece con 2 o más. Resultado: los ingresos caían en un cubo y el
+    corte pedía el otro, y la recepcionista veía ceros. Reproducido en
+    `tests/test_caja_sucursal_unica.py`.
+
+    Con 2 o más sucursales cada una sí tiene su caja y su corte, y mezclarlas
+    sería el bug contrario.
+    """
+    from app.facturacion.models import Sucursal
+    return Sucursal.query.filter_by(tenant_id=tenant_id).limit(2).count() >= 2
+
+
+def _filtro_sucursal(columna, sucursal_id, *, separa=True):
+    """`sucursal_id = NULL` es un valor, no un comodín: es el corte "Sin sucursal".
+
+    Salvo cuando la sucursal no separa cajas: ahí el filtro desaparece y el día
+    se cuenta completo, venga el movimiento con sucursal o sin ella.
+    """
+    if not separa:
+        return true()
     return columna.is_(None) if sucursal_id is None else columna == sucursal_id
 
 
@@ -41,12 +65,13 @@ def resumen_dia(tenant_id, sucursal_id, fecha):
     Única fuente de verdad del corte — la usan la vista de recepción, la del
     admin y el propio cierre.
     """
+    separa = sucursal_separa_cajas(tenant_id)
     ingresos = Ingreso.query.options(
         joinedload(Ingreso.metodo_pago),
     ).filter(
         Ingreso.tenant_id == tenant_id,
         Ingreso.fecha == fecha,
-        _filtro_sucursal(Ingreso.sucursal_id, sucursal_id),
+        _filtro_sucursal(Ingreso.sucursal_id, sucursal_id, separa=separa),
     ).order_by(Ingreso.id).all()
 
     totales = {tipo: 0.0 for tipo in TIPOS_METODO}
@@ -82,7 +107,7 @@ def resumen_dia(tenant_id, sucursal_id, fecha):
         GastoOperativo.tenant_id == tenant_id,
         GastoOperativo.fecha == fecha,
         GastoOperativo.sale_de_caja.is_(True),
-        _filtro_sucursal(GastoOperativo.sucursal_id, sucursal_id),
+        _filtro_sucursal(GastoOperativo.sucursal_id, sucursal_id, separa=separa),
     ).order_by(GastoOperativo.id).all()
 
     salidas_efectivo = sum(float(s.monto or 0) for s in salidas)
@@ -116,7 +141,8 @@ def obtener_corte(tenant_id, sucursal_id, fecha):
     return CorteCaja.query.filter(
         CorteCaja.tenant_id == tenant_id,
         CorteCaja.fecha == fecha,
-        _filtro_sucursal(CorteCaja.sucursal_id, sucursal_id),
+        _filtro_sucursal(CorteCaja.sucursal_id, sucursal_id,
+                         separa=sucursal_separa_cajas(tenant_id)),
     ).first()
 
 
@@ -245,8 +271,13 @@ def cerrar_corte(tenant_id, usuario_id, *, fecha, sucursal_id,
             usuario_id=usuario_id, datos=_snapshot(corte),
         ))
     else:
-        corte = CorteCaja(tenant_id=tenant_id, sucursal_id=sucursal_id,
-                          fecha=fecha)
+        # Con la sucursal colapsada, la fila firmada se guarda SIN sucursal:
+        # así hay un único corte canónico por día y `obtener_corte` lo encuentra
+        # venga la petición con sucursal o sin ella.
+        corte = CorteCaja(
+            tenant_id=tenant_id, fecha=fecha,
+            sucursal_id=sucursal_id if sucursal_separa_cajas(tenant_id) else None,
+        )
         db.session.add(corte)
 
     corte.total_efectivo = resumen["totales"]["efectivo"]
@@ -345,7 +376,8 @@ def listar_salidas(tenant_id, sucursal_id, fecha, *, enmascarar_para=None):
         GastoOperativo.tenant_id == tenant_id,
         GastoOperativo.fecha == fecha,
         GastoOperativo.sale_de_caja.is_(True),
-        _filtro_sucursal(GastoOperativo.sucursal_id, sucursal_id),
+        _filtro_sucursal(GastoOperativo.sucursal_id, sucursal_id,
+                         separa=sucursal_separa_cajas(tenant_id)),
     ).order_by(GastoOperativo.id).all()
 
     filas = []
@@ -385,6 +417,7 @@ def historico(tenant_id, desde, hasta, solo_sucursal=None):
     "Sin sucursal". Por eso el parámetro se llama distinto — el admin quiere ver
     el mes completo de toda la clínica por default.
     """
+    separa = sucursal_separa_cajas(tenant_id)
     filtro_suc_ing = (
         [] if solo_sucursal is None
         else [Ingreso.sucursal_id == solo_sucursal]
@@ -421,6 +454,11 @@ def historico(tenant_id, desde, hasta, solo_sucursal=None):
     dias = {}
 
     def _dia(fecha, suc_id):
+        # Con la sucursal colapsada, todo el día es UNA fila: agrupar por
+        # (fecha, sucursal) partía un mismo día en dos —una "Sin sucursal" y
+        # otra con ella— y el admin veía dos cajas donde solo hubo una.
+        if not separa:
+            suc_id = None
         clave = (fecha, suc_id)
         if clave not in dias:
             dias[clave] = {
@@ -446,7 +484,7 @@ def historico(tenant_id, desde, hasta, solo_sucursal=None):
         _dia(fecha, suc_id)["salidas_efectivo"] += float(monto or 0)
 
     cortes = {
-        (c.fecha, c.sucursal_id): c
+        (c.fecha, c.sucursal_id if separa else None): c
         for c in CorteCaja.query.filter(
             CorteCaja.tenant_id == tenant_id,
             CorteCaja.fecha >= desde, CorteCaja.fecha <= hasta,
