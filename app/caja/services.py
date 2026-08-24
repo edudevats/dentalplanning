@@ -147,6 +147,44 @@ def _snapshot(corte):
     }
 
 
+# Los seis totales que el cierre congela en la fila. Si cualquiera de ellos ya
+# no coincide con el recálculo vivo, la foto firmada dejó de describir el día.
+TOTALES_CONGELADOS = (
+    "total_efectivo", "total_tarjeta", "total_transferencia", "total_otro",
+    "comision_tarjeta", "salidas_efectivo",
+)
+
+
+def totales_desde_resumen(resumen):
+    """Traduce la salida de `resumen_dia` a los nombres de columna del corte.
+
+    Las mismas claves que escribe `cerrar_corte` al congelar la foto.
+    """
+    return {
+        "total_efectivo": resumen["totales"]["efectivo"],
+        "total_tarjeta": resumen["totales"]["tarjeta"],
+        "total_transferencia": resumen["totales"]["transferencia"],
+        "total_otro": resumen["totales"]["otro"],
+        "comision_tarjeta": resumen["comision_tarjeta"],
+        "salidas_efectivo": resumen["salidas_efectivo"],
+    }
+
+
+def hay_movimientos_posteriores(corte, vivos):
+    """True si la foto firmada difiere del recálculo en CUALQUIER total.
+
+    No basta con vigilar el efectivo: un ingreso de tarjeta o de transferencia
+    capturado sobre un día ya cerrado no mueve `esperado_efectivo`, pero sí
+    cambia `total_tarjeta`, `comision_tarjeta` y el total del día, y el corte
+    seguiría anunciándose como "Cerrado" a secas.
+    """
+    return any(
+        round(float(vivos.get(campo) or 0), 2)
+        != round(float(getattr(corte, campo) or 0), 2)
+        for campo in TOTALES_CONGELADOS
+    )
+
+
 def cerrar_corte(tenant_id, usuario_id, *, fecha, sucursal_id,
                  efectivo_contado, comentario=None):
     """Congela la foto del día y la firma. Recerrar reusa la misma fila."""
@@ -158,6 +196,18 @@ def cerrar_corte(tenant_id, usuario_id, *, fecha, sucursal_id,
     if contado < 0:
         raise CajaError("El efectivo contado no puede ser negativo",
                         codigo="contado_invalido")
+
+    # Candado por tenant antes del check-then-insert. Con `sucursal_id = NULL`
+    # —el default de casi todo tenant— el índice UNIQUE no dispara (en SQL,
+    # NULL no colisiona con NULL), así que dos cierres simultáneos crearían dos
+    # filas del mismo día y el histórico, que agrupa por (fecha, sucursal_id),
+    # perdería una de las dos. Bloquear la fila de config serializa los cierres
+    # del tenant en InnoDB sin tocar el esquema. OJO: en SQLite (los tests)
+    # `with_for_update()` es un no-op silencioso, y si el tenant no tuviera
+    # ConfigConsultorio no habría fila que bloquear; en ambos casos degrada al
+    # comportamiento anterior, nunca a algo peor.
+    ConfigConsultorio.query.filter_by(
+        tenant_id=tenant_id).with_for_update().first()
 
     corte = obtener_corte(tenant_id, sucursal_id, fecha)
     if corte is not None and corte.cerrado:
@@ -438,6 +488,9 @@ def historico(tenant_id, desde, hasta, solo_sucursal=None):
             })
         else:
             # La fila muestra la foto FIRMADA; el delta compara contra lo vivo.
+            # OJO: la marca se calcula ANTES del update, que pisa los totales
+            # vivos de `d` con los congelados y borraría la comparación.
+            movidos = hay_movimientos_posteriores(corte, d)
             delta = round(vivo_esperado - corte.esperado_efectivo, 2)
             d.update({
                 "corte_id": corte.id,
@@ -455,7 +508,7 @@ def historico(tenant_id, desde, hasta, solo_sucursal=None):
                 "cerrado_por": corte.usuario.name if corte.usuario else None,
                 "cerrado_at": corte.cerrado_at,
                 "comentario": corte.comentario,
-                "movimientos_posteriores": delta != 0,
+                "movimientos_posteriores": movidos,
                 "delta_efectivo": delta,
             })
         filas.append(d)

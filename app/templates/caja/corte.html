@@ -50,6 +50,23 @@
       </div>
     </div>
 
+    <!-- Otros métodos (vales, cortesías, mixtos…): aparece SOLO si hubo.
+         `otro` es el default conservador al clasificar un método, y toda su
+         justificación es que "sale a la vista en el corte" en vez de inflar el
+         efectivo en silencio — si no se pinta, esa garantía no existe. No es
+         una quinta tarjeta fija porque en $0.00 sería ruido permanente en la
+         pantalla más usada del día.
+         `hidden` va en el marcado inicial a propósito: el JIT de Tailwind en el
+         navegador solo genera la regla si la ve al cargar, y agregarla después
+         desde JS la deja perdiendo la cascada. -->
+    <div id="aviso-otro" class="hidden bg-warning-50 border border-warning-100 rounded-xl px-4 py-3">
+      <p class="text-sm font-body text-warning-600">
+        <span class="font-medium">Otros métodos:</span>
+        <span id="stat-otro" class="tabular-nums font-semibold">$0.00</span>
+        <span class="text-text-secondary">— no cuentan como efectivo, tarjeta ni transferencia.</span>
+      </p>
+    </div>
+
     <!-- Bloque destacado: efectivo a entregar -->
     <div id="bloque-entregar" class="bg-primary-50 border border-primary-200 rounded-xl p-6 text-center">
       <p class="text-sm font-medium text-primary-700 font-body">Efectivo a entregar</p>
@@ -222,7 +239,7 @@
       </div>
       <div class="flex justify-end gap-3 px-6 py-4 border-t border-border">
         <button type="button" onclick="Modal.close('modal-confirmar-cierre')" class="inline-flex items-center justify-center gap-2 rounded-lg font-medium font-body cursor-pointer border border-border bg-surface hover:bg-surface-hover text-text-secondary px-4 py-2 text-sm min-h-[38px]">Cancelar</button>
-        <button type="button" onclick="confirmarCierre()" class="inline-flex items-center justify-center gap-2 rounded-lg font-medium font-body cursor-pointer bg-primary-500 hover:bg-primary-600 text-white px-4 py-2 text-sm min-h-[38px]">Confirmar cierre</button>
+        <button type="button" id="btn-confirmar-cierre" onclick="confirmarCierre()" class="inline-flex items-center justify-center gap-2 rounded-lg font-medium font-body cursor-pointer bg-primary-500 hover:bg-primary-600 text-white px-4 py-2 text-sm min-h-[38px]"><span id="texto-confirmar-cierre">Confirmar cierre</span></button>
       </div>
     </div>
   </div>

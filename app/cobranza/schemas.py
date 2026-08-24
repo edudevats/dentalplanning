@@ -76,7 +76,12 @@ class PagoSchema(Schema):
     id = fields.Int(dump_only=True)
     fecha = fields.Date(required=True)
     monto = fields.Float(required=True, validate=validate.Range(min=0.01))
-    metodo_pago_id = fields.Int(allow_none=True)
+    # Obligatorio: un abono sin método se convierte en un Ingreso con
+    # metodo_pago_id NULL, y ese ingreso cae en `sin_clasificar`, que bloquea el
+    # cierre de caja con 409 sin que recepción tenga forma de arreglarlo (editar
+    # el ingreso de un abono está prohibido y borrar el pago es admin-only).
+    # Cerrar la puerta al capturar es lo barato; después ya no hay salida.
+    metodo_pago_id = fields.Int(required=True)
     historico = fields.Bool(load_default=False)
     notas = fields.Str(
         allow_none=True, validate=validate.Length(max=2000),
@@ -207,7 +212,9 @@ class DevolucionSchema(Schema):
 
     fecha = fields.Date(required=True)
     monto = fields.Float(required=True, validate=validate.Range(min=0.01))
-    metodo_pago_id = fields.Int(allow_none=True)
+    # Igual que en PagoSchema: la devolución genera un GastoOperativo y sin
+    # método no se sabe si salió del cajón, así que el corte no lo puede restar.
+    metodo_pago_id = fields.Int(required=True)
     motivo = fields.Str(allow_none=True, validate=validate.Length(max=2000))
 
 

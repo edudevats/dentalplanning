@@ -441,18 +441,22 @@ const Cobranza = (() => {
     $('devolucion-fecha').value = localISO();
     $('devolucion-monto').value = disponible ? disponible.toFixed(2) : '';
     $('devolucion-disponible').textContent = `Disponible: ${fmt(disponible)}`;
-    $('devolucion-metodo').innerHTML = '<option value="">Sin método</option>' +
+    $('devolucion-metodo').innerHTML = '<option value="">Seleccionar método</option>' +
       state.methods.map(method => `<option value="${method.id}">${esc(method.nombre)}</option>`).join('');
 
     $('form-devolucion').onsubmit = async (event) => {
       event.preventDefault();
+      if (!$('devolucion-metodo').value) {
+        Toast.warning('Selecciona con qué se devolvió');
+        return;
+      }
       const button = $('btn-guardar-devolucion');
       button.disabled = true;
       try {
         const result = await API.post(`/cobranza/cotizaciones/${state.current.id}/devoluciones`, {
           fecha: $('devolucion-fecha').value,
           monto: Number($('devolucion-monto').value),
-          metodo_pago_id: Number($('devolucion-metodo').value) || null,
+          metodo_pago_id: Number($('devolucion-metodo').value),
           motivo: $('devolucion-motivo').value.trim() || null,
           admin_password: password,
         });
@@ -689,13 +693,21 @@ const Cobranza = (() => {
     $('pago-monto').value = suggested ? Math.min(suggested, state.current.saldo) : state.current.saldo;
     $('pago-saldo').textContent = `Saldo actual: ${fmt(state.current.saldo)}`;
     $('pago-historico-wrap').classList.toggle('hidden', role() !== 'admin');
-    $('pago-metodo').innerHTML = '<option value="">Sin método</option>' +
+    // Placeholder sin valor, NO "Sin método": un abono sin método deja la caja
+    // imposible de cerrar y recepción no tiene forma de corregirlo.
+    $('pago-metodo').innerHTML = '<option value="">Seleccionar método</option>' +
       state.methods.map(method => `<option value="${method.id}">${esc(method.nombre)}</option>`).join('');
     Modal.open('modal-pago');
   }
 
   async function savePayment(event) {
     event.preventDefault();
+    // Mismo patrón que app/templates/edr/gastos.html: se avisa aquí en vez de
+    // dejar que el 400 del servidor sea la primera señal.
+    if (!$('pago-metodo').value) {
+      Toast.warning('Selecciona con qué se pagó el abono');
+      return;
+    }
     state.paymentKey = state.paymentKey || (
       window.crypto && crypto.randomUUID ? crypto.randomUUID()
         : `pay-${Date.now()}-${Math.random().toString(16).slice(2)}`
@@ -711,7 +723,7 @@ const Cobranza = (() => {
           body: JSON.stringify({
             fecha: $('pago-fecha').value,
             monto: Number($('pago-monto').value),
-            metodo_pago_id: Number($('pago-metodo').value) || null,
+            metodo_pago_id: Number($('pago-metodo').value),
             historico: $('pago-historico').checked,
             notas: $('pago-notas').value.trim() || null,
           }),

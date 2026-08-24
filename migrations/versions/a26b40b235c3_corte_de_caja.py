@@ -126,11 +126,19 @@ def _backfill():
 
     # Las devoluciones ya guardan con qué se devolvió; su gasto ligado no.
     # Se copia el método y se marca la salida de caja cuando fue en efectivo.
+    # El `ORDER BY d.id LIMIT 1` no es cosmético: `cobranza_devoluciones.gasto_id`
+    # NO es único (a diferencia de `ingreso_id`), el 1:1 lo sostiene solo la
+    # aplicación. Sin el LIMIT, un tenant con dos devoluciones sobre el mismo
+    # gasto haría que MySQL abortara con ERROR 1242 a media migración, y como
+    # el DDL ya se autocommiteó pero Alembic nunca estampó la revisión, el
+    # reintento truena con "Duplicate column name". Con el LIMIT gana la más
+    # antigua y el modo de falla desaparece.
     conn.execute(sa.text("""
         UPDATE gastos_operativos AS g
         SET metodo_pago_id = (
             SELECT d.metodo_pago_id FROM cobranza_devoluciones AS d
             WHERE d.gasto_id = g.id
+            ORDER BY d.id LIMIT 1
         )
         WHERE EXISTS (SELECT 1 FROM cobranza_devoluciones AS d WHERE d.gasto_id = g.id)
     """))

@@ -293,10 +293,24 @@ function rowsHoy() {
   return tableData.filter(r => String(r.fecha || '').slice(0, 10) === hoy);
 }
 
+// Esta pantalla NO tiene selector de sucursal, así que pide /caja/corte sin
+// sucursal_id y recibe el corte de "Sin sucursal". Con una sola sucursal (el
+// caso normal) eso es exactamente el día completo. Con 2 o más, serían los
+// totales de un corte que no es el de nadie: $0.00 en todo lo que la
+// recepcionista sí cobró, justo en la pantalla que le dice cuánto entregar.
+// Antes que mentir con seguridad, no se muestran las tarjetas. El contrato
+// multi-sucursal completo (selector incluido) va en su propia rama.
+function tarjetasCorteAplicables() {
+  return userRole === 'recepcionista' && sucursales.length < 2;
+}
+
 // Las cuatro tarjetas salen del mismo endpoint que la página de corte: una sola
 // fuente de verdad. Sumarlas aquí a mano volvería a divergir en cuanto cambie
 // una regla del corte (una comisión, un método reclasificado, etc.).
 async function updateDailyStat() {
+  if (!tarjetasCorteAplicables()) return;
+  const ids = ['stat-recep-efectivo', 'stat-recep-tarjeta',
+               'stat-recep-transferencia', 'stat-recep-entregar'];
   try {
     const r = await API.get('/caja/corte?fecha=' + todayLocalISO());
     document.getElementById('stat-recep-efectivo').textContent = fmt(r.totales.efectivo);
@@ -305,8 +319,13 @@ async function updateDailyStat() {
       fmt(r.totales.transferencia);
     document.getElementById('stat-recep-entregar').textContent =
       fmt(r.esperado_efectivo);
-  } catch {
-    // Sin corte disponible las tarjetas quedan en cero; la tabla sigue sirviendo.
+  } catch (e) {
+    // Un $0.00 que en realidad es "no se pudo cargar" es indistinguible de un
+    // día sin cobros: en una conciliación de efectivo eso no puede quedarse
+    // callado. Las tarjetas se ponen en "—" y se avisa.
+    console.error('Ingresos: no se pudo cargar el corte del día', e);
+    ids.forEach(id => { document.getElementById(id).textContent = '—'; });
+    Toast.warning('No se pudieron cargar los totales de hoy');
   }
 }
 
@@ -623,7 +642,9 @@ function applyStatsRole() {
   const admin = document.getElementById('stats-admin');
   const recepcion = document.getElementById('stats-recepcion');
   if (userRole === 'recepcionista') {
-    if (recepcion) recepcion.classList.remove('hidden');
+    // Las tarjetas del corte solo se revelan si son ciertas (ver
+    // tarjetasCorteAplicables): con 2+ sucursales se quedan ocultas.
+    if (recepcion && tarjetasCorteAplicables()) recepcion.classList.remove('hidden');
     // La recepcionista solo ve el día de hoy: se ocultan los filtros de mes/año.
     ['sel-month', 'sel-year'].forEach(id => {
       const el = document.getElementById(id);

@@ -43,7 +43,7 @@ def _fecha_arg(nombre="fecha", default=None):
 
 
 class _SucursalInvalida(Exception):
-    """sucursal_id no es numérico.
+    """sucursal_id no es numérico, o no es una sucursal de este tenant.
 
     No podemos copiar el patrón de _fecha_arg (usar None como señal de
     "inválido") porque aquí None es un valor legítimo: significa "sin
@@ -54,19 +54,47 @@ class _SucursalInvalida(Exception):
     """
 
 
+def _validar_sucursal(sucursal_id):
+    """Comprueba que la sucursal sea de este tenant.
+
+    `None` es un valor legítimo ("sin sucursal"); cualquier otro id tiene que
+    existir Y pertenecer al tenant. Sin esto, la FK se satisface con la fila de
+    otra clínica y el corte —un registro financiero firmado— queda apuntando a
+    una sucursal ajena. Mismo patrón que `_validar_sucursal` en
+    app/cobranza/services.py.
+    """
+    if sucursal_id is None:
+        return None
+    from app.facturacion.models import Sucursal
+    existe = Sucursal.query.filter_by(
+        id=sucursal_id, tenant_id=g.tenant_id).first()
+    if existe is None:
+        raise _SucursalInvalida()
+    return sucursal_id
+
+
 def _sucursal_arg():
     valor = request.args.get("sucursal_id")
     if valor in (None, "", "null"):
         return None
     try:
-        return int(valor)
+        sucursal_id = int(valor)
     except ValueError:
         raise _SucursalInvalida()
+    return _validar_sucursal(sucursal_id)
 
 
-def _es_recepcion():
-    """La recepcionista ve el día con los conceptos ajenos enmascarados."""
-    return g.current_user.role == "recepcionista"
+def _rol_restringido():
+    """True para todo rol que NO sea admin.
+
+    Decide dos cosas: si los conceptos de las salidas ajenas se enmascaran y si
+    solo se pueden borrar las salidas propias. Se escribe como "distinto de
+    admin" y no como una lista de roles a propósito: el admin es el único rol
+    de confianza plena, así que un rol nuevo hereda por default el lado
+    conservador en lugar de colarse por el hueco de una lista desactualizada
+    —que es exactamente lo que le pasó al `asistente`—.
+    """
+    return g.current_user.role != "admin"
 
 
 def _dump_corte(corte):
@@ -107,7 +135,7 @@ def ver_corte():
     resumen = services.resumen_dia(g.tenant_id, sucursal_id, fecha)
     resumen["salidas"] = services.listar_salidas(
         g.tenant_id, sucursal_id, fecha,
-        enmascarar_para=g.current_user.id if _es_recepcion() else None,
+        enmascarar_para=g.current_user.id if _rol_restringido() else None,
     )
     corte = services.obtener_corte(g.tenant_id, sucursal_id, fecha)
     cerrado = bool(corte and corte.cerrado)
@@ -132,6 +160,10 @@ def cerrar():
         data = CierreSchema().load(request.get_json() or {})
     except ValidationError as err:
         return jsonify({"error": "Datos inválidos", "detalles": err.messages}), 400
+    try:
+        _validar_sucursal(data["sucursal_id"])
+    except _SucursalInvalida:
+        return jsonify({"error": "Sucursal inválida"}), 400
     try:
         corte = services.cerrar_corte(
             g.tenant_id, g.current_user.id,
@@ -196,13 +228,17 @@ def detalle_corte(corte_id):
 
     # El detalle recalcula el día para poder mostrar el delta contra la foto.
     vivo = services.resumen_dia(g.tenant_id, corte.sucursal_id, corte.fecha)
+    # El delta titular sigue siendo el del efectivo (es el que le importa a
+    # quien cuenta billetes), pero la marca mira los seis totales congelados.
     delta = round(vivo["esperado_efectivo"] - corte.esperado_efectivo, 2)
+    movidos = services.hay_movimientos_posteriores(
+        corte, services.totales_desde_resumen(vivo))
     return jsonify({
         "corte": _dump_corte(corte),
         "ingresos": vivo["ingresos"],
         "salidas": services.listar_salidas(
             g.tenant_id, corte.sucursal_id, corte.fecha),
-        "movimientos_posteriores": delta != 0,
+        "movimientos_posteriores": movidos,
         "delta_efectivo": delta,
         "eventos": [{
             "evento": e.evento,
@@ -226,7 +262,7 @@ def listar_salidas():
         return jsonify({"error": "Sucursal inválida"}), 400
     salidas = services.listar_salidas(
         g.tenant_id, sucursal_id, fecha,
-        enmascarar_para=g.current_user.id if _es_recepcion() else None,
+        enmascarar_para=g.current_user.id if _rol_restringido() else None,
     )
     return jsonify({"salidas": salidas})
 
@@ -239,6 +275,10 @@ def crear_salida():
         data = SalidaSchema().load(request.get_json() or {})
     except ValidationError as err:
         return jsonify({"error": "Datos inválidos", "detalles": err.messages}), 400
+    try:
+        _validar_sucursal(data["sucursal_id"])
+    except _SucursalInvalida:
+        return jsonify({"error": "Sucursal inválida"}), 400
     try:
         services.exigir_dia_abierto(
             g.tenant_id, data["sucursal_id"], data["fecha"],
@@ -279,7 +319,7 @@ def borrar_salida(gasto_id):
     try:
         services.eliminar_salida(
             g.tenant_id, gasto_id,
-            solo_de_usuario=g.current_user.id if _es_recepcion() else None,
+            solo_de_usuario=g.current_user.id if _rol_restringido() else None,
         )
     except services.CajaError as exc:
         return _error(exc)

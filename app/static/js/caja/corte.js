@@ -49,6 +49,14 @@ function render() {
   document.getElementById('leyenda-entregar').textContent =
     'cobrado ' + fmt(resumen.totales.efectivo) + ' − gastado ' + fmt(resumen.salidas_efectivo);
 
+  // "Otro" solo se asoma cuando hay algo que asomar (ver #aviso-otro en la
+  // plantilla). `hidden` sí está en el marcado inicial de ese div y el div no
+  // trae ninguna utilidad de display que le compita, así que el toggle basta
+  // —medido con getComputedStyle: none → block al quitarla, none al reponerla—.
+  const otro = Number(resumen.totales.otro || 0);
+  document.getElementById('stat-otro').textContent = fmt(otro);
+  document.getElementById('aviso-otro').classList.toggle('hidden', otro === 0);
+
   renderSinClasificar();
   renderSalidas();
   renderIngresos();
@@ -235,6 +243,14 @@ function abrirConfirmarCierre() {
 async function confirmarCierre() {
   const contado = CorteUX.normalizarMonto(document.getElementById('f-contado').value);
   const comentario = document.getElementById('f-comentario').value.trim();
+  // Se deshabilita mientras corre, igual que confirmarEliminarSalida(): con
+  // `sucursal_id` nulo —el default de casi todo tenant— el índice UNIQUE no
+  // ataja el duplicado, así que un doble clic sobre una respuesta lenta dejaría
+  // dos cortes firmados del mismo día y el histórico perdería uno.
+  const btn = document.getElementById('btn-confirmar-cierre');
+  const txt = document.getElementById('texto-confirmar-cierre');
+  btn.disabled = true;
+  txt.textContent = 'Cerrando...';
   try {
     await API.post('/caja/corte', {
       fecha: todayLocalISO(), sucursal_id: sucursalSel || null,
@@ -246,6 +262,9 @@ async function confirmarCierre() {
   } catch (e) {
     // El servidor es la fuente de verdad: si rechaza, se muestra su motivo.
     Toast.warning(e.message || 'No se pudo cerrar la caja');
+  } finally {
+    btn.disabled = false;
+    txt.textContent = 'Confirmar cierre';
   }
 }
 
@@ -268,6 +287,9 @@ async function imprimirComprobante() {
 function construirTicketCorte(resumen) {
   const corte = resumen.corte || {};
   const suc = sucursales.find(s => String(s.id) === String(sucursalSel));
+  // "Otro" solo si hubo: mismo criterio que #aviso-otro en la pantalla. Una
+  // línea en $0.00 en un ticket de papel se lee como un bug.
+  const otro = Number(resumen.totales.otro || 0);
   return {
     facturable: false,
     empresa: empresaNombre || '',
@@ -277,6 +299,7 @@ function construirTicketCorte(resumen) {
       { nombre: 'Efectivo', monto: resumen.totales.efectivo },
       { nombre: 'Tarjeta', monto: resumen.totales.tarjeta },
       { nombre: 'Transferencia', monto: resumen.totales.transferencia },
+      ...(otro ? [{ nombre: 'Otro', monto: otro }] : []),
       { nombre: 'Salidas', monto: resumen.salidas_efectivo },
       { nombre: 'Esperado', monto: resumen.esperado_efectivo },
       { nombre: 'Contado', monto: corte.efectivo_contado != null ? corte.efectivo_contado : 0 },
@@ -336,6 +359,15 @@ function renderHistorico(filas) {
     { key: 'total_tarjeta', label: 'Tarjeta', align: 'right', render: v => fmt(v) },
     { key: 'total_transferencia', label: 'Transfer.', align: 'right', render: v => fmt(v) },
     { key: 'total_dia', label: 'Total', align: 'right', render: v => fmt(v) },
+    // Ingresos del día sin método de pago. Es el único lugar donde el admin
+    // los ve: bloquean el cierre, y si entran DESPUÉS de cerrar no mueven
+    // ninguno de los seis totales congelados, así que ni siquiera disparan la
+    // marca de "movimientos posteriores". Va como columna y no dentro del
+    // texto de Estado porque es un importe y se escanea con los demás.
+    { key: 'sin_clasificar_monto', label: 'Sin método', align: 'right',
+      render: v => v
+        ? domEl('span', 'tabular-nums font-medium text-danger-600', fmt(v))
+        : domEl('span', 'text-text-muted', '—') },
     { key: 'salidas_efectivo', label: 'Gastos', align: 'right', render: v => fmt(v) },
     { key: 'esperado_efectivo', label: 'Esperado', align: 'right', render: v => fmt(v) },
     { key: 'efectivo_contado', label: 'Contado', align: 'right',
