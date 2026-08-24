@@ -31,6 +31,11 @@ class CorteCaja(db.Model):
     # contra el estado de cuenta sin sacar calculadora.
     comision_tarjeta = db.Column(db.Float, nullable=False, default=0)
     salidas_efectivo = db.Column(db.Float, nullable=False, default=0)
+    # Fondo con el que arrancó el cajón ese día. Se congela al cerrar, igual que
+    # los demás totales: el corte es una foto firmada y el fondo es parte de la
+    # foto. Los cortes anteriores a esta migración quedan en 0, que describe
+    # bien esos días.
+    fondo_inicial = db.Column(db.Float, nullable=False, default=0)
     efectivo_contado = db.Column(db.Float, nullable=False, default=0)
 
     comentario = db.Column(db.Text)
@@ -57,8 +62,9 @@ class CorteCaja(db.Model):
 
     @property
     def esperado_efectivo(self):
-        """Lo que debería haber en el cajón: cobrado en efectivo menos salidas."""
-        return round((self.total_efectivo or 0) - (self.salidas_efectivo or 0), 2)
+        """Lo que debería haber en el cajón: fondo + cobrado en efectivo − salidas."""
+        return round((self.fondo_inicial or 0) + (self.total_efectivo or 0)
+                     - (self.salidas_efectivo or 0), 2)
 
     @property
     def diferencia(self):
@@ -113,4 +119,40 @@ class CorteCajaEvento(db.Model):
 
     __table_args__ = (
         db.Index("ix_cortes_caja_eventos_tenant_corte", "tenant_id", "corte_id"),
+    )
+
+
+class TurnoCaja(db.Model):
+    """Dónde y cuándo trabaja una persona hoy.
+
+    Es contexto de trabajo, NO una entidad contable: el corte sigue siendo uno
+    por sucursal y por día, y varias personas pueden alimentar el mismo corte.
+    De aquí salen la sucursal y la fecha que se le imponen a todo lo que esa
+    persona capture.
+
+    El `fondo_inicial` lo declara quien abre primero ese día en esa sucursal;
+    quien abra después lo hereda (services.abrir_turno). Hay UN cajón por
+    sucursal, así que el fondo pertenece al día, no a la persona.
+    """
+    __tablename__ = "turnos_caja"
+
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey("tenants.id"), nullable=False)
+    usuario_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
+    sucursal_id = db.Column(db.Integer, db.ForeignKey("sucursales.id"),
+                            nullable=True)
+    fecha = db.Column(db.Date, nullable=False)
+    fondo_inicial = db.Column(db.Float, nullable=False, default=0)
+    abierto_at = db.Column(db.DateTime, nullable=False,
+                           default=lambda: datetime.now(timezone.utc))
+    # Lo llena el cierre del día; reabrir el corte lo devuelve a NULL.
+    cerrado_at = db.Column(db.DateTime)
+
+    usuario = db.relationship("User")
+    sucursal = db.relationship("Sucursal")
+
+    __table_args__ = (
+        db.UniqueConstraint("tenant_id", "usuario_id", "fecha",
+                            name="uq_turno_caja_tenant_usuario_fecha"),
+        db.Index("ix_turnos_caja_tenant_fecha", "tenant_id", "fecha"),
     )

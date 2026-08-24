@@ -4,16 +4,18 @@ Todo el trabajo del módulo vive aquí, como en `app/inventario/services.py`:
 cerrar una caja toca varias tablas, valida candados y congela una foto de
 totales. Las rutas solo traducen HTTP.
 """
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
 from sqlalchemy import func, true
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import joinedload
 
 from app.ajustes.models import (
     MetodoPago, TIPO_EFECTIVO, TIPO_TARJETA, TIPOS_METODO,
 )
 from app.caja.models import (
-    CorteCaja, CorteCajaEvento, EVENTO_CIERRE, EVENTO_RECIERRE, EVENTO_REAPERTURA,
+    CorteCaja, CorteCajaEvento, TurnoCaja,
+    EVENTO_CIERRE, EVENTO_RECIERRE, EVENTO_REAPERTURA,
 )
 from app.configuracion.models import ConfigConsultorio
 from app.edr.models import GastoOperativo, Ingreso
@@ -46,6 +48,111 @@ def sucursal_separa_cajas(tenant_id):
     """
     from app.facturacion.models import Sucursal
     return Sucursal.query.filter_by(tenant_id=tenant_id).limit(2).count() >= 2
+
+
+def turno_vigente(tenant_id, usuario_id):
+    """El turno de HOY de esa persona, o None.
+
+    Vigente = `fecha == hoy` y `cerrado_at IS NULL`. De esa definición sale
+    gratis que el turno de ayer caduque solo: tiene otra fecha, así que deja de
+    ser vigente sin que ningún proceso lo limpie.
+    """
+    return TurnoCaja.query.filter(
+        TurnoCaja.tenant_id == tenant_id,
+        TurnoCaja.usuario_id == usuario_id,
+        TurnoCaja.fecha == date.today(),
+        TurnoCaja.cerrado_at.is_(None),
+    ).first()
+
+
+def fondo_del_dia(tenant_id, sucursal_id, fecha):
+    """El fondo que declaró quien abrió primero ese día en esa sucursal.
+
+    Hay UN cajón por sucursal: si dos personas abren el mismo día, el fondo no
+    se suma. Manda el turno más antiguo, que es un valor único y consultable.
+    """
+    t = TurnoCaja.query.filter(
+        TurnoCaja.tenant_id == tenant_id,
+        TurnoCaja.fecha == fecha,
+        _filtro_sucursal(TurnoCaja.sucursal_id, sucursal_id,
+                         separa=sucursal_separa_cajas(tenant_id)),
+    ).order_by(TurnoCaja.id).first()
+    return round(float(t.fondo_inicial or 0), 2) if t else 0.0
+
+
+def abrir_turno(tenant_id, usuario_id, *, sucursal_id, fondo_inicial):
+    """Abre la caja de esa persona para HOY.
+
+    La fecha la pone el servidor, nunca el cliente: es justamente el dato que el
+    candado va a imponerle a todo lo que capture.
+    """
+    hoy = date.today()
+
+    if sucursal_separa_cajas(tenant_id):
+        # Con dos o más sedes, decir dónde trabaja es el punto entero del turno:
+        # si se deja adivinar, vuelve el bug que este diseño existe para cerrar.
+        if sucursal_id is None:
+            raise CajaError("Elige en qué sucursal vas a trabajar",
+                            codigo="sucursal_requerida")
+    else:
+        sucursal_id = None
+
+    vigente = turno_vigente(tenant_id, usuario_id)
+    if vigente is not None:
+        if vigente.sucursal_id == sucursal_id:
+            return vigente          # idempotente: recargar no crea turnos
+        nombre = vigente.sucursal.nombre if vigente.sucursal else "Sin sucursal"
+        raise CajaError(
+            f"Ya abriste caja hoy en {nombre}",
+            codigo="turno_en_otra_sucursal",
+        )
+
+    if corte_cerrado(tenant_id, sucursal_id, hoy):
+        raise CajaError(
+            f"La caja del {hoy.strftime('%d/%m/%Y')} ya fue cerrada. "
+            "Pide al administrador que la reabra.",
+            codigo="dia_cerrado",
+        )
+
+    # El fondo es del día: quien abre después hereda el del primero. Se pregunta
+    # por la EXISTENCIA de ese turno, no por su monto: un fondo de cero es un
+    # dato válido ("hoy arranco sin cambio"), no la ausencia de dato, y
+    # `fondo_del_dia` devuelve 0.0 en ambos casos sin poder distinguirlos.
+    primero = TurnoCaja.query.filter(
+        TurnoCaja.tenant_id == tenant_id,
+        TurnoCaja.fecha == hoy,
+        _filtro_sucursal(TurnoCaja.sucursal_id, sucursal_id,
+                         separa=sucursal_separa_cajas(tenant_id)),
+    ).order_by(TurnoCaja.id).first()
+    # Mismo criterio ("manda el más antiguo") y misma normalización que
+    # `fondo_del_dia`, para que los dos números no puedan separarse nunca.
+    heredado = (round(float(primero.fondo_inicial or 0), 2)
+                if primero is not None else None)
+
+    try:
+        monto = round(float(fondo_inicial or 0), 2)
+    except (TypeError, ValueError):
+        raise CajaError("El fondo inicial no es un número válido",
+                        codigo="fondo_invalido")
+    if monto < 0:
+        raise CajaError("El fondo inicial no puede ser negativo",
+                        codigo="fondo_invalido")
+
+    turno = TurnoCaja(
+        tenant_id=tenant_id, usuario_id=usuario_id, sucursal_id=sucursal_id,
+        fecha=hoy, fondo_inicial=monto if heredado is None else heredado,
+    )
+    try:
+        db.session.add(turno)
+        db.session.commit()
+    except IntegrityError:
+        # Doble clic: dos llamadas a la vez pasaron la comprobación de arriba y
+        # el UNIQUE frenó la fila duplicada. La carrera la ganó la otra, y el
+        # turno existe igual: devolver el que quedó es la respuesta correcta, no
+        # un 500 en la pantalla que se abre a primera hora todos los días.
+        db.session.rollback()
+        return turno_vigente(tenant_id, usuario_id)
+    return turno
 
 
 def _filtro_sucursal(columna, sucursal_id, *, separa=True):
