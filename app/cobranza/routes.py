@@ -332,15 +332,24 @@ def registrar_pago(cotizacion_id):
     # nivel de módulo aquí crearía un ciclo.
     from app.caja import services as caja_services
     try:
-        # El abono nace sin sucursal propia: cae en el corte de la cotización,
-        # que hoy es siempre el de "Sin sucursal".
+        # El abono cae en la caja donde está trabajando quien lo cobra. Antes
+        # caía siempre en "Sin sucursal", que en una clínica con dos sedes lo
+        # mandaba a un corte que nadie mira.
+        es_admin = g.current_user.role == "admin"
+        turno = caja_services.turno_vigente(g.tenant_id, g.current_user.id)
+        sucursal_abono = turno.sucursal_id if turno else None
+        caja_services.exigir_turno_abierto(
+            g.tenant_id, g.current_user, data["fecha"], sucursal_abono,
+            es_admin=es_admin,
+        )
         caja_services.exigir_dia_abierto(
-            g.tenant_id, None, data["fecha"],
-            es_admin=g.current_user.role == "admin",
+            g.tenant_id, sucursal_abono, data["fecha"], es_admin=es_admin,
         )
     except caja_services.CajaError as exc:
         return jsonify({"error": exc.mensaje, "codigo": exc.codigo}), 409
 
+    # La sucursal viaja dentro de `data` hasta el Ingreso derivado: así no
+    # cambia la firma de `registrar_pago` ni se rompe a otros llamadores.
     data["idempotency_key"] = request.headers.get("Idempotency-Key")
     pago = services.registrar_pago(
         g.tenant_id, g.current_user.id, cotizacion_id, data,

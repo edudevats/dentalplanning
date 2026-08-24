@@ -59,6 +59,11 @@ _RECEP_RULES = [
     ("GET", r"/api/v1/cobranza/cotizaciones/\d+/estado-cuenta\.pdf"),
     ("GET", r"/api/v1/cobranza/cotizaciones/\d+/pdf"),
     ("GET", r"/api/v1/cobranza/resumen"),
+    # Turno de caja: es lo PRIMERO que hace la recepcionista al llegar. Sin
+    # estas dos reglas no puede abrir su caja y, como el candado exige turno
+    # abierto, no puede capturar absolutamente nada.
+    ("GET", r"/api/v1/caja/turno"),
+    ("POST", r"/api/v1/caja/turno"),
     # Corte de caja: consulta el día, registra salidas chicas de efectivo y
     # cierra. El histórico y la reapertura son del admin y quedan FUERA.
     ("GET", r"/api/v1/caja/corte"),

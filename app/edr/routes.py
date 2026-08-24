@@ -68,6 +68,14 @@ def crear_ingreso():
     # nivel de módulo aquí crearía un ciclo.
     from app.caja import services as caja_services
     try:
+        # Primero el turno: sin caja abierta no hay ni fecha ni sucursal que
+        # defender, así que el mensaje útil es "abre tu caja", no "el día está
+        # cerrado".
+        caja_services.exigir_turno_abierto(
+            g.tenant_id, g.current_user, data["fecha"],
+            data.get("sucursal_id"),
+            es_admin=g.current_user.role == "admin",
+        )
         caja_services.exigir_dia_abierto(
             g.tenant_id, data.get("sucursal_id"), data["fecha"],
             es_admin=g.current_user.role == "admin",
@@ -148,6 +156,12 @@ def actualizar_ingreso(ingreso_id):
     pares = {(ingreso.fecha, ingreso.sucursal_id),
              (destino_fecha, destino_sucursal)}
     try:
+        # Editar también es capturar: el PUT mueve dinero de día y de sucursal,
+        # así que el turno manda sobre el destino igual que sobre un alta.
+        caja_services.exigir_turno_abierto(
+            g.tenant_id, g.current_user, destino_fecha, destino_sucursal,
+            es_admin=es_admin,
+        )
         for f, s in pares:
             caja_services.exigir_dia_abierto(g.tenant_id, s, f, es_admin=es_admin)
     except caja_services.CajaError as exc:
@@ -270,6 +284,24 @@ def crear_gasto():
         data = schema.load(request.get_json() or {})
     except ValidationError as err:
         return jsonify({"error": "Datos inválidos", "detalles": err.messages}), 400
+
+    # Aquí NO hay `exigir_dia_abierto`, y no es descuido: la ruta es admin-only
+    # y el admin está exento de ese candado. El del turno sí aplica, porque
+    # `require_role` deja pasar al asistente antes de mirar la lista de roles
+    # (app/middleware/tenant.py) y el menú le ofrece /gastos si tiene el permiso
+    # `edr.gastos`. Un asistente no es admin, así que el turno lo alcanza.
+    # Import local: app.caja.services importa de app.edr.models, y un import a
+    # nivel de módulo aquí crearía un ciclo.
+    from app.caja import services as caja_services
+    try:
+        caja_services.exigir_turno_abierto(
+            g.tenant_id, g.current_user, data["fecha"],
+            data.get("sucursal_id"),
+            es_admin=g.current_user.role == "admin",
+        )
+    except caja_services.CajaError as exc:
+        return jsonify({"error": exc.mensaje, "codigo": exc.codigo}), 409
+
     metodo = _resolver_metodo(data.get("metodo_pago_id"))
     if metodo is None:
         return jsonify({
@@ -295,6 +327,20 @@ def actualizar_gasto(gasto_id):
         data = schema.load(request.get_json() or {})
     except ValidationError as err:
         return jsonify({"error": "Datos inválidos", "detalles": err.messages}), 400
+
+    # Mismo razonamiento que en `crear_gasto`: admin-only para la lista de
+    # roles, pero el asistente con permiso `edr.gastos` entra por un costado y
+    # el turno es lo único que le pone fecha y sucursal.
+    from app.caja import services as caja_services
+    try:
+        caja_services.exigir_turno_abierto(
+            g.tenant_id, g.current_user,
+            data.get("fecha", gasto.fecha),
+            data.get("sucursal_id", gasto.sucursal_id),
+            es_admin=g.current_user.role == "admin",
+        )
+    except caja_services.CajaError as exc:
+        return jsonify({"error": exc.mensaje, "codigo": exc.codigo}), 409
 
     from app.ajustes.models import TIPO_EFECTIVO
     # El método ANTES de aplicar el PUT: hace falta para saber si el False

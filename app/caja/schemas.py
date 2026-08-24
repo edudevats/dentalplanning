@@ -19,6 +19,16 @@ class ReaperturaSchema(Schema):
     motivo = fields.Str(required=True, validate=validate.Length(min=1))
 
 
+class TurnoSchema(Schema):
+    class Meta:
+        unknown = EXCLUDE
+
+    # La fecha NO se recibe: la pone el servidor. Es justo el dato que el
+    # candado le va a imponer a todo lo que capture.
+    sucursal_id = fields.Int(allow_none=True, load_default=None)
+    fondo_inicial = fields.Float(load_default=0, validate=validate.Range(min=0))
+
+
 class SalidaSchema(Schema):
     class Meta:
         unknown = EXCLUDE

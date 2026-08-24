@@ -83,6 +83,9 @@ class PagoSchema(Schema):
     # Cerrar la puerta al capturar es lo barato; después ya no hay salida.
     metodo_pago_id = fields.Int(required=True)
     historico = fields.Bool(load_default=False)
+    # La pone la ruta desde el turno, no el cliente; declararla aquí evita que
+    # el `unknown = EXCLUDE` la descarte al recargar el dict.
+    sucursal_id = fields.Int(allow_none=True, load_default=None)
     notas = fields.Str(
         allow_none=True, validate=validate.Length(max=2000),
     )

@@ -6,7 +6,9 @@ from marshmallow import ValidationError
 
 from app.caja import services
 from app.caja.models import CorteCaja
-from app.caja.schemas import CierreSchema, ReaperturaSchema, SalidaSchema
+from app.caja.schemas import (
+    CierreSchema, ReaperturaSchema, SalidaSchema, TurnoSchema,
+)
 from app.middleware.tenant import require_auth, require_role
 
 caja_bp = Blueprint("caja", __name__, url_prefix="/api/v1/caja")
@@ -15,6 +17,16 @@ caja_bp = Blueprint("caja", __name__, url_prefix="/api/v1/caja")
 _CODIGOS_409 = {
     "ya_cerrado", "sin_clasificar", "sin_metodo_efectivo", "ya_abierto",
     "dia_cerrado",
+    # El turno del día ya existe en otra sede, o ya se cerró: el cliente mandó
+    # algo bien formado contra un estado que no lo admite. Es conflicto, no
+    # dato inválido — misma familia que `ya_cerrado` y `ya_abierto`.
+    "turno_en_otra_sucursal", "turno_cerrado",
+    # Los tres del candado de captura: el cliente manda una fecha y una
+    # sucursal legítimas que chocan con el turno abierto. Es conflicto con el
+    # estado, no dato inválido — y `dia_cerrado`, el candado hermano, ya es 409;
+    # que dos guardianes del mismo módulo respondieran distinto ante la misma
+    # clase de conflicto sería una trampa para quien consuma la API.
+    "sin_turno", "fecha_fuera_de_turno", "sucursal_fuera_de_turno",
 }
 _CODIGOS_404 = {"no_encontrado"}
 _CODIGOS_403 = {"ajena"}
@@ -152,6 +164,53 @@ def ver_corte():
     return jsonify(resumen)
 
 
+def _dump_turno(turno):
+    return {
+        "id": turno.id,
+        "fecha": turno.fecha.isoformat(),
+        "sucursal_id": turno.sucursal_id,
+        "sucursal": turno.sucursal.nombre if turno.sucursal else None,
+        "fondo_inicial": round(float(turno.fondo_inicial or 0), 2),
+        "abierto_por": turno.usuario.name if turno.usuario else None,
+    }
+
+
+@caja_bp.route("/turno", methods=["GET"])
+@require_auth
+@require_role("admin", "recepcionista", "asistente")
+def ver_turno():
+    """El turno vigente de quien pregunta, o None."""
+    turno = services.turno_vigente(g.tenant_id, g.current_user.id)
+    return jsonify({
+        "turno": _dump_turno(turno) if turno else None,
+        # La pantalla necesita saber si tiene que pedir sucursal ANTES de abrir.
+        "separa_sucursales": services.sucursal_separa_cajas(g.tenant_id),
+    })
+
+
+@caja_bp.route("/turno", methods=["POST"])
+@require_auth
+@require_role("admin", "recepcionista", "asistente")
+def abrir_turno():
+    try:
+        data = TurnoSchema().load(request.get_json() or {})
+    except ValidationError as err:
+        return jsonify({"error": "Datos inválidos", "detalles": err.messages}), 400
+    try:
+        _validar_sucursal(data["sucursal_id"])
+    except _SucursalInvalida:
+        return jsonify({"error": "Sucursal inválida"}), 400
+    try:
+        turno = services.abrir_turno(
+            g.tenant_id, g.current_user.id,
+            sucursal_id=data["sucursal_id"],
+            fondo_inicial=data["fondo_inicial"],
+        )
+    except services.CajaError as exc:
+        return _error(exc)
+    return jsonify(_dump_turno(turno)), 201
+
+
 @caja_bp.route("/corte", methods=["POST"])
 @require_auth
 @require_role("admin", "recepcionista", "asistente")
@@ -280,6 +339,12 @@ def crear_salida():
     except _SucursalInvalida:
         return jsonify({"error": "Sucursal inválida"}), 400
     try:
+        # El turno primero: sacar efectivo del cajón exige tener un cajón
+        # abierto, antes incluso de preguntar si el día sigue abierto.
+        services.exigir_turno_abierto(
+            g.tenant_id, g.current_user, data["fecha"], data["sucursal_id"],
+            es_admin=g.current_user.role == "admin",
+        )
         services.exigir_dia_abierto(
             g.tenant_id, data["sucursal_id"], data["fecha"],
             es_admin=g.current_user.role == "admin",

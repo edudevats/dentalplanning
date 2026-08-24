@@ -876,8 +876,12 @@ def _comision_doctor_del_pago(cot, pago):
     return max(0.0, round(objetivo_acumulado - ya_generada, 2))
 
 
-def _crear_ingreso(cot, pago, asignaciones, metodo):
-    """Registra el abono en el EDR dentro de la transacción del pago."""
+def _crear_ingreso(cot, pago, asignaciones, metodo, sucursal_id=None):
+    """Registra el abono en el EDR dentro de la transacción del pago.
+
+    `sucursal_id` llega del turno de quien cobra. Default None para no romper a
+    ningún llamador que todavía no la conozca.
+    """
     from app.crm.services import sincronizar_visita_ingreso
     from app.edr.models import Ingreso
 
@@ -894,6 +898,7 @@ def _crear_ingreso(cot, pago, asignaciones, metodo):
         paciente=cot.paciente.nombre if cot.paciente else "Paciente",
         paciente_id=cot.paciente_id,
         especialista_id=cot.especialista_id,
+        sucursal_id=sucursal_id,
         metodo_pago_id=pago.metodo_pago_id,
         monto=pago.monto,
         comision_bancaria=comision_bancaria,
@@ -977,7 +982,8 @@ def registrar_pago(tenant_id, user_id, cotizacion_id, data):
 
         asignaciones = _recalcular_cascada(cot)
         if not pago.historico:
-            pago.ingreso = _crear_ingreso(cot, pago, asignaciones, metodo)
+            pago.ingreso = _crear_ingreso(cot, pago, asignaciones, metodo,
+                                          sucursal_id=data.get("sucursal_id"))
         if saldo(cot) <= TOLERANCIA:
             _marcar_liquidada(cot)
         db.session.commit()
