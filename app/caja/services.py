@@ -65,19 +65,52 @@ def turno_vigente(tenant_id, usuario_id):
     ).first()
 
 
+def _primer_turno_del_dia(tenant_id, sucursal_id, fecha):
+    """La fila del turno más antiguo de ese día en esa sucursal, o None.
+
+    Vive aparte porque `fondo_del_dia` y la herencia de `abrir_turno` tienen que
+    leer la MISMA fila con el MISMO criterio. Copiada en dos lados, la invariante
+    dependería de que nadie toque una sin tocar la otra; aquí no puede divergir.
+    """
+    return TurnoCaja.query.filter(
+        TurnoCaja.tenant_id == tenant_id,
+        TurnoCaja.fecha == fecha,
+        _filtro_sucursal(TurnoCaja.sucursal_id, sucursal_id,
+                         separa=sucursal_separa_cajas(tenant_id)),
+    ).order_by(TurnoCaja.id).first()
+
+
+def _fondo_normalizado(turno):
+    """El fondo de una fila, redondeado igual en todos lados."""
+    return round(float(turno.fondo_inicial or 0), 2)
+
+
+def _exigir_misma_sucursal(turno, sucursal_id):
+    """Un turno que ya existe solo sirve si es de la sucursal que se está pidiendo.
+
+    Devolverlo cuando no coincide pondría a la persona a capturar creyendo que
+    está en otra sede: el bug exacto que el turno existe para cerrar. Vive aparte
+    porque los dos caminos que pueden toparse con un turno ajeno —el tranquilo y
+    el de la carrera contra el UNIQUE— tienen que exigir lo mismo; si divergen,
+    la carrera queda con menos garantías que el camino tranquilo.
+    """
+    if turno.sucursal_id == sucursal_id:
+        return
+    nombre = turno.sucursal.nombre if turno.sucursal else "Sin sucursal"
+    raise CajaError(
+        f"Ya abriste caja hoy en {nombre}",
+        codigo="turno_en_otra_sucursal",
+    )
+
+
 def fondo_del_dia(tenant_id, sucursal_id, fecha):
     """El fondo que declaró quien abrió primero ese día en esa sucursal.
 
     Hay UN cajón por sucursal: si dos personas abren el mismo día, el fondo no
     se suma. Manda el turno más antiguo, que es un valor único y consultable.
     """
-    t = TurnoCaja.query.filter(
-        TurnoCaja.tenant_id == tenant_id,
-        TurnoCaja.fecha == fecha,
-        _filtro_sucursal(TurnoCaja.sucursal_id, sucursal_id,
-                         separa=sucursal_separa_cajas(tenant_id)),
-    ).order_by(TurnoCaja.id).first()
-    return round(float(t.fondo_inicial or 0), 2) if t else 0.0
+    t = _primer_turno_del_dia(tenant_id, sucursal_id, fecha)
+    return _fondo_normalizado(t) if t is not None else 0.0
 
 
 def abrir_turno(tenant_id, usuario_id, *, sucursal_id, fondo_inicial):
@@ -99,13 +132,8 @@ def abrir_turno(tenant_id, usuario_id, *, sucursal_id, fondo_inicial):
 
     vigente = turno_vigente(tenant_id, usuario_id)
     if vigente is not None:
-        if vigente.sucursal_id == sucursal_id:
-            return vigente          # idempotente: recargar no crea turnos
-        nombre = vigente.sucursal.nombre if vigente.sucursal else "Sin sucursal"
-        raise CajaError(
-            f"Ya abriste caja hoy en {nombre}",
-            codigo="turno_en_otra_sucursal",
-        )
+        _exigir_misma_sucursal(vigente, sucursal_id)
+        return vigente              # idempotente: recargar no crea turnos
 
     if corte_cerrado(tenant_id, sucursal_id, hoy):
         raise CajaError(
@@ -118,16 +146,8 @@ def abrir_turno(tenant_id, usuario_id, *, sucursal_id, fondo_inicial):
     # por la EXISTENCIA de ese turno, no por su monto: un fondo de cero es un
     # dato válido ("hoy arranco sin cambio"), no la ausencia de dato, y
     # `fondo_del_dia` devuelve 0.0 en ambos casos sin poder distinguirlos.
-    primero = TurnoCaja.query.filter(
-        TurnoCaja.tenant_id == tenant_id,
-        TurnoCaja.fecha == hoy,
-        _filtro_sucursal(TurnoCaja.sucursal_id, sucursal_id,
-                         separa=sucursal_separa_cajas(tenant_id)),
-    ).order_by(TurnoCaja.id).first()
-    # Mismo criterio ("manda el más antiguo") y misma normalización que
-    # `fondo_del_dia`, para que los dos números no puedan separarse nunca.
-    heredado = (round(float(primero.fondo_inicial or 0), 2)
-                if primero is not None else None)
+    primero = _primer_turno_del_dia(tenant_id, sucursal_id, hoy)
+    heredado = _fondo_normalizado(primero) if primero is not None else None
 
     try:
         monto = round(float(fondo_inicial or 0), 2)
@@ -149,9 +169,32 @@ def abrir_turno(tenant_id, usuario_id, *, sucursal_id, fondo_inicial):
         # Doble clic: dos llamadas a la vez pasaron la comprobación de arriba y
         # el UNIQUE frenó la fila duplicada. La carrera la ganó la otra, y el
         # turno existe igual: devolver el que quedó es la respuesta correcta, no
-        # un 500 en la pantalla que se abre a primera hora todos los días.
+        # un 500 en la pantalla que se abre a primera hora todos los días. Pero
+        # se devuelve DESPUÉS de exigirle lo mismo que al camino tranquilo: la
+        # carrera no puede tener menos garantías por haber llegado tarde.
         db.session.rollback()
-        return turno_vigente(tenant_id, usuario_id)
+        # Sin el filtro de `cerrado_at`: lo que hay que recuperar es la fila que
+        # protege el UNIQUE (tenant, usuario, fecha), esté cerrada o no. Con
+        # `turno_vigente` un turno ya cerrado se vería como "no hay nada" y el
+        # servicio devolvería None a un llamador que espera un TurnoCaja.
+        existente = TurnoCaja.query.filter(
+            TurnoCaja.tenant_id == tenant_id,
+            TurnoCaja.usuario_id == usuario_id,
+            TurnoCaja.fecha == hoy,
+        ).first()
+        if existente is None:
+            # El UNIQUE que reventó no era el del turno. No hay nada que
+            # devolver, y callarlo dejaría pasar un None río abajo.
+            raise CajaError("No se pudo abrir la caja. Vuelve a intentarlo.",
+                            codigo="turno_no_disponible")
+        _exigir_misma_sucursal(existente, sucursal_id)
+        if existente.cerrado_at is not None:
+            raise CajaError(
+                "Ya cerraste tu turno de hoy. "
+                "Pide al administrador que reabra la caja.",
+                codigo="turno_cerrado",
+            )
+        return existente
     return turno
 
 
@@ -230,13 +273,22 @@ def resumen_dia(tenant_id, sucursal_id, fecha):
     salidas_efectivo = round(salidas_efectivo, 2)
     comision_tarjeta = round(comision_tarjeta, 2)
 
+    # El fondo va DENTRO del esperado porque ella cuenta todo el cajón, fondo
+    # incluido: es lo natural, cuenta lo que ve. Restarlo del conteo la obligaría
+    # a hacer aritmética antes de teclear, que es justo donde se cometen errores.
+    fondo = fondo_del_dia(tenant_id, sucursal_id, fecha)
+    esperado = round(fondo + totales[TIPO_EFECTIVO] - salidas_efectivo, 2)
+
     return {
         "totales": totales,
         "comision_tarjeta": comision_tarjeta,
         "neto_tarjeta": round(totales[TIPO_TARJETA] - comision_tarjeta, 2),
         "total_dia": total_dia,
         "salidas_efectivo": salidas_efectivo,
-        "esperado_efectivo": round(totales[TIPO_EFECTIVO] - salidas_efectivo, 2),
+        "fondo_inicial": fondo,
+        "esperado_efectivo": esperado,
+        # Lo que sale del cajón al terminar: el fondo se queda para mañana.
+        "a_entregar": round(esperado - fondo, 2),
         "sin_clasificar": sin_clasificar,
         "ingresos": detalle_ingresos,
         "salidas": detalle_salidas,
@@ -280,11 +332,13 @@ def _snapshot(corte):
     }
 
 
-# Los seis totales que el cierre congela en la fila. Si cualquiera de ellos ya
-# no coincide con el recálculo vivo, la foto firmada dejó de describir el día.
+# Los totales que el cierre congela en la fila. Si cualquiera de ellos ya no
+# coincide con el recálculo vivo, la foto firmada dejó de describir el día. El
+# fondo está aquí porque también entra en el esperado: cambiarlo después del
+# cierre mueve el dinero que la foto dice que debía haber.
 TOTALES_CONGELADOS = (
     "total_efectivo", "total_tarjeta", "total_transferencia", "total_otro",
-    "comision_tarjeta", "salidas_efectivo",
+    "comision_tarjeta", "salidas_efectivo", "fondo_inicial",
 )
 
 
@@ -300,6 +354,7 @@ def totales_desde_resumen(resumen):
         "total_otro": resumen["totales"]["otro"],
         "comision_tarjeta": resumen["comision_tarjeta"],
         "salidas_efectivo": resumen["salidas_efectivo"],
+        "fondo_inicial": resumen["fondo_inicial"],
     }
 
 
@@ -393,6 +448,8 @@ def cerrar_corte(tenant_id, usuario_id, *, fecha, sucursal_id,
     corte.total_otro = resumen["totales"]["otro"]
     corte.comision_tarjeta = resumen["comision_tarjeta"]
     corte.salidas_efectivo = resumen["salidas_efectivo"]
+    # Parte de la foto firmada, igual que los seis totales.
+    corte.fondo_inicial = resumen["fondo_inicial"]
     corte.efectivo_contado = contado
     corte.comentario = comentario
     corte.cerrado_por = usuario_id
@@ -574,6 +631,7 @@ def historico(tenant_id, desde, hasta, solo_sucursal=None):
                 "total_transferencia": 0.0, "total_otro": 0.0,
                 "comision_tarjeta": 0.0, "salidas_efectivo": 0.0,
                 "sin_clasificar_monto": 0.0,
+                "fondo_inicial": 0.0,
             }
         return dias[clave]
 
@@ -589,6 +647,25 @@ def historico(tenant_id, desde, hasta, solo_sucursal=None):
 
     for fecha, suc_id, monto in salidas:
         _dia(fecha, suc_id)["salidas_efectivo"] += float(monto or 0)
+
+    # Una sola consulta para todo el rango, no una por día: es la misma razón
+    # por la que este reporte no llama a resumen_dia. `setdefault` conserva el
+    # primero, y como vienen ordenados por id, ese es el turno más antiguo:
+    # el mismo criterio que usa `fondo_del_dia`.
+    filtro_suc_turno = (
+        [] if solo_sucursal is None
+        else [TurnoCaja.sucursal_id == solo_sucursal]
+    )
+    fondos = {}
+    for t in TurnoCaja.query.filter(
+        TurnoCaja.tenant_id == tenant_id,
+        TurnoCaja.fecha >= desde, TurnoCaja.fecha <= hasta,
+        *filtro_suc_turno,
+    ).order_by(TurnoCaja.id).all():
+        fondos.setdefault(
+            (t.fecha, t.sucursal_id if separa else None),
+            round(float(t.fondo_inicial or 0), 2),
+        )
 
     cortes = {
         (c.fecha, c.sucursal_id if separa else None): c
@@ -612,7 +689,14 @@ def historico(tenant_id, desde, hasta, solo_sucursal=None):
                   "sin_clasificar_monto"):
             d[k] = round(d[k], 2)
 
-        vivo_esperado = round(d["total_efectivo"] - d["salidas_efectivo"], 2)
+        # El fondo entra en el esperado también aquí. Sin esto, el delta contra
+        # la foto firmada saldría exactamente igual a menos el fondo, y el
+        # histórico anunciaría "movimientos posteriores" en un día que nadie
+        # tocó. Va antes de `hay_movimientos_posteriores`, que compara esta
+        # misma clave contra la congelada.
+        d["fondo_inicial"] = fondos.get(clave, 0.0)
+        vivo_esperado = round(d["fondo_inicial"] + d["total_efectivo"]
+                              - d["salidas_efectivo"], 2)
         corte = cortes.get(clave)
 
         if corte is None or not corte.cerrado:
@@ -646,6 +730,7 @@ def historico(tenant_id, desde, hasta, solo_sucursal=None):
                 "total_otro": corte.total_otro,
                 "comision_tarjeta": corte.comision_tarjeta,
                 "salidas_efectivo": corte.salidas_efectivo,
+                "fondo_inicial": corte.fondo_inicial,
                 "total_dia": corte.total_dia,
                 "esperado_efectivo": corte.esperado_efectivo,
                 "efectivo_contado": corte.efectivo_contado,
