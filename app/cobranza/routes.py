@@ -338,18 +338,22 @@ def registrar_pago(cotizacion_id):
         es_admin = g.current_user.role == "admin"
         turno = caja_services.turno_vigente(g.tenant_id, g.current_user.id)
         sucursal_abono = turno.sucursal_id if turno else None
+        # El día antes que el turno: cerrar el corte cierra los turnos de ese
+        # día, así que preguntar primero por el turno taparía el `dia_cerrado`
+        # con un "abre tu caja" que no lleva a ningún lado.
+        caja_services.exigir_dia_abierto(
+            g.tenant_id, sucursal_abono, data["fecha"], es_admin=es_admin,
+        )
         caja_services.exigir_turno_abierto(
             g.tenant_id, g.current_user, data["fecha"], sucursal_abono,
             es_admin=es_admin,
-        )
-        caja_services.exigir_dia_abierto(
-            g.tenant_id, sucursal_abono, data["fecha"], es_admin=es_admin,
         )
     except caja_services.CajaError as exc:
         return jsonify({"error": exc.mensaje, "codigo": exc.codigo}), 409
 
     # La sucursal viaja dentro de `data` hasta el Ingreso derivado: así no
     # cambia la firma de `registrar_pago` ni se rompe a otros llamadores.
+    data["sucursal_id"] = sucursal_abono
     data["idempotency_key"] = request.headers.get("Idempotency-Key")
     pago = services.registrar_pago(
         g.tenant_id, g.current_user.id, cotizacion_id, data,

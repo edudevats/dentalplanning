@@ -68,16 +68,19 @@ def crear_ingreso():
     # nivel de módulo aquí crearía un ciclo.
     from app.caja import services as caja_services
     try:
-        # Primero el turno: sin caja abierta no hay ni fecha ni sucursal que
-        # defender, así que el mensaje útil es "abre tu caja", no "el día está
-        # cerrado".
+        # El día va primero. Cerrar el corte cierra también los turnos de ese
+        # día (`cerrar_corte`), así que quien captura sobre un día cerrado no
+        # tiene turno: preguntando primero por el turno, la respuesta sería
+        # "abre tu caja" — y abrirla es imposible, porque `abrir_turno` rechaza
+        # el día cerrado. El orden inverso da el mensaje que sí lleva a algún
+        # lado: "pide al administrador que la reabra".
+        caja_services.exigir_dia_abierto(
+            g.tenant_id, data.get("sucursal_id"), data["fecha"],
+            es_admin=g.current_user.role == "admin",
+        )
         caja_services.exigir_turno_abierto(
             g.tenant_id, g.current_user, data["fecha"],
             data.get("sucursal_id"),
-            es_admin=g.current_user.role == "admin",
-        )
-        caja_services.exigir_dia_abierto(
-            g.tenant_id, data.get("sucursal_id"), data["fecha"],
             es_admin=g.current_user.role == "admin",
         )
     except caja_services.CajaError as exc:
@@ -156,14 +159,17 @@ def actualizar_ingreso(ingreso_id):
     pares = {(ingreso.fecha, ingreso.sucursal_id),
              (destino_fecha, destino_sucursal)}
     try:
+        for f, s in pares:
+            caja_services.exigir_dia_abierto(g.tenant_id, s, f, es_admin=es_admin)
         # Editar también es capturar: el PUT mueve dinero de día y de sucursal,
-        # así que el turno manda sobre el destino igual que sobre un alta.
+        # así que el turno manda sobre el destino igual que sobre un alta. Va
+        # después del día por el mismo motivo que en `crear_ingreso`: un día
+        # cerrado se explica solo, y explicarlo como "sin turno" sería mandar a
+        # la recepcionista a abrir una caja que ese día ya no admite.
         caja_services.exigir_turno_abierto(
             g.tenant_id, g.current_user, destino_fecha, destino_sucursal,
             es_admin=es_admin,
         )
-        for f, s in pares:
-            caja_services.exigir_dia_abierto(g.tenant_id, s, f, es_admin=es_admin)
     except caja_services.CajaError as exc:
         return jsonify({"error": exc.mensaje, "codigo": exc.codigo}), 409
 

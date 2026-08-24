@@ -339,14 +339,16 @@ def crear_salida():
     except _SucursalInvalida:
         return jsonify({"error": "Sucursal inválida"}), 400
     try:
-        # El turno primero: sacar efectivo del cajón exige tener un cajón
-        # abierto, antes incluso de preguntar si el día sigue abierto.
-        services.exigir_turno_abierto(
-            g.tenant_id, g.current_user, data["fecha"], data["sucursal_id"],
-            es_admin=g.current_user.role == "admin",
-        )
+        # El día primero: cerrar el corte cierra también los turnos de ese día,
+        # así que sobre un día cerrado nadie tiene turno y "abre tu caja" sería
+        # un consejo imposible de seguir. Ver el mismo comentario en
+        # `app/edr/routes.py`.
         services.exigir_dia_abierto(
             g.tenant_id, data["sucursal_id"], data["fecha"],
+            es_admin=g.current_user.role == "admin",
+        )
+        services.exigir_turno_abierto(
+            g.tenant_id, g.current_user, data["fecha"], data["sucursal_id"],
             es_admin=g.current_user.role == "admin",
         )
     except services.CajaError as exc:
