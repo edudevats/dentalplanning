@@ -2,6 +2,15 @@
 {% block page_title %}Corte de Caja{% endblock %}
 
 {% block content %}
+<style>
+  /* Mismo patrón que las pestañas del panel de super-admin
+     (app/templates/admin/tenant_detail.html), con los tokens del tema del
+     inquilino: esa pantalla usa la paleta `cs-*`, que aquí no existe. */
+  .tab-caja { color: var(--color-text-secondary); border-bottom: 2px solid transparent; }
+  .tab-caja:hover { color: var(--color-text-primary); }
+  .tab-caja.active { color: var(--color-primary-600); border-bottom-color: var(--color-primary-600); }
+</style>
+
 <div class="space-y-6">
   <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
     <div>
@@ -16,8 +25,20 @@
     </div>
   </div>
 
+  <!-- Pestañas: solo para el admin, que es el único con dos caras que alternar.
+       Nace con `hidden` en el marcado, no agregada por JS: el JIT de Tailwind del
+       navegador solo genera la regla `.hidden` si la ve al cargar. -->
+  <div id="tabs-admin" class="hidden border-b border-border">
+    <nav class="flex gap-1 -mb-px" aria-label="Secciones del corte">
+      <button type="button" data-tab="hoy"
+        class="tab-caja active px-4 py-2.5 text-sm font-semibold font-body transition-colors cursor-pointer">Caja de hoy</button>
+      <button type="button" data-tab="historico"
+        class="tab-caja px-4 py-2.5 text-sm font-semibold font-body transition-colors cursor-pointer">Histórico</button>
+    </nav>
+  </div>
+
   <!-- Vista de recepción: oculta por defecto, se revela para todos los roles con acceso a la página -->
-  <div id="vista-recepcion" class="hidden space-y-6">
+  <div id="vista-recepcion" data-panel="hoy" class="hidden space-y-6">
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
       <div class="bg-surface rounded-xl border border-border p-5 shadow-sm">
         <div class="flex items-center justify-between">
@@ -145,7 +166,7 @@
   </div>
 
   <!-- Vista de administración: histórico de cortes, detalle y reapertura -->
-  <div id="vista-admin" class="hidden space-y-6">
+  <div id="vista-admin" data-panel="historico" class="hidden space-y-6">
     <div class="bg-surface rounded-xl border border-border shadow-sm p-5 space-y-4">
       <div class="flex items-center justify-between flex-wrap gap-3">
         <h2 class="text-base font-semibold font-heading text-text-primary">Histórico de cortes</h2>
@@ -301,6 +322,47 @@
       <div class="flex justify-end gap-3 px-6 py-4 border-t border-border">
         <button type="button" onclick="Modal.close('modal-reabrir')" class="inline-flex items-center justify-center gap-2 rounded-lg font-medium font-body cursor-pointer border border-border bg-surface hover:bg-surface-hover text-text-secondary px-4 py-2 text-sm min-h-[38px]">Cancelar</button>
         <button type="button" onclick="confirmarReapertura()" class="inline-flex items-center justify-center gap-2 rounded-lg font-medium font-body cursor-pointer bg-warning-500 hover:bg-warning-600 text-white px-4 py-2 text-sm min-h-[38px]">Reabrir</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: cerrar un día del histórico que quedó abierto.
+     Los montos y las reglas salen del mismo GET /caja/corte y del mismo CorteUX
+     que usa la cara de recepción; aquí solo cambia de qué fecha se habla. -->
+<div id="modal-cerrar-dia" class="hidden fixed inset-0 z-50 overflow-y-auto">
+  <div class="flex min-h-full items-end sm:items-center justify-center p-4">
+    <div class="fixed inset-0 bg-black/40" onclick="Modal.close('modal-cerrar-dia')"></div>
+    <div class="relative bg-surface rounded-2xl shadow-xl w-full max-w-md">
+      <div class="flex items-center justify-between px-6 py-4 border-b border-border">
+        <h2 class="text-base font-semibold font-heading text-text-primary">Cerrar caja de un día anterior</h2>
+        <button type="button" aria-label="Cerrar" onclick="Modal.close('modal-cerrar-dia')" class="p-2 rounded-lg text-text-muted hover:bg-surface-hover transition-colors cursor-pointer"><i data-lucide="x" class="h-4 w-4"></i></button>
+      </div>
+      <div class="px-6 py-5 space-y-4">
+        <p id="cerrar-dia-titulo" class="text-sm font-medium text-text-primary font-body"></p>
+        <p class="text-sm text-text-secondary font-body">Al cerrarlo, ese día queda bloqueado: nadie podrá registrar ingresos ni gastos con esa fecha hasta que se reabra.</p>
+        <div class="rounded-lg border border-border divide-y divide-border">
+          <div class="flex items-center justify-between px-4 py-2.5 text-sm font-body">
+            <span class="text-text-secondary">Efectivo esperado</span>
+            <span id="cerrar-dia-esperado" class="font-medium tabular-nums">$0.00</span>
+          </div>
+        </div>
+        <div>
+          <label for="f-contado-dia" class="block text-sm font-medium text-text-secondary mb-1 font-body">¿Cuánto efectivo había?</label>
+          <input id="f-contado-dia" type="text" inputmode="decimal" placeholder="0.00"
+            class="block w-full rounded-lg border border-border px-3 py-2.5 text-sm font-body bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-500" />
+          <p id="cerrar-dia-etiqueta" class="mt-1 text-sm font-medium font-body"></p>
+        </div>
+        <div id="wrap-comentario-dia" class="hidden">
+          <label for="f-comentario-dia" class="block text-sm font-medium text-text-secondary mb-1 font-body">¿A qué se debió la diferencia?</label>
+          <textarea id="f-comentario-dia" rows="2" placeholder="Explica la diferencia"
+            class="block w-full rounded-lg border border-border px-3 py-2.5 text-sm font-body bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-500"></textarea>
+        </div>
+        <p id="cerrar-dia-motivo" class="text-sm text-text-muted font-body"></p>
+      </div>
+      <div class="flex justify-end gap-3 px-6 py-4 border-t border-border">
+        <button type="button" onclick="Modal.close('modal-cerrar-dia')" class="inline-flex items-center justify-center gap-2 rounded-lg font-medium font-body cursor-pointer border border-border bg-surface hover:bg-surface-hover text-text-secondary px-4 py-2 text-sm min-h-[38px]">Cancelar</button>
+        <button type="button" id="btn-confirmar-cierre-dia" onclick="confirmarCierreDia()" class="inline-flex items-center justify-center gap-2 rounded-lg font-medium font-body cursor-pointer bg-primary-500 hover:bg-primary-600 text-white px-4 py-2 text-sm min-h-[38px] disabled:opacity-50 disabled:cursor-not-allowed"><span id="texto-confirmar-cierre-dia">Cerrar caja</span></button>
       </div>
     </div>
   </div>

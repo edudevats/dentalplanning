@@ -346,12 +346,28 @@ function renderHistorico(filas) {
     // renderTable NO tiene onRowClick: el detalle se abre con un botón propio,
     // igual que el botón de comentario en app/templates/edr/ingresos.html.
     { key: 'corte_id', label: '', render: (v, row) => {
+        const acciones = domEl('div', 'flex items-center gap-1');
+
         const btn = domEl('button', 'shrink-0 rounded p-1.5 text-primary-600 hover:text-primary-700 transition-colors cursor-pointer');
         btn.type = 'button';
         btn.setAttribute('aria-label', 'Ver detalle del corte');
         btn.appendChild(domIcon('eye', 'h-4 w-4'));
         btn.addEventListener('click', () => abrirDetalle(row));
-        return btn;
+        acciones.appendChild(btn);
+
+        // Un día que quedó abierto no se puede cerrar desde ningún otro lado:
+        // la cara de recepción solo habla de hoy. Sin este botón, los días
+        // pasados se quedan abiertos para siempre.
+        if (row.estado === 'sin_cerrar') {
+          const cerrar = domEl('button', 'shrink-0 rounded p-1.5 text-warning-600 hover:text-warning-500 transition-colors cursor-pointer');
+          cerrar.type = 'button';
+          cerrar.setAttribute('aria-label', 'Cerrar la caja de este día');
+          cerrar.title = 'Cerrar la caja de este día';
+          cerrar.appendChild(domIcon('lock', 'h-4 w-4'));
+          cerrar.addEventListener('click', () => abrirCierreDia(row));
+          acciones.appendChild(cerrar);
+        }
+        return acciones;
       } },
     { key: 'fecha', label: 'Fecha', render: v => formatDate(v) },
     { key: 'sucursal_id', label: 'Sucursal', render: v => nombreSucursal(v) },
@@ -517,6 +533,97 @@ async function confirmarReapertura() {
   }
 }
 
+// ── Cerrar un día pasado desde el histórico ──────────────────────────────────
+// El resumen NO se arma con los datos de la fila: se pide el mismo
+// GET /caja/corte que usa la cara de recepción. La fila del histórico no trae
+// `tolerancia` y su `sin_clasificar` es un importe, no la lista que espera
+// CorteUX; y sobre todo, así las dos pantallas cierran con las mismas reglas y
+// no pueden separarse con el tiempo.
+let cierreDia = null;   // { fecha, sucursal_id, resumen }
+
+async function abrirCierreDia(row) {
+  try {
+    const params = new URLSearchParams({ fecha: row.fecha });
+    if (row.sucursal_id) params.set('sucursal_id', row.sucursal_id);
+    const resumenDia = await API.get('/caja/corte?' + params.toString());
+    cierreDia = { fecha: row.fecha, sucursal_id: row.sucursal_id, resumen: resumenDia };
+  } catch (e) {
+    Toast.error('No se pudo cargar el día que quieres cerrar');
+    return;
+  }
+
+  document.getElementById('cerrar-dia-titulo').textContent =
+    formatDate(cierreDia.fecha) + ' · ' + nombreSucursal(cierreDia.sucursal_id);
+  document.getElementById('cerrar-dia-esperado').textContent =
+    fmt(cierreDia.resumen.esperado_efectivo);
+  document.getElementById('f-contado-dia').value = '';
+  document.getElementById('f-comentario-dia').value = '';
+  renderEstadoCierreDia();
+  Modal.open('modal-cerrar-dia');
+}
+
+function renderEstadoCierreDia() {
+  if (!cierreDia) return;
+  const contado = document.getElementById('f-contado-dia').value;
+  const comentario = document.getElementById('f-comentario-dia').value;
+  const veredicto = CorteUX.puedeCerrar(cierreDia.resumen, contado, comentario);
+
+  document.getElementById('wrap-comentario-dia').classList.toggle(
+    'hidden', !CorteUX.excedeTolerancia(cierreDia.resumen, contado));
+
+  const btn = document.getElementById('btn-confirmar-cierre-dia');
+  btn.disabled = !veredicto.ok;
+  document.getElementById('cerrar-dia-motivo').textContent = veredicto.motivo || '';
+
+  const dif = CorteUX.diferencia(cierreDia.resumen, contado);
+  const et = document.getElementById('cerrar-dia-etiqueta');
+  if (dif === null) { et.textContent = ''; et.className = 'mt-1 text-sm font-medium font-body'; return; }
+  const info = CorteUX.etiquetaDiferencia(dif);
+  et.textContent = info.texto;
+  et.className = 'mt-1 text-sm font-medium font-body ' + info.clase;
+}
+
+['f-contado-dia', 'f-comentario-dia'].forEach(id =>
+  document.getElementById(id).addEventListener('input', renderEstadoCierreDia));
+
+async function confirmarCierreDia() {
+  if (!cierreDia) return;
+  const btn = document.getElementById('btn-confirmar-cierre-dia');
+  const texto = document.getElementById('texto-confirmar-cierre-dia');
+  btn.disabled = true;
+  texto.textContent = 'Cerrando...';
+  try {
+    await API.post('/caja/corte', {
+      fecha: cierreDia.fecha,
+      sucursal_id: cierreDia.sucursal_id || null,
+      efectivo_contado: CorteUX.normalizarMonto(document.getElementById('f-contado-dia').value),
+      comentario: document.getElementById('f-comentario-dia').value.trim() || null,
+    });
+    Modal.close('modal-cerrar-dia');
+    Toast.success('Caja del ' + formatDate(cierreDia.fecha) + ' cerrada');
+    await cargarHistorico();
+    // Si resultó ser el día de hoy, la cara de recepción también cambió.
+    if (cierreDia.fecha === todayLocalISO()) await cargarResumen();
+  } catch (e) {
+    Toast.warning(e.message || 'No se pudo cerrar la caja de ese día');
+  } finally {
+    btn.disabled = false;
+    texto.textContent = 'Cerrar caja';
+  }
+}
+
+// ── Pestañas (solo admin) ────────────────────────────────────────────────────
+// Mismo patrón que app/static/js/admin/admin_tenant_detail.js. Los dos paneles
+// declaran `hidden` en el marcado inicial, así que `classList.toggle('hidden')`
+// sí gana la cascada del JIT de Tailwind (una clase agregada por JS pierde
+// contra una utilidad de display que ya estaba; aquí no hay ninguna).
+function activarPestana(nombre) {
+  document.querySelectorAll('.tab-caja').forEach(b =>
+    b.classList.toggle('active', b.dataset.tab === nombre));
+  document.querySelectorAll('[data-panel]').forEach(p =>
+    p.classList.toggle('hidden', p.dataset.panel !== nombre));
+}
+
 async function init() {
   // Red de última instancia: cargarResumen() y cargarHistorico() ya son
   // defensivas (try/catch propio, nunca rechazan), así que hoy nada dentro de
@@ -558,6 +665,14 @@ async function init() {
     // recepción de arriba SÍ es para ambos roles.
     if (userRole === 'admin') {
       document.getElementById('vista-admin').classList.remove('hidden');
+
+      // Las dos caras pasan a ser pestañas: el histórico vivía al fondo y el
+      // admin bajaba dos pantallas y media para llegar. La recepcionista no ve
+      // la barra —solo tiene una cara— y su página queda igual que siempre.
+      document.getElementById('tabs-admin').classList.remove('hidden');
+      document.querySelectorAll('.tab-caja').forEach(b =>
+        b.addEventListener('click', () => activarPestana(b.dataset.tab)));
+      activarPestana('hoy');
 
       // Rango por defecto: del día 1 del mes actual a hoy.
       const hoy = todayLocalISO();
