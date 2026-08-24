@@ -83,9 +83,11 @@ class PagoSchema(Schema):
     # Cerrar la puerta al capturar es lo barato; después ya no hay salida.
     metodo_pago_id = fields.Int(required=True)
     historico = fields.Bool(load_default=False)
-    # La pone la ruta desde el turno, no el cliente; declararla aquí evita que
-    # el `unknown = EXCLUDE` la descarte al recargar el dict.
-    sucursal_id = fields.Int(allow_none=True, load_default=None)
+    # `sucursal_id` NO se declara aquí a propósito, aunque la ruta lo meta en
+    # `data`: lo pone DESPUÉS del `load()`, y nada vuelve a cargar el dict. El
+    # `unknown = EXCLUDE` filtra lo que entra por `load()`, no lo que se agrega
+    # después — `idempotency_key`, en la línea siguiente de la ruta, es la
+    # prueba de que una clave sin campo declarado llega igual.
     notas = fields.Str(
         allow_none=True, validate=validate.Length(max=2000),
     )

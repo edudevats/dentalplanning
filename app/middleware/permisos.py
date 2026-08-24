@@ -23,13 +23,31 @@ PERMISOS_MINIMOS = {RECURSO_INVENTARIO: NIVEL_EDITAR}
 # Blueprint del que ningún asistente puede tocar nada, pase lo que pase.
 BLUEPRINT_PROHIBIDO = "finanzas_personales"
 
-# Rutas accesibles sin permiso alguno: identidad y cambio de contraseña propia.
-# Se mantiene mínima a propósito — el inventario es autocontenido (`invApi`
-# apunta solo a /api/v1/inventario), así que no necesita préstamos de otros
-# blueprints.
+# Rutas accesibles sin permiso alguno: identidad, contraseña propia y el turno
+# de caja. Se mantiene mínima a propósito — el inventario es autocontenido
+# (`invApi` apunta solo a /api/v1/inventario), así que no necesita préstamos de
+# otros blueprints.
+#
+# El turno está aquí, y no en el recurso `caja`, por una razón de forma: el
+# remedio no puede vivir detrás de un permiso más estrecho que el candado que
+# lo exige. `exigir_turno_abierto` aplica a TODO el que no sea admin, sin mirar
+# qué módulos tenga; si la ruta del turno perteneciera al recurso `caja`, un
+# asistente con solo `edr.gastos` leería "Abre tu caja para empezar a capturar"
+# (409) y al ir a abrirla se toparía con un 403. Un callejón sin salida
+# permanente, y la misma clínica ya lo había reconocido para el otro rol: la
+# allowlist de recepcionista mete estas dos rutas con ese mismo argumento
+# (`app/middleware/tenant.py`).
+#
+# El turno no es "el módulo de caja": es la precondición para capturar
+# cualquier cosa, tan propia del usuario como consultar su propio /auth/me. Y
+# es una puerta estrecha a propósito: son estas dos rutas exactas, no el
+# blueprint. El corte, las salidas, el histórico y el enmascarado de conceptos
+# ajenos siguen exigiendo el recurso `caja`.
 BASE_PERMITIDA = frozenset({
     ("GET", "/api/v1/auth/me"),
     ("PUT", "/api/v1/auth/password"),
+    ("GET", "/api/v1/caja/turno"),
+    ("POST", "/api/v1/caja/turno"),
 })
 
 # recurso -> rutas: tupla de (blueprint, prefijos de path).

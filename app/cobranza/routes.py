@@ -352,7 +352,9 @@ def registrar_pago(cotizacion_id):
         return jsonify({"error": exc.mensaje, "codigo": exc.codigo}), 409
 
     # La sucursal viaja dentro de `data` hasta el Ingreso derivado: así no
-    # cambia la firma de `registrar_pago` ni se rompe a otros llamadores.
+    # cambia la firma de `registrar_pago` ni se rompe a otros llamadores. Va
+    # después del `load()`, así que no necesita —ni tiene— campo en
+    # `PagoSchema`; igual que `idempotency_key`, la línea de abajo.
     data["sucursal_id"] = sucursal_abono
     data["idempotency_key"] = request.headers.get("Idempotency-Key")
     pago = services.registrar_pago(
