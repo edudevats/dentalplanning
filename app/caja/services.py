@@ -462,6 +462,15 @@ def cerrar_corte(tenant_id, usuario_id, *, fecha, sucursal_id,
             usuario_id=usuario_id, datos=_snapshot(corte),
         ))
 
+    # El día se cierra para todos los que lo trabajaron.
+    TurnoCaja.query.filter(
+        TurnoCaja.tenant_id == tenant_id,
+        TurnoCaja.fecha == fecha,
+        _filtro_sucursal(TurnoCaja.sucursal_id, sucursal_id,
+                         separa=sucursal_separa_cajas(tenant_id)),
+    ).update({"cerrado_at": datetime.now(timezone.utc)},
+             synchronize_session=False)
+
     db.session.commit()
     return corte
 
@@ -483,6 +492,17 @@ def reabrir_corte(tenant_id, usuario_id, corte_id, motivo):
         tenant_id=tenant_id, corte_id=corte.id, evento=EVENTO_REAPERTURA,
         usuario_id=usuario_id, motivo=motivo, datos=_snapshot(corte),
     ))
+
+    # Devolverle la vigencia al turno: si no, quien trabajó ese día no puede
+    # volver a capturar, y el UNIQUE por (tenant, usuario, fecha) le impide
+    # abrir uno nuevo.
+    TurnoCaja.query.filter(
+        TurnoCaja.tenant_id == tenant_id,
+        TurnoCaja.fecha == corte.fecha,
+        _filtro_sucursal(TurnoCaja.sucursal_id, corte.sucursal_id,
+                         separa=sucursal_separa_cajas(tenant_id)),
+    ).update({"cerrado_at": None}, synchronize_session=False)
+
     db.session.commit()
     return corte
 
@@ -631,7 +651,6 @@ def historico(tenant_id, desde, hasta, solo_sucursal=None):
                 "total_transferencia": 0.0, "total_otro": 0.0,
                 "comision_tarjeta": 0.0, "salidas_efectivo": 0.0,
                 "sin_clasificar_monto": 0.0,
-                "fondo_inicial": 0.0,
             }
         return dias[clave]
 
@@ -664,8 +683,16 @@ def historico(tenant_id, desde, hasta, solo_sucursal=None):
     ).order_by(TurnoCaja.id).all():
         fondos.setdefault(
             (t.fecha, t.sucursal_id if separa else None),
-            round(float(t.fondo_inicial or 0), 2),
+            _fondo_normalizado(t),
         )
+
+    # Un día con fondo declarado y sin un solo movimiento también es una fila.
+    # Antes del fondo ese día era genuinamente cero y omitirlo estaba bien; ahora
+    # hay dinero real en el cajón, y "qué días nadie cerró" es justamente la
+    # señal más valiosa de este reporte. Espejo del bucle que siembra `dias`
+    # desde `cortes`, unas líneas más abajo.
+    for fecha_fondo, suc_fondo in fondos:
+        _dia(fecha_fondo, suc_fondo)
 
     cortes = {
         (c.fecha, c.sucursal_id if separa else None): c
@@ -760,4 +787,40 @@ def exigir_dia_abierto(tenant_id, sucursal_id, fecha, *, es_admin=False):
             f"La caja del {fecha.strftime('%d/%m/%Y')} ya fue cerrada. "
             "Pide al administrador que la reabra.",
             codigo="dia_cerrado",
+        )
+
+
+def exigir_turno_abierto(tenant_id, usuario, fecha, sucursal_id, *,
+                         es_admin=False):
+    """Frena la captura de quien no abrió su caja.
+
+    Es el guardián que le da un dueño a la sucursal y a la fecha. Sin él, cada
+    pantalla vuelve a adivinarlas por su cuenta, que fue exactamente el origen
+    del bug en el que la recepcionista veía ceros todo el día.
+
+    El admin pasa, igual que en `exigir_dia_abierto`: alguien tiene que poder
+    corregir un movimiento mal fechado, y el histórico ya marca esos días como
+    "con movimientos posteriores".
+    """
+    if es_admin:
+        return
+
+    turno = turno_vigente(tenant_id, usuario.id)
+    if turno is None:
+        raise CajaError(
+            "Abre tu caja para empezar a capturar",
+            codigo="sin_turno",
+        )
+
+    if fecha != date.today():
+        raise CajaError(
+            "Solo puedes capturar movimientos de hoy",
+            codigo="fecha_fuera_de_turno",
+        )
+
+    if sucursal_separa_cajas(tenant_id) and sucursal_id != turno.sucursal_id:
+        nombre = turno.sucursal.nombre if turno.sucursal else "Sin sucursal"
+        raise CajaError(
+            f"Hoy estás trabajando en {nombre}",
+            codigo="sucursal_fuera_de_turno",
         )
