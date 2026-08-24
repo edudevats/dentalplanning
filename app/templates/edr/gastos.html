@@ -8,7 +8,16 @@
     <div class="flex items-center gap-3 flex-wrap">
       <select id="sel-month" class="rounded-lg border border-border px-3 py-2 text-sm font-body bg-surface focus:ring-2 focus:ring-primary-300 focus:border-primary-500 outline-none min-h-[38px] w-36"></select>
       <select id="sel-year" class="rounded-lg border border-border px-3 py-2 text-sm font-body bg-surface focus:ring-2 focus:ring-primary-300 focus:border-primary-500 outline-none min-h-[38px] w-28"></select>
-      <button type="button" onclick="openCreate()"
+      <!-- Inicio de caja: los gastos también pasan por el candado del turno
+           (app/edr/routes.py). `style.display` y no la clase `hidden` — el
+           botón trae `inline-flex` y el JIT de Tailwind del navegador perdería
+           la cascada al insertar `.hidden` después. -->
+      <button type="button" id="btn-inicio-caja"
+        class="inline-flex items-center justify-center gap-2 rounded-lg font-medium font-body cursor-pointer bg-accent-600 hover:bg-accent-700 text-white px-4 py-2 text-sm min-h-[38px]">
+        <i data-lucide="unlock" class="h-4 w-4"></i> Abrir caja
+      </button>
+      <p id="turno-actual" style="display:none" class="text-sm text-text-secondary font-body"></p>
+      <button type="button" id="btn-nuevo" onclick="openCreate()"
         class="inline-flex items-center justify-center gap-2 rounded-lg font-medium font-body cursor-pointer bg-primary-500 hover:bg-primary-600 text-white px-4 py-2 text-sm min-h-[38px]">
         <i data-lucide="plus" class="h-4 w-4"></i> Nuevo Gasto
       </button>
@@ -38,6 +47,15 @@
       </div>
       <p class="mt-3 text-2xl font-bold font-heading tabular-nums text-text-primary" id="stat-total">$0.00</p>
     </div>
+  </div>
+
+  <!-- Sin turno abierto no se captura: el backend rechaza con 409 (ver
+       exigir_turno_abierto). Nace oculto por `style.display` porque turno.js lo
+       revela por la misma vía. -->
+  <div id="aviso-sin-turno" style="display:none" class="rounded-xl border border-warning-100 bg-warning-50 p-5">
+    <p class="text-sm font-medium text-warning-600 font-body">Todavía no abres tu caja de hoy.</p>
+    <p class="text-sm text-text-secondary font-body mt-1">Para registrar gastos, primero abre tu caja y di en qué sucursal vas a trabajar.</p>
+    <button type="button" onclick="TurnoCaja.abrirModal(false)" class="inline-flex items-center gap-2 mt-3 text-sm font-medium text-primary-600 hover:text-primary-700 font-body cursor-pointer">Abrir mi caja &rarr;</button>
   </div>
 
   <!-- Table -->
@@ -100,9 +118,12 @@
     </div>
   </div>
 </div>
+{% include 'partials/modal_inicio_caja.html' %}
 {% endblock %}
 
 {% block scripts %}
+<script src="{{ url_for('static', filename='js/caja/corte_ux.js') }}"></script>
+<script src="{{ url_for('static', filename='js/caja/turno.js') }}"></script>
 <script>
 lucide.createIcons();
 const now = new Date();
@@ -183,6 +204,7 @@ function openCreate() {
   document.getElementById('f-monto').value = '';
   document.getElementById('f-metodo').value = '';
   syncSaleCaja();
+  aplicarTurnoAlFormulario();
   Modal.open('modal-form');
 }
 
@@ -228,6 +250,10 @@ async function handleSave() {
     monto: Number(monto),
     metodo_pago_id: Number(metodo),
     sale_de_caja: document.getElementById('f-sale-caja').checked,
+    // Esta pantalla NO tiene campo de sucursal, a propósito: la pone el turno.
+    // Sin esto, en una clínica de dos sedes el gasto nacería con sucursal nula
+    // y exigir_turno_abierto lo rechazaría por `sucursal_fuera_de_turno`.
+    sucursal_id: TurnoCaja.sucursalDelTurno(turnoDelDia),
   };
   try {
     if (editingId) { await API.put('/edr/gastos/' + editingId, payload); Toast.success('Gasto actualizado'); }
@@ -247,6 +273,19 @@ async function handleDelete() {
   finally { btn.disabled = false; txt.textContent = 'Eliminar'; }
 }
 
+// El turno manda: la fecha y la sucursal de lo que se captura salen de ahí. A
+// diferencia de /ingresos, esta pantalla no tenía `userRole`: se resuelve aquí
+// con el mismo patrón, porque el admin queda exento del candado.
+let userRole = null;
+let turnoDelDia = null;
+
+function aplicarTurnoAlFormulario() {
+  if (!turnoDelDia) return;
+  const fecha = document.getElementById('f-fecha');
+  fecha.value = turnoDelDia.fecha;
+  fecha.readOnly = true;
+}
+
 async function init() {
   try {
     conceptos = await API.get('/ajustes/gastos-conceptos') ?? [];
@@ -258,6 +297,21 @@ async function init() {
       metodosPago.map(m => ({ value: String(m.id), label: m.nombre })),
       '', 'Seleccionar metodo');
   } catch {}
+
+  // El rol y las sucursales, para el turno. allSettled: que falle un catálogo
+  // no puede dejar la pantalla a medio revelar.
+  const [me, sucs] = await Promise.allSettled([
+    API.get('/auth/me'), API.get('/facturacion/sucursales'),
+  ]);
+  const user = (me.status === 'fulfilled' ? (me.value.user || me.value) : {}) || {};
+  userRole = user.role || null;
+
+  turnoDelDia = await TurnoCaja.iniciar({
+    rol: userRole,
+    sucursales: sucs.status === 'fulfilled' ? (sucs.value || []) : [],
+    alAbrir: async (t) => { turnoDelDia = t; await fetchData(); },
+  });
+
   fetchData();
 }
 init();

@@ -45,9 +45,21 @@ function render() {
   document.getElementById('stat-transferencia').textContent =
     fmt(resumen.totales.transferencia);
   document.getElementById('stat-salidas').textContent = fmt(resumen.salidas_efectivo);
-  document.getElementById('stat-entregar').textContent = fmt(resumen.esperado_efectivo);
+  // `a_entregar` y NO `esperado_efectivo`: desde que el fondo entra en el
+  // esperado (services.resumen_dia), el esperado incluye el fondo, y el fondo
+  // se queda en el cajón para mañana. Lo que se entrega es lo otro.
+  document.getElementById('stat-entregar').textContent = fmt(resumen.a_entregar);
+  // La leyenda no cambia con el fondo a propósito: la resta que describe "a
+  // entregar" es la misma (el fondo entra y sale). Lo que cambió es el dato de
+  // arriba.
   document.getElementById('leyenda-entregar').textContent =
     'cobrado ' + fmt(resumen.totales.efectivo) + ' − gastado ' + fmt(resumen.salidas_efectivo);
+
+  // El fondo solo se menciona cuando existe: en una caja sin fondo la línea
+  // sería ruido permanente en la pantalla más usada.
+  const hayFondo = Number(resumen.fondo_inicial || 0) !== 0;
+  document.getElementById('leyenda-fondo').style.display = hayFondo ? '' : 'none';
+  document.getElementById('stat-fondo').textContent = fmt(resumen.fondo_inicial);
 
   // "Otro" solo se asoma cuando hay algo que asomar (ver #aviso-otro en la
   // plantilla). `hidden` sí está en el marcado inicial de ese div y el div no
@@ -301,6 +313,11 @@ function construirTicketCorte(resumen) {
       { nombre: 'Transferencia', monto: resumen.totales.transferencia },
       ...(otro ? [{ nombre: 'Otro', monto: otro }] : []),
       { nombre: 'Salidas', monto: resumen.salidas_efectivo },
+      // Sin esta línea el papel firmado deja de cuadrar consigo mismo por
+      // exactamente el monto del fondo: "Esperado" ya lo incluye. Va antes de
+      // "Esperado" para que el ticket se pueda sumar de arriba abajo.
+      ...(Number(resumen.fondo_inicial || 0)
+        ? [{ nombre: 'Fondo inicial', monto: resumen.fondo_inicial }] : []),
       { nombre: 'Esperado', monto: resumen.esperado_efectivo },
       { nombre: 'Contado', monto: corte.efectivo_contado != null ? corte.efectivo_contado : 0 },
       { nombre: 'Diferencia', monto: corte.diferencia != null ? corte.diferencia : 0 },
@@ -683,6 +700,15 @@ async function init() {
 
       await cargarHistorico();
     }
+
+    // El turno va antes del resumen: si no hay caja abierta, el modal se abre
+    // solo y abrirla recarga el resumen (el fondo cambia el "a entregar").
+    // Se le pasan el rol y las sucursales ya resueltos arriba para no volver a
+    // pedir /auth/me ni /facturacion/sucursales.
+    await TurnoCaja.iniciar({
+      rol: userRole, sucursales: sucursales, alAbrir: cargarResumen,
+    });
+
     await cargarResumen();
   } catch (e) {
     console.error('corte-caja: init() falló', e);

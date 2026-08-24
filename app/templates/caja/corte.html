@@ -18,6 +18,14 @@
       <p id="fecha-hoy" class="text-sm text-text-secondary font-body mt-1"></p>
     </div>
     <div class="flex items-center gap-3 flex-wrap">
+      <!-- Inicio de caja. `display:none` en vez de la clase `hidden` porque
+           turno.js lo esconde por `style.display` (el botón trae `inline-flex`
+           y el JIT de Tailwind perdería la cascada al insertar `.hidden`). -->
+      <button type="button" id="btn-inicio-caja"
+        class="inline-flex items-center justify-center gap-2 rounded-lg font-medium font-body cursor-pointer bg-accent-600 hover:bg-accent-700 text-white px-4 py-2 text-sm min-h-[38px]">
+        <i data-lucide="unlock" class="h-4 w-4"></i> Inicio de caja
+      </button>
+      <p id="turno-actual" style="display:none" class="text-sm text-text-secondary font-body"></p>
       <!-- Selector de sucursal: se revela solo si el tenant tiene 2+ sucursales (independiente del rol) -->
       <div id="wrap-sucursal" class="hidden">
         <select id="sel-sucursal" class="rounded-lg border border-border px-3 py-2 text-sm font-body bg-surface focus:ring-2 focus:ring-primary-300 focus:border-primary-500 outline-none min-h-[38px] w-48"></select>
@@ -93,6 +101,11 @@
       <p class="text-sm font-medium text-primary-700 font-body">Efectivo a entregar</p>
       <p class="mt-2 text-4xl font-bold font-heading text-primary-800" id="stat-entregar">$0.00</p>
       <p class="mt-1 text-sm text-primary-600 font-body" id="leyenda-entregar"></p>
+      <!-- El fondo solo se menciona cuando existe: en una caja sin fondo esta
+           línea sería ruido permanente en la pantalla más usada. -->
+      <p id="leyenda-fondo" style="display:none" class="text-xs text-primary-600 font-body mt-1">
+        Fondo que se queda en caja: <span id="stat-fondo" class="tabular-nums">$0.00</span>
+      </p>
     </div>
 
     <!-- Aviso: ingresos sin método de pago (bloquean el cierre) -->
@@ -367,9 +380,11 @@
     </div>
   </div>
 </div>
+{% include 'partials/modal_inicio_caja.html' %}
 {% endblock %}
 
 {% block scripts %}
 <script src="{{ url_for('static', filename='js/caja/corte_ux.js') }}"></script>
+<script src="{{ url_for('static', filename='js/caja/turno.js') }}"></script>
 <script src="{{ url_for('static', filename='js/caja/corte.js') }}"></script>
 {% endblock %}

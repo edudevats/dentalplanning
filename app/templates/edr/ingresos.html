@@ -8,7 +8,17 @@
     <div class="flex items-center gap-3 flex-wrap">
       <select id="sel-month" class="rounded-lg border border-border px-3 py-2 text-sm font-body bg-surface focus:ring-2 focus:ring-primary-300 focus:border-primary-500 outline-none min-h-[38px] w-36"></select>
       <select id="sel-year" class="rounded-lg border border-border px-3 py-2 text-sm font-body bg-surface focus:ring-2 focus:ring-primary-300 focus:border-primary-500 outline-none min-h-[38px] w-28"></select>
-      <button type="button" onclick="openCreate()"
+      <!-- Inicio de caja. Nace visible y turno.js lo esconde en cuanto sabe
+           que hay turno abierto; al reves (nacer oculto) la recepcionista ve
+           parpadear el boton que mas necesita. `style.display` y no la clase
+           `hidden`: el boton trae `inline-flex` y el JIT de Tailwind del
+           navegador perderia la cascada al insertar `.hidden` despues. -->
+      <button type="button" id="btn-inicio-caja"
+        class="inline-flex items-center justify-center gap-2 rounded-lg font-medium font-body cursor-pointer bg-accent-600 hover:bg-accent-700 text-white px-4 py-2 text-sm min-h-[38px]">
+        <i data-lucide="unlock" class="h-4 w-4"></i> Abrir caja
+      </button>
+      <p id="turno-actual" style="display:none" class="text-sm text-text-secondary font-body"></p>
+      <button type="button" id="btn-nuevo" onclick="openCreate()"
         class="inline-flex items-center justify-center gap-2 rounded-lg font-medium font-body cursor-pointer bg-primary-500 hover:bg-primary-600 text-white px-4 py-2 text-sm min-h-[38px]">
         <i data-lucide="plus" class="h-4 w-4"></i> Nuevo Ingreso
       </button>
@@ -80,6 +90,15 @@
       <p class="mt-3 text-2xl font-bold font-heading tabular-nums text-text-primary" id="stat-recep-entregar">$0.00</p>
       <a href="/corte-caja" class="text-xs text-primary-600 hover:text-primary-700 font-body">Ir al corte de caja →</a>
     </div>
+  </div>
+
+  <!-- Sin turno abierto no se captura: el backend rechaza con 409 (ver
+       exigir_turno_abierto). Nace oculto por `style.display` porque turno.js lo
+       revela por la misma via. -->
+  <div id="aviso-sin-turno" style="display:none" class="rounded-xl border border-warning-100 bg-warning-50 p-5">
+    <p class="text-sm font-medium text-warning-600 font-body">Todavia no abres tu caja de hoy.</p>
+    <p class="text-sm text-text-secondary font-body mt-1">Para registrar ingresos, primero abre tu caja y di en que sucursal vas a trabajar.</p>
+    <button type="button" onclick="TurnoCaja.abrirModal(false)" class="inline-flex items-center gap-2 mt-3 text-sm font-medium text-primary-600 hover:text-primary-700 font-body cursor-pointer">Abrir mi caja &rarr;</button>
   </div>
 
   <!-- Table -->
@@ -214,9 +233,12 @@
     </div>
   </div>
 </div>
+{% include 'partials/modal_inicio_caja.html' %}
 {% endblock %}
 
 {% block scripts %}
+<script src="{{ url_for('static', filename='js/caja/corte_ux.js') }}"></script>
+<script src="{{ url_for('static', filename='js/caja/turno.js') }}"></script>
 <script>
 lucide.createIcons();
 
@@ -317,8 +339,11 @@ async function updateDailyStat() {
     document.getElementById('stat-recep-tarjeta').textContent = fmt(r.totales.tarjeta);
     document.getElementById('stat-recep-transferencia').textContent =
       fmt(r.totales.transferencia);
+    // `a_entregar` y NO `esperado_efectivo`: el esperado incluye el fondo
+    // inicial, que se queda en el cajon para maniana. Misma correccion que en
+    // la tarjeta grande de /corte-caja.
     document.getElementById('stat-recep-entregar').textContent =
-      fmt(r.esperado_efectivo);
+      fmt(r.a_entregar);
   } catch (e) {
     // Un $0.00 que en realidad es "no se pudo cargar" es indistinguible de un
     // día sin cobros: en una conciliación de efectivo eso no puede quedarse
@@ -477,6 +502,7 @@ function openCreate() {
   // si lo olvida, el ingreso cae en "sin_clasificar" y el corte bloquea el
   // cierre hasta que se corrija (en vez de perderse en silencio).
   document.getElementById('f-metodo').value = '';
+  aplicarTurnoAlFormulario();
   Modal.open('modal-form');
 }
 
@@ -524,7 +550,12 @@ async function handleSave() {
 
   const facturaOn = document.getElementById('f-factura').checked;
   if (facturaOn && !facturacionActiva) { Modal.open('modal-factura-inactiva'); return; }
-  const sucursalId = Number(document.getElementById('f-sucursal').value) || null;
+  // Con turno abierto la sucursal sale de ahí, no del campo: es exactamente
+  // el dato que este diseño saca de las manos de quien captura, y es lo que
+  // el backend valida en exigir_turno_abierto.
+  const sucursalId = turnoDelDia
+    ? TurnoCaja.sucursalDelTurno(turnoDelDia)
+    : (Number(document.getElementById('f-sucursal').value) || null);
   if (facturaOn && !sucursalId) { Toast.warning('Selecciona una sucursal para facturar (o apaga Factura)'); return; }
   const ticketFolio = Number(document.getElementById('f-ticket-folio').value) || null;
 
@@ -656,6 +687,27 @@ function applyStatsRole() {
   }
 }
 
+// El turno manda: la sucursal y la fecha de lo que se captura salen de ahí, no
+// de campos que se puedan cambiar. El admin queda libre para poder corregir (el
+// candado del backend también lo exime), y para él `turnoDelDia` se queda en
+// null, que es justo lo que hace que estas dos funciones no toquen nada.
+let turnoDelDia = null;
+
+function aplicarTurnoAlFormulario() {
+  if (!turnoDelDia) return;
+  const fecha = document.getElementById('f-fecha');
+  fecha.value = turnoDelDia.fecha;
+  // readOnly y no disabled: un campo deshabilitado no viaja en el formulario ni
+  // se lee igual; readOnly lo deja legible y visible, que es lo que importa
+  // aquí porque el valor sí se manda.
+  fecha.readOnly = true;
+  const suc = document.getElementById('f-sucursal');
+  if (suc) {
+    suc.value = turnoDelDia.sucursal_id ? String(turnoDelDia.sucursal_id) : '';
+    suc.disabled = true;
+  }
+}
+
 async function init() {
   // allSettled y no all: un catálogo que falle no debe dejar sin autocompletado
   // al resto del formulario (antes, un 500 en /facturacion/configuracion vaciaba
@@ -695,6 +747,17 @@ async function init() {
       Toast.warning('No se pudieron cargar los catálogos; el autocompletado no estará disponible');
     }
   }
+  // El turno va después de userRole y sucursales: turno.js los recibe ya
+  // resueltos para no volver a pedir /auth/me ni /facturacion/sucursales. Sin
+  // caja abierta el modal se abre solo y no se puede descartar — es lo primero
+  // que hace la recepcionista al llegar, y sin él todo lo que capture rebota
+  // con 409.
+  turnoDelDia = await TurnoCaja.iniciar({
+    rol: userRole,
+    sucursales: sucursales,
+    alAbrir: async (t) => { turnoDelDia = t; await fetchData(); },
+  });
+
   fetchData();
 }
 
