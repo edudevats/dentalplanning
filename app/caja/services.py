@@ -72,12 +72,39 @@ def _primer_turno_del_dia(tenant_id, sucursal_id, fecha):
     leer la MISMA fila con el MISMO criterio. Copiada en dos lados, la invariante
     dependería de que nadie toque una sin tocar la otra; aquí no puede divergir.
     """
+    return _turnos_del_dia(tenant_id, sucursal_id, fecha).first()
+
+
+def _turnos_del_dia(tenant_id, sucursal_id, fecha):
+    """Todos los turnos de ese día y sucursal, del más viejo al más nuevo.
+
+    Por la herencia de `abrir_turno` todos cargan el mismo fondo, así que
+    corregirlo tiene que tocarlos a todos: dejar las demás filas con el valor
+    viejo guardaría un dato que contradice al que se lee.
+    """
     return TurnoCaja.query.filter(
         TurnoCaja.tenant_id == tenant_id,
         TurnoCaja.fecha == fecha,
         _filtro_sucursal(TurnoCaja.sucursal_id, sucursal_id,
                          separa=sucursal_separa_cajas(tenant_id)),
-    ).order_by(TurnoCaja.id).first()
+    ).order_by(TurnoCaja.id)
+
+
+def _parsear_fondo(valor):
+    """El monto tecleado, vuelto un número que la caja acepta.
+
+    Lo comparten abrir y corregir a propósito: si cada uno validara por su lado,
+    el fondo podría entrar por una puerta con reglas que la otra no aplica.
+    """
+    try:
+        monto = round(float(valor or 0), 2)
+    except (TypeError, ValueError):
+        raise CajaError("El fondo inicial no es un número válido",
+                        codigo="fondo_invalido")
+    if monto < 0:
+        raise CajaError("El fondo inicial no puede ser negativo",
+                        codigo="fondo_invalido")
+    return monto
 
 
 def _fondo_normalizado(turno):
@@ -111,6 +138,50 @@ def fondo_del_dia(tenant_id, sucursal_id, fecha):
     """
     t = _primer_turno_del_dia(tenant_id, sucursal_id, fecha)
     return _fondo_normalizado(t) if t is not None else 0.0
+
+
+def hay_turno_del_dia(tenant_id, sucursal_id, fecha):
+    """Si alguien abrió el cajón ese día en esa sucursal.
+
+    La pantalla la usa para decidir si ofrece corregir el fondo: sin turno no
+    hay fondo declarado, y el botón llevaría a un 409 seguro.
+    """
+    return _primer_turno_del_dia(tenant_id, sucursal_id, fecha) is not None
+
+
+def corregir_fondo_del_dia(tenant_id, sucursal_id, fecha, monto):
+    """Reescribe el fondo del cajón de ese día y sucursal.
+
+    Existe porque el fondo se captura a primera hora y con prisa: dejarlo en
+    blanco es el error natural, y sin esto la única salida era cerrar el día
+    con una diferencia falsa.
+    """
+    monto = _parsear_fondo(monto)
+
+    if fecha != date.today():
+        # El turno de ayer ya caducó y su fondo es historia: corregirlo movería
+        # el esperado de un día que nadie va a volver a contar.
+        raise CajaError("Solo puedes corregir el fondo del día en curso",
+                        codigo="fecha_no_editable")
+
+    if corte_cerrado(tenant_id, sucursal_id, fecha):
+        raise CajaError(
+            f"La caja del {fecha.strftime('%d/%m/%Y')} ya fue cerrada. "
+            "Reábrela para corregir el fondo.",
+            codigo="dia_cerrado",
+        )
+
+    turnos = _turnos_del_dia(tenant_id, sucursal_id, fecha).all()
+    if not turnos:
+        # Sin turno nadie abrió el cajón: no hay fondo declarado que enmendar.
+        # Declararlo aquí exigiría inventar un dueño para el turno.
+        raise CajaError("Nadie ha abierto caja hoy en esta sucursal",
+                        codigo="sin_turno_del_dia")
+
+    for turno in turnos:
+        turno.fondo_inicial = monto
+    db.session.commit()
+    return turnos[0]
 
 
 def abrir_turno(tenant_id, usuario_id, *, sucursal_id, fondo_inicial):
@@ -149,14 +220,7 @@ def abrir_turno(tenant_id, usuario_id, *, sucursal_id, fondo_inicial):
     primero = _primer_turno_del_dia(tenant_id, sucursal_id, hoy)
     heredado = _fondo_normalizado(primero) if primero is not None else None
 
-    try:
-        monto = round(float(fondo_inicial or 0), 2)
-    except (TypeError, ValueError):
-        raise CajaError("El fondo inicial no es un número válido",
-                        codigo="fondo_invalido")
-    if monto < 0:
-        raise CajaError("El fondo inicial no puede ser negativo",
-                        codigo="fondo_invalido")
+    monto = _parsear_fondo(fondo_inicial)
 
     turno = TurnoCaja(
         tenant_id=tenant_id, usuario_id=usuario_id, sucursal_id=sucursal_id,

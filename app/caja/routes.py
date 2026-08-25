@@ -7,7 +7,7 @@ from marshmallow import ValidationError
 from app.caja import services
 from app.caja.models import CorteCaja
 from app.caja.schemas import (
-    CierreSchema, ReaperturaSchema, SalidaSchema, TurnoSchema,
+    CierreSchema, FondoSchema, ReaperturaSchema, SalidaSchema, TurnoSchema,
 )
 from app.middleware.tenant import require_auth, require_role
 
@@ -21,6 +21,9 @@ _CODIGOS_409 = {
     # algo bien formado contra un estado que no lo admite. Es conflicto, no
     # dato inválido — misma familia que `ya_cerrado` y `ya_abierto`.
     "turno_en_otra_sucursal", "turno_cerrado",
+    # Corregir el fondo sobre un día sin turno o que no es hoy: dato bien
+    # formado contra un estado que no lo admite.
+    "sin_turno_del_dia", "fecha_no_editable",
     # Los tres del candado de captura: el cliente manda una fecha y una
     # sucursal legítimas que chocan con el turno abierto. Es conflicto con el
     # estado, no dato inválido — y `dia_cerrado`, el candado hermano, ya es 409;
@@ -160,6 +163,14 @@ def ver_corte():
         "tolerancia": services.tolerancia(g.tenant_id),
         # La UI deshabilita el botón; el servicio vuelve a validarlo al cerrar.
         "puede_cerrar": not cerrado and not resumen["sin_clasificar"],
+        # Corregir el fondo es del admin, sobre el día en curso, y solo si
+        # alguien ya abrió caja: las mismas tres condiciones que exige
+        # `services.corregir_fondo_del_dia`.
+        "puede_editar_fondo": (
+            g.current_user.role == "admin" and not cerrado
+            and fecha == date.today()
+            and services.hay_turno_del_dia(g.tenant_id, sucursal_id, fecha)
+        ),
     })
     return jsonify(resumen)
 
@@ -209,6 +220,32 @@ def abrir_turno():
     except services.CajaError as exc:
         return _error(exc)
     return jsonify(_dump_turno(turno)), 201
+
+
+@caja_bp.route("/fondo", methods=["PATCH"])
+@require_auth
+@require_role("admin")
+def corregir_fondo():
+    """Enmienda el fondo con el que arrancó el cajón hoy.
+
+    Es `/fondo` y no `/turno/<id>/fondo` porque hay UN cajón por sucursal: el
+    fondo es del día, no de la persona que abrió primero.
+    """
+    try:
+        data = FondoSchema().load(request.get_json() or {})
+    except ValidationError as err:
+        return jsonify({"error": "Datos inválidos", "detalles": err.messages}), 400
+    try:
+        sucursal_id = _validar_sucursal(data["sucursal_id"])
+    except _SucursalInvalida:
+        return jsonify({"error": "Sucursal inválida"}), 400
+    try:
+        turno = services.corregir_fondo_del_dia(
+            g.tenant_id, sucursal_id, date.today(), data["fondo_inicial"],
+        )
+    except services.CajaError as exc:
+        return _error(exc)
+    return jsonify(_dump_turno(turno)), 200
 
 
 @caja_bp.route("/corte", methods=["POST"])

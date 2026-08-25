@@ -55,11 +55,17 @@ function render() {
   document.getElementById('leyenda-entregar').textContent =
     'cobrado ' + fmt(resumen.totales.efectivo) + ' − gastado ' + fmt(resumen.salidas_efectivo);
 
-  // El fondo solo se menciona cuando existe: en una caja sin fondo la línea
-  // sería ruido permanente en la pantalla más usada.
-  const hayFondo = Number(resumen.fondo_inicial || 0) !== 0;
-  document.getElementById('leyenda-fondo').style.display = hayFondo ? '' : 'none';
+  // El fondo solo se menciona cuando existe —en una caja sin fondo la línea
+  // sería ruido permanente en la pantalla más usada—, salvo para quien puede
+  // corregirlo: un fondo en cero es justo el caso que vino a arreglar.
+  document.getElementById('leyenda-fondo').style.display =
+    CorteUX.muestraLeyendaFondo(resumen) ? '' : 'none';
   document.getElementById('stat-fondo').textContent = fmt(resumen.fondo_inicial);
+  // Quién puede corregir lo decide el servidor (`puede_editar_fondo`): repetir
+  // aquí las tres condiciones sería una copia que se desincroniza a la primera.
+  // `inline-flex` y no `''`: el botón nace con `display:none` en el marcado.
+  document.getElementById('btn-editar-fondo').style.display =
+    resumen.puede_editar_fondo ? 'inline-flex' : 'none';
 
   // "Otro" solo se asoma cuando hay algo que asomar (ver #aviso-otro en la
   // plantilla). `hidden` sí está en el marcado inicial de ese div y el div no
@@ -228,6 +234,41 @@ async function guardarSalida() {
     await cargarResumen();
   } catch (e) {
     Toast.warning(e.message || 'No se pudo registrar la salida');
+  }
+}
+
+function abrirEditarFondo() {
+  // Arranca con el fondo vigente, no en blanco: casi siempre se corrige a
+  // partir de lo que ya hay, y así el campo dice de dónde parte.
+  document.getElementById('f-editar-fondo').value =
+    Number(resumen.fondo_inicial || 0) !== 0 ? String(resumen.fondo_inicial) : '';
+  document.getElementById('error-editar-fondo').style.display = 'none';
+  Modal.open('modal-editar-fondo');
+}
+
+async function guardarFondo() {
+  const err = document.getElementById('error-editar-fondo');
+  const monto = CorteUX.normalizarMonto(document.getElementById('f-editar-fondo').value);
+  if (monto === null) {
+    // El error va dentro del modal y no en un toast: el dato malo está a la
+    // vista, y el mensaje tiene que quedarse junto al campo que hay que
+    // arreglar. Cero SÍ es válido — corregir a cero es una corrección legítima.
+    err.textContent = 'Escribe un monto válido (0 o más)';
+    err.style.display = '';
+    return;
+  }
+  try {
+    await API.patch('/caja/fondo', {
+      fondo_inicial: monto, sucursal_id: sucursalSel || null,
+    });
+    Modal.close('modal-editar-fondo');
+    Toast.success('Fondo inicial actualizado');
+    // Recargar y no parchear el objeto en memoria: el fondo mueve el esperado
+    // y la diferencia, y recalcularlos aquí sería duplicar `resumen_dia`.
+    await cargarResumen();
+  } catch (e) {
+    err.textContent = e.message || 'No se pudo corregir el fondo';
+    err.style.display = '';
   }
 }
 
@@ -673,6 +714,14 @@ async function init() {
 
     // Fail-closed: las dos vistas parten ocultas y se revela la que toca.
     document.getElementById('vista-recepcion').classList.remove('hidden');
+
+    // Corrección del fondo. Los listeners se enganchan siempre; quien no puede
+    // corregir nunca ve el botón (`puede_editar_fondo`, en render()).
+    document.getElementById('btn-editar-fondo').addEventListener('click', abrirEditarFondo);
+    document.getElementById('btn-confirmar-fondo').addEventListener('click', guardarFondo);
+    ['btn-cancelar-fondo', 'btn-cerrar-fondo', 'backdrop-fondo'].forEach(id =>
+      document.getElementById(id).addEventListener(
+        'click', () => Modal.close('modal-editar-fondo')));
     // OJO: NO es "distinto de recepcionista". Un asistente con el permiso
     // `caja` también llega a esta página (ver NAV_POR_RECURSO en app.js) y
     // puede cerrar caja como la vista de recepción, pero /caja/cortes,

@@ -93,12 +93,21 @@
     return { texto: "La caja cuadra", clase: "text-accent-700" };
   }
 
+  function muestraLeyendaFondo(resumen) {
+    // Un fondo en cero es ruido para quien solo lo lee, pero es la puerta de
+    // entrada para quien puede corregirlo: escondérselo dejaría la corrección
+    // sin dónde empezar.
+    return Number((resumen || {}).fondo_inicial || 0) !== 0
+      || !!(resumen || {}).puede_editar_fondo;
+  }
+
   var CorteUX = {
     normalizarMonto: normalizarMonto,
     diferencia: diferencia,
     excedeTolerancia: excedeTolerancia,
     puedeCerrar: puedeCerrar,
     etiquetaDiferencia: etiquetaDiferencia,
+    muestraLeyendaFondo: muestraLeyendaFondo,
   };
 
   if (typeof module !== "undefined" && module.exports) module.exports = CorteUX;

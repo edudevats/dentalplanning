@@ -280,6 +280,7 @@ const API = {
   get: (url) => API.request(url),
   post: (url, body) => API.request(url, { method: 'POST', body: JSON.stringify(body) }),
   put: (url, body) => API.request(url, { method: 'PUT', body: JSON.stringify(body) }),
+  patch: (url, body) => API.request(url, { method: 'PATCH', body: JSON.stringify(body) }),
   delete: (url, body) => API.request(url, {
     method: 'DELETE',
     ...(body !== undefined ? { body: JSON.stringify(body) } : {}),

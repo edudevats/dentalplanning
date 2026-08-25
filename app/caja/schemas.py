@@ -29,6 +29,18 @@ class TurnoSchema(Schema):
     fondo_inicial = fields.Float(load_default=0, validate=validate.Range(min=0))
 
 
+class FondoSchema(Schema):
+    """Corrección del fondo del día. La fecha NO se recibe: siempre es hoy."""
+
+    class Meta:
+        unknown = EXCLUDE
+
+    sucursal_id = fields.Int(allow_none=True, load_default=None)
+    # Requerido, a diferencia de `TurnoSchema`: al abrir, omitirlo significa
+    # "arranco sin cambio"; al corregir, omitirlo solo puede ser un descuido.
+    fondo_inicial = fields.Float(required=True, validate=validate.Range(min=0))
+
+
 class SalidaSchema(Schema):
     class Meta:
         unknown = EXCLUDE
