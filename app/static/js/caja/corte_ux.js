@@ -98,7 +98,7 @@
     // entrada para quien puede corregirlo: escondérselo dejaría la corrección
     // sin dónde empezar.
     return Number((resumen || {}).fondo_inicial || 0) !== 0
-      || !!(resumen || {}).puede_editar_fondo;
+      || !!(resumen || {}).puede_corregir_dia;
   }
 
   var CorteUX = {

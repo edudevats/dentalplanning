@@ -308,8 +308,20 @@ def eliminar_sucursal(sucursal_id):
     ).first_or_404()
     # Bloquea el borrado si hay filas que referencian la sucursal (FK). Se filtra
     # por tenant_id además de sucursal_id para no contar datos de otros tenants.
-    from app.edr.models import Ingreso
-    referencias = ((Ticket, "ticket"), (Ingreso, "ingreso"))
+    #
+    # TurnoCaja, GastoOperativo y CorteCaja entraron a la lista junto con
+    # Ticket e Ingreso: los tres tienen FK a `sucursales.id` desde antes, pero
+    # el backfill de la sucursal obligatoria (turno-de-caja) fue lo que los
+    # llenó de verdad. Antes, en un tenant de una sola sucursal, esas columnas
+    # vivían en NULL y nunca estorbaban un borrado; ahora todos los turnos,
+    # gastos y cortes apuntan a la sucursal, así que borrar una con turnos pero
+    # sin ingresos violaría la FK y tiraría un 500 en vez de este 409.
+    from app.caja.models import CorteCaja, TurnoCaja
+    from app.edr.models import GastoOperativo, Ingreso
+    referencias = (
+        (Ticket, "ticket"), (Ingreso, "ingreso"), (TurnoCaja, "turno"),
+        (GastoOperativo, "gasto"), (CorteCaja, "corte"),
+    )
     for modelo, nombre in referencias:
         n = modelo.query.filter_by(tenant_id=g.tenant_id, sucursal_id=suc.id).count()
         if n > 0:

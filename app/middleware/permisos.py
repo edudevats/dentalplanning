@@ -157,10 +157,13 @@ RUTAS_CRITICAS = (
     ("POST", "/api/v1/ajustes/distribucion/categorias"),
     ("PUT", "/api/v1/ajustes/distribucion/categorias"),
     ("DELETE", "/api/v1/ajustes/distribucion/categorias"),
-    # Corte de caja: reabrir un corte firmado y ver el histórico son del admin,
-    # aunque el asistente tenga `editar` sobre el recurso.
+    # Corte de caja: reabrir un corte firmado, ver el histórico, y corregir el
+    # fondo o mover la caja de sucursal son del admin, aunque el asistente
+    # tenga `editar` sobre el recurso — mover dinero y folios fiscales entre
+    # sucursales no es lo que un admin quiso decir al marcar "Caja: editar".
     ("POST", "/api/v1/caja/reabrir"),
     ("GET", "/api/v1/caja/cortes"),
+    ("PATCH", "/api/v1/caja/dia"),
 )
 
 

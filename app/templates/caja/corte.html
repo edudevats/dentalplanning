@@ -110,9 +110,9 @@
            genera esa regla si la ve al cargar. -->
       <p id="leyenda-fondo" style="display:none" class="text-xs text-primary-600 font-body mt-1">
         Fondo que se queda en caja: <span id="stat-fondo" class="tabular-nums">$0.00</span>
-        <button type="button" id="btn-editar-fondo" style="display:none"
+        <button type="button" id="btn-corregir-dia" style="display:none"
           class="ml-1 items-center gap-1 text-primary-700 hover:text-primary-800 underline underline-offset-2 cursor-pointer">
-          <i data-lucide="pencil" class="h-3 w-3 inline"></i> Corregir
+          <i data-lucide="pencil" class="h-3 w-3 inline"></i> Corregir caja
         </button>
       </p>
     </div>
@@ -394,38 +394,46 @@
 
 {% block scripts %}
 <script src="{{ url_for('static', filename='js/caja/corte_ux.js') }}"></script>
-{# Corrección del fondo inicial. Solo del admin y solo sobre el día en curso;
-   el botón que lo abre lo revela `puede_editar_fondo`, que decide el servidor
-   (app/caja/routes.py) con las mismas tres condiciones que valida el servicio.
+{# Corrección de la caja del día: el fondo y —cuando hay dos o más sucursales—
+   a qué sucursal pertenece. Solo del admin y solo sobre el día en curso; el
+   botón que lo abre lo revela `puede_corregir_dia`, que decide el servidor
+   (app/caja/routes.py::ver_corte).
 
-   Vive en esta pantalla y no en el partial compartido del inicio de caja: es
-   una acción de supervisión sobre el corte, no un paso de la captura diaria. #}
-<div id="modal-editar-fondo" class="hidden fixed inset-0 z-50 overflow-y-auto">
+   Las dos correcciones van en UN modal y en UNA llamada a propósito: se hacen
+   en el mismo momento, y partirlas dejaría la puerta abierta a que una pase y
+   la otra falle. #}
+<div id="modal-corregir-dia" class="hidden fixed inset-0 z-50 overflow-y-auto">
   <div class="flex min-h-full items-end sm:items-center justify-center p-4">
-    <div id="backdrop-fondo" class="fixed inset-0 bg-black/40"></div>
+    <div id="backdrop-corregir" class="fixed inset-0 bg-black/40"></div>
     <div class="relative bg-surface rounded-2xl shadow-xl w-full max-w-md">
       <div class="flex items-center justify-between px-6 py-4 border-b border-border">
-        <h2 class="text-base font-semibold font-heading text-text-primary">Corregir fondo inicial</h2>
-        <button type="button" id="btn-cerrar-fondo" aria-label="Cerrar"
+        <h2 class="text-base font-semibold font-heading text-text-primary">Corregir caja del día</h2>
+        <button type="button" id="btn-cerrar-corregir" aria-label="Cerrar"
           class="p-2 rounded-lg text-text-muted hover:bg-surface-hover transition-colors cursor-pointer"><i data-lucide="x" class="h-4 w-4"></i></button>
       </div>
       <div class="px-6 py-5 space-y-4">
-        <p class="text-sm text-text-secondary font-body">
-          El monto con el que realmente arrancó el cajón hoy. Cambiarlo mueve el
-          efectivo esperado del corte.
-        </p>
         <div>
-          <label for="f-editar-fondo" class="block text-sm font-medium text-text-secondary mb-1 font-body">Fondo inicial</label>
-          <input id="f-editar-fondo" type="text" inputmode="decimal" placeholder="0.00"
+          <label for="f-corregir-fondo" class="block text-sm font-medium text-text-secondary mb-1 font-body">Fondo inicial</label>
+          <input id="f-corregir-fondo" type="text" inputmode="decimal" placeholder="0.00"
             class="block w-full rounded-lg border border-border px-3 py-2.5 text-sm font-body min-h-[44px] bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-500" />
-          <p id="error-editar-fondo" style="display:none" class="mt-1 text-sm text-danger-600 font-body"></p>
         </div>
+        {# Nace oculto con style="display:none" y NO con la clase `hidden`: el
+           JIT de Tailwind del navegador solo genera `.hidden` cuando la ve al
+           cargar. Lo revela corte.js si `puede_mover_sucursal`. #}
+        <div id="wrap-corregir-sucursal" style="display:none">
+          <label for="f-corregir-sucursal" class="block text-sm font-medium text-text-secondary mb-1 font-body">Sucursal</label>
+          <select id="f-corregir-sucursal" class="block w-full rounded-lg border border-border px-3 py-2.5 text-sm font-body min-h-[44px] bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-500"></select>
+          <p class="mt-1 text-xs text-text-muted font-body">
+            Cambiarla mueve a esa sucursal los ingresos, gastos y tickets sin facturar de hoy.
+          </p>
+        </div>
+        <p id="error-corregir-dia" style="display:none" class="text-sm text-danger-600 font-body"></p>
       </div>
       <div class="flex justify-end gap-3 px-6 py-4 border-t border-border">
-        <button type="button" id="btn-cancelar-fondo"
+        <button type="button" id="btn-cancelar-corregir"
           class="inline-flex items-center justify-center gap-2 rounded-lg font-medium font-body cursor-pointer border border-border bg-surface hover:bg-surface-hover text-text-secondary px-4 py-2 text-sm min-h-[38px]">Cancelar</button>
-        <button type="button" id="btn-confirmar-fondo"
-          class="inline-flex items-center justify-center gap-2 rounded-lg font-medium font-body cursor-pointer bg-accent-600 hover:bg-accent-700 text-white px-4 py-2 text-sm min-h-[38px] disabled:opacity-50 disabled:cursor-not-allowed">Guardar</button>
+        <button type="button" id="btn-confirmar-corregir"
+          class="inline-flex items-center justify-center gap-2 rounded-lg font-medium font-body cursor-pointer bg-accent-600 hover:bg-accent-700 text-white px-4 py-2 text-sm min-h-[38px] disabled:opacity-50 disabled:cursor-not-allowed"><span id="texto-confirmar-corregir">Guardar</span></button>
       </div>
     </div>
   </div>

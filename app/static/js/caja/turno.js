@@ -51,13 +51,30 @@
   /* Valida lo que el modal va a mandar a POST /caja/turno.
    *
    * Devuelve {ok:true, payload} o {ok:false, error}. Los mismos rechazos que
-   * hace el servicio (sucursal_requerida, fondo_invalido), pero antes del
-   * viaje: el servidor sigue siendo la autoridad, esto solo evita el rebote. */
+   * hace el servicio, pero antes del viaje: el servidor sigue siendo la
+   * autoridad, esto solo evita el rebote.
+   *
+   * Las tres capas de esta regla -esta función, `resolver_sucursal_del_turno`
+   * en app/caja/services.py, y el `HAVING COUNT(*) = 1` de la migración de
+   * backfill- tienen que decir exactamente lo mismo con exactamente una
+   * sucursal: la IMPONEN, sin preguntar. Si esta función en vez de imponerla
+   * se la EXIGIERA al usuario (como hacía antes), dependería de que
+   * `abrirModal` la haya preseleccionado en el `<select>[esto cuelga de que
+   * `populateSelect` ya esté cargado]`; el día que no lo esté -orden de
+   * scripts, red lenta- el campo llega vacío y esta función rechazaría con
+   * "Elige en qué sucursal vas a trabajar" DENTRO del modal bloqueante, donde
+   * `cerrarModal` es un no-op: la recepcionista de un tenant de una sola
+   * sucursal quedaría encerrada en la pantalla que se abre a primera hora
+   * todos los días. Imponer aquí, igual que el servidor, cierra ese hueco.
+   *
+   * `sucursalesDisponibles` y no `separaSucursales`: la regla ya no es "¿el
+   * corte separa por sucursal?" sino "¿hay alguna sucursal que elegir?". */
   function validarApertura(opts) {
     var o = opts || {};
-    var separa = o.separaSucursales === true;
+    var total = Number(o.sucursalesDisponibles || 0);
+    var hayQueElegir = total >= 2;
 
-    if (separa && !o.sucursalId) {
+    if (hayQueElegir && !o.sucursalId) {
       return { ok: false, error: "Elige en qué sucursal vas a trabajar" };
     }
 
@@ -73,10 +90,23 @@
       }
     }
 
+    // Con exactamente una, el valor viene de `unicaSucursalId` -que `confirmar`
+    // saca de la misma lista que contó `total`- y NO de `sucursalId`: el select
+    // puede llegar vacío o deshabilitado y aun así el payload tiene que salir
+    // completo, igual que lo impone el servidor.
+    //
+    // `|| null` y no solo `Number(...)`: sin esto, un `unicaSucursalId` ausente
+    // (nadie lo manda hoy, pero esta función tiene que ser TOTAL, no solo
+    // correcta para su único llamador) daría `Number(undefined)` = `NaN`, y un
+    // payload con `NaN` no es un valor válido para nada que lo consuma.
+    var sucursalId = total === 1
+      ? (Number(o.unicaSucursalId) || null)
+      : (hayQueElegir ? Number(o.sucursalId) : null);
+
     return {
       ok: true,
       payload: {
-        sucursal_id: separa ? Number(o.sucursalId) : null,
+        sucursal_id: sucursalId,
         fondo_inicial: fondo,
       },
     };
@@ -138,13 +168,32 @@
   function abrirModal(forzado) {
     bloqueante = forzado === true;
 
+    // El campo se muestra en cuanto exista UNA sucursal, no solo con dos o más:
+    // con una sola se muestra ya elegida y bloqueada, para que quien abre vea
+    // dónde va a caer el dinero. Con ninguna no hay nada que mostrar.
     var wrap = el("wrap-turno-sucursal");
-    if (wrap) wrap.style.display = estado.separaSucursales ? "" : "none";
-    if (estado.separaSucursales && typeof populateSelect === "function") {
-      populateSelect(el("f-turno-sucursal"),
+    var unica = sucursales.length === 1;
+    if (wrap) wrap.style.display = sucursales.length >= 1 ? "" : "none";
+    var sel = el("f-turno-sucursal");
+    if (sel && sucursales.length >= 1 && typeof populateSelect === "function") {
+      populateSelect(sel,
         sucursales.map(function (s) {
           return { value: String(s.id), label: s.nombre };
-        }), "", "Selecciona la sucursal");
+        }),
+        // Sin opción vacía cuando hay que elegir: "Sin sucursal" dejó de ser un
+        // estado en el que se pueda abrir caja.
+        unica ? String(sucursales[0].id) : "",
+        unica ? null : "Selecciona la sucursal");
+      // disabled y no readOnly: un <select> no tiene readOnly, y el valor no
+      // viaja en ningún formulario — lo lee `confirmar` con .value, que sigue
+      // funcionando en un select deshabilitado.
+      sel.disabled = unica;
+    }
+    var etiquetaSuc = el("label-turno-sucursal");
+    if (etiquetaSuc) {
+      etiquetaSuc.textContent = unica
+        ? "Sucursal"
+        : "¿En qué sucursal vas a trabajar hoy?";
     }
 
     var campo = el("f-turno-fondo");
@@ -168,7 +217,10 @@
     var btn = el("btn-confirmar-turno");
     var texto = el("texto-confirmar-turno");
     var v = validarApertura({
-      separaSucursales: estado.separaSucursales,
+      sucursalesDisponibles: sucursales.length,
+      // Con exactamente una sucursal, `validarApertura` la impone y no lee
+      // `sucursalId` -este es el dato que de verdad usa en ese caso.
+      unicaSucursalId: sucursales.length === 1 ? sucursales[0].id : null,
       sucursalId: el("f-turno-sucursal") ? el("f-turno-sucursal").value : "",
       fondoTexto: el("f-turno-fondo") ? el("f-turno-fondo").value : "",
     });
@@ -232,7 +284,6 @@
     cargar: cargar,
     abrirModal: abrirModal,
     actual: function () { return estado.turno; },
-    separaSucursales: function () { return estado.separaSucursales; },
   };
 
   if (typeof module !== "undefined" && module.exports) module.exports = TurnoCaja;

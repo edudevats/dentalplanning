@@ -149,39 +149,367 @@ def hay_turno_del_dia(tenant_id, sucursal_id, fecha):
     return _primer_turno_del_dia(tenant_id, sucursal_id, fecha) is not None
 
 
-def corregir_fondo_del_dia(tenant_id, sucursal_id, fecha, monto):
-    """Reescribe el fondo del cajón de ese día y sucursal.
+def _tickets_del_dia(tenant_id, sucursal_id, fecha):
+    """Los tickets de los ingresos de ese día y sucursal, sin repetir.
 
-    Existe porque el fondo se captura a primera hora y con prisa: dejarlo en
-    blanco es el error natural, y sin esto la única salida era cerrar el día
-    con una diferencia falsa.
+    Se llega a ellos por el ingreso y no por `Ticket.fecha`: la fecha del ticket
+    es la del PRIMER ingreso que lo abrió, y lo que se está moviendo son los
+    ingresos.
     """
-    monto = _parsear_fondo(monto)
+    from app.facturacion.models import Ticket
+    ids = [i.ticket_id for i in Ingreso.query.filter(
+        Ingreso.tenant_id == tenant_id,
+        Ingreso.fecha == fecha,
+        Ingreso.sucursal_id == sucursal_id,
+        Ingreso.ticket_id.isnot(None),
+    ).all()]
+    if not ids:
+        return []
+    # `tenant_id` de nuevo aquí: `Ticket.id` es autoincremental global, y sin
+    # este filtro un `id` que calzara por casualidad con el de otro tenant
+    # (imposible en la práctica, pero el resto del módulo no se fía de eso en
+    # ningún otro lado) se colaría en la lista.
+    return Ticket.query.filter(Ticket.id.in_(set(ids)),
+                               Ticket.tenant_id == tenant_id).all()
+
+
+def _no_es_de_sucursal(columna, sucursal_id):
+    """El NULL-safe "esto no es de esa sucursal", tratando NULL como un valor.
+
+    No se puede armar negando `_filtro_sucursal` con `db.not_(...)`: en SQL,
+    `NOT(columna == valor)` cuando `columna` es NULL sigue dando NULL (no
+    verdadero), así que `NOT()` sobre una igualdad se degrada otra vez a un
+    `!=` de a pie y pierde las filas en NULL — el mismo bug que motivó esta
+    función, reaparecido por la puerta de atrás. Por eso el sentido "no es
+    esta sucursal" se construye derecho, no por negación.
+    """
+    if sucursal_id is None:
+        return columna.isnot(None)
+    return db.or_(columna.is_(None), columna != sucursal_id)
+
+
+def _exigir_tickets_movibles(tenant_id, origen_id, destino_id, fecha):
+    """Los tickets del día tienen que poder mudarse enteros y sin timbrar.
+
+    Cuatro rechazos:
+
+    - `ticket_timbrado`: un CFDI ya emitido lleva la sucursal dentro del
+      comprobante. Cambiársela por debajo sería falsificarlo; hay que cancelarlo.
+    - `ticket_en_error`: un ticket que quedó en error de timbrado pudo haber
+      timbrado igual y solo perdido la respuesta (por eso `Ticket.cfdi_fecha` se
+      conserva: el reintento regenera un CFDI byte-idéntico). Cambiarle sucursal
+      y folio por debajo rompería esa regeneración, así que se bloquea igual que
+      un timbrado, pero con su propio mensaje: aquí no hay nada que cancelar
+      (`cfdi.cancelar_ticket` exige `estado in (timbrada, en_proceso_cancelacion)`,
+      así que un ticket en error no se puede cancelar). Reintentar el timbrado
+      SÍ es posible (`cfdi.timbrar_ticket` acepta `TICKET_ERROR`, y el portal del
+      paciente lo trata como refacturable) y sí saca al ticket de `error`, pero
+      eso no desbloquea la caja: si el reintento timbra, el ticket cae derecho
+      en el candado de `ticket_timbrado` de aquí abajo. La única salida real es
+      que el timbrado NUNCA se complete (CSD vencido, RFC del receptor
+      rechazado, Finkok caído) y alguien lo saque de `error` a mano -hoy no hay
+      ninguna acción en el producto para eso.
+    - `ticket_cancelado`: cancelar un CFDI no borra que existió. El ticket
+      sigue llevando la sucursal con la que se timbró en su momento, así que
+      moverlo por debajo lo falsificaría igual que a uno vigente. Y aquí, igual
+      que en `ticket_en_error`, no hay ninguna salida real en el producto: los
+      tres caminos que un admin probaría para "recapturar en la otra sucursal"
+      están cerrados -editar el ingreso y borrarlo y recapturarlo chocan los
+      dos con el mismo candado de `app/edr/routes.py` (`estado != sin_timbrar`
+      → 400), y `asignar_ticket` sabe reasignar un ingreso a otro ticket pero
+      ninguna ruta lo invoca sobre un ingreso que YA tiene ticket (sus únicos
+      llamadores son altas nuevas). Lo único ejecutable es escalarlo. Lo que le
+      faltaría al producto para que hubiera una salida de verdad es una acción
+      que desasigne los ingresos de un ticket no vigente (cancelado) para que
+      puedan recapturarse o reasignarse limpios -análoga a la nota de `uuid IS
+      NULL` de `ticket_en_error`.
+    - `ticket_mixto`: `asignar_ticket` agrupa por folio, no por día, así que un
+      ticket sin timbrar puede haber acumulado ingresos de otra fecha o de una
+      TERCERA sucursal (ni el origen ni el destino de esta mudanza). Mover solo
+      esa parte lo dejaría partido entre dos sucursales. Un ticket cuyos
+      ingresos caen todos en el origen o el destino sí se puede mover completo
+      -la mudanza lo termina de unificar, no lo parte- así que "ajeno" se define
+      contra los DOS extremos del movimiento, no solo contra el origen.
+
+    Devuelve la lista de tickets que sí se pueden mudar.
+    """
+    from app.facturacion.models import (
+        TICKET_SIN_TIMBRAR, TICKET_ERROR, TICKET_CANCELADA,
+    )
+
+    tickets = _tickets_del_dia(tenant_id, origen_id, fecha)
+
+    en_error = [t for t in tickets if t.estado == TICKET_ERROR]
+    if en_error:
+        folios = ", ".join(t.folio_display for t in en_error)
+        raise CajaError(
+            f"Los tickets {folios} quedaron en error de timbrado y pueden "
+            "haberse emitido igual con la respuesta perdida, así que la caja "
+            "no se puede mover mientras sigan en ese estado. Reintentar el "
+            "timbrado no desbloquea la caja -si timbra, el ticket cae en el "
+            "mismo candado que uno ya facturado-: si el timbrado de verdad no "
+            "se puede completar (CSD vencido, RFC rechazado, Finkok caído), "
+            "repórtalo a soporte técnico para resolverlo a mano.",
+            codigo="ticket_en_error",
+            datos={"folios": folios},
+        )
+
+    # `timbrados` va ANTES que `canceladas`: con un ticket de cada tipo el
+    # mismo día, `ticket_timbrado` SÍ trae una acción ejecutable (cancelar la
+    # factura), mientras que `ticket_cancelado` es, como `ticket_en_error`, un
+    # callejón sin salida. Mostrar primero lo accionable importa -esconder el
+    # camino que sí funciona detrás del que no tiene sería el mismo defecto
+    # que esta ola vino a corregir, solo que en el orden en vez del texto.
+    timbrados = [t for t in tickets
+                if t.estado not in (TICKET_SIN_TIMBRAR, TICKET_CANCELADA)]
+    if timbrados:
+        folios = ", ".join(t.folio_display for t in timbrados)
+        raise CajaError(
+            f"No se puede mover la caja: ya se facturaron los tickets {folios}. "
+            "Cancela esas facturas antes de cambiar la sucursal.",
+            codigo="ticket_timbrado",
+            datos={"folios": folios},
+        )
+
+    canceladas = [t for t in tickets if t.estado == TICKET_CANCELADA]
+    if canceladas:
+        folios = ", ".join(t.folio_display for t in canceladas)
+        raise CajaError(
+            f"Los tickets {folios} ya están cancelados, y cancelar no borra "
+            "que existieron: siguen llevando la sucursal con la que se "
+            "timbraron, así que moverlos la falsificaría igual que a uno "
+            "vigente. Aquí no hay una salida en el producto -editar o "
+            "recapturar esos cobros choca con el mismo candado que un ticket "
+            "vigente, y no hay ninguna acción que los desligue de este ticket-"
+            " así que repórtalo a soporte técnico para resolverlo a mano.",
+            codigo="ticket_cancelado",
+            datos={"folios": folios},
+        )
+
+    for t in tickets:
+        # Ajeno = ni el origen ni el destino de ESTA mudanza, con NULL tratado
+        # como valor en los dos lados (`_no_es_de_sucursal`). Cuando no hay
+        # mudanza real (origen == destino) las dos condiciones son la misma y
+        # el AND se reduce solo, sin caso especial.
+        no_es_origen = _no_es_de_sucursal(Ingreso.sucursal_id, origen_id)
+        no_es_destino = _no_es_de_sucursal(Ingreso.sucursal_id, destino_id)
+        ajenos = Ingreso.query.filter(
+            Ingreso.tenant_id == tenant_id,
+            Ingreso.ticket_id == t.id,
+            db.or_(Ingreso.fecha != fecha,
+                   db.and_(no_es_origen, no_es_destino)),
+        ).count()
+        if ajenos:
+            folio_display = t.folio_display
+            raise CajaError(
+                f"El ticket {folio_display} agrupa cobros de otro día o de una "
+                "tercera sucursal, así que moverlo lo dejaría partido. Reasigna "
+                "esos cobros a la fecha o sucursal que les corresponde, o "
+                "cancela el ticket, y vuelve a intentar mover la caja.",
+                codigo="ticket_mixto",
+                datos={"folios": folio_display},
+            )
+    return tickets
+
+
+def _mover_caja(tenant_id, origen_id, destino_id, fecha):
+    """Muda el día entero de una sucursal a otra. No hace commit.
+
+    El día entero y no solo el turno: mover únicamente el turno dejaría a la
+    sucursal correcta en ceros y a la equivocada con el dinero, que es el
+    problema que se vino a arreglar. "El día entero" incluye TODOS los
+    `GastoOperativo` de esa fecha y sucursal, no solo los que salen de caja
+    (`sale_de_caja=True`): el gasto pertenece a la sucursal igual que el
+    ingreso, así que corregir la sucursal tiene que alcanzarlo también.
+    """
+    from app.facturacion.models import Sucursal
+    from app.facturacion.services import siguiente_folio
+
+    destino = Sucursal.query.filter_by(
+        id=destino_id, tenant_id=tenant_id).first()
+    if destino is None:
+        # Sin esta guarda, los tres UPDATE masivos de abajo escriben
+        # `sucursal_id = destino_id` de todos modos -la FK se satisface con
+        # una fila de otro tenant o revienta con un id que no existe en
+        # ninguno- y el día entero, dinero y folios, queda apuntando a una
+        # sucursal que no es de esta clínica.
+        raise CajaError(
+            "La sucursal de destino no existe en esta clínica. "
+            "Elige una sucursal válida de la lista.",
+            codigo="sucursal_invalida",
+        )
+
+    tickets = _exigir_tickets_movibles(tenant_id, origen_id, destino_id, fecha)
+
+    for modelo in (Ingreso, GastoOperativo, TurnoCaja):
+        modelo.query.filter(
+            modelo.tenant_id == tenant_id,
+            modelo.fecha == fecha,
+            modelo.sucursal_id == origen_id,
+        ).update({"sucursal_id": destino_id}, synchronize_session=False)
+
+    # Los tickets al final y de uno en uno: cada folio nuevo se calcula contra
+    # el máximo del destino, así que el flush entre uno y otro es lo que evita
+    # que dos tickets de la misma mudanza reciban el mismo número.
+    #
+    # El folio se calcula ANTES de tocar `t.sucursal_id`: la sesión hace
+    # autoflush al lanzar la consulta de `siguiente_folio`, y si la sucursal ya
+    # estuviera sucia en memoria ese autoflush la escribiría en la BD antes del
+    # SELECT — el propio ticket, todavía con su folio viejo, se colaría en el
+    # máximo del destino y el folio nuevo saldría inflado.
+    for t in tickets:
+        if t.sucursal_id == destino_id:
+            # Ya vive en el destino (p. ej. `actualizar_ingreso` dejó divergir
+            # la sucursal del ingreso de la de su ticket). Re-foliarlo sería
+            # gastar un folio para no cambiar nada; el mismo principio que ya
+            # exige `test_mover_a_la_misma_sucursal_es_un_no_op` para el
+            # turno aplica aquí ticket por ticket.
+            continue
+        folio = siguiente_folio(tenant_id, destino_id)
+        t.sucursal_id = destino_id
+        t.serie = destino.serie or ""
+        t.folio = folio
+        db.session.flush()
+
+
+def corregir_caja_del_dia(tenant_id, sucursal_id, fecha, *, fondo_inicial,
+                          sucursal_destino_id=None):
+    """Enmienda el fondo y —si hace falta— la sucursal del cajón de hoy.
+
+    Existe porque la caja se abre a primera hora y con prisa: dejar el fondo en
+    blanco y elegir la sucursal equivocada son los dos errores naturales, y sin
+    esto la única salida era cerrar el día con una diferencia falsa o editar
+    ingreso por ingreso.
+
+    Las dos correcciones van juntas en una transacción a propósito: se hacen en
+    el mismo momento y sobre el mismo día, y partirlas dejaría la puerta abierta
+    a que una pase y la otra falle.
+
+    Si el destino ya tenía su propio turno abierto por otra persona, los dos
+    turnos se fusionan bajo el fondo nuevo: hay UN cajón por sucursal y por
+    día, así que dos fondos abiertos a la vez en la misma sucursal no es un
+    estado que tenga sentido conservar por separado.
+    """
+    monto = _parsear_fondo(fondo_inicial)
 
     if fecha != date.today():
         # El turno de ayer ya caducó y su fondo es historia: corregirlo movería
         # el esperado de un día que nadie va a volver a contar.
-        raise CajaError("Solo puedes corregir el fondo del día en curso",
+        raise CajaError("Solo puedes corregir la caja del día en curso",
                         codigo="fecha_no_editable")
 
     if corte_cerrado(tenant_id, sucursal_id, fecha):
         raise CajaError(
             f"La caja del {fecha.strftime('%d/%m/%Y')} ya fue cerrada. "
-            "Reábrela para corregir el fondo.",
+            "Reábrela para corregirla.",
             codigo="dia_cerrado",
         )
 
     turnos = _turnos_del_dia(tenant_id, sucursal_id, fecha).all()
     if not turnos:
-        # Sin turno nadie abrió el cajón: no hay fondo declarado que enmendar.
-        # Declararlo aquí exigiría inventar un dueño para el turno.
+        # Sin turno nadie abrió el cajón: no hay caja que enmendar. Declararla
+        # aquí exigiría inventar un dueño para el turno.
         raise CajaError("Nadie ha abierto caja hoy en esta sucursal",
                         codigo="sin_turno_del_dia")
 
-    for turno in turnos:
-        turno.fondo_inicial = monto
-    db.session.commit()
+    mueve = (sucursal_destino_id is not None
+             and sucursal_destino_id != sucursal_id)
+
+    # De aquí en adelante el cuerpo muta filas de verdad. El docstring promete
+    # una transacción -las dos correcciones pasan juntas o ninguna- y sin este
+    # try/except esa promesa no está escrita en ningún lado: un fallo que no
+    # sea `CajaError` (por ejemplo un `IntegrityError` contra
+    # `uq_ticket_folio_sucursal` si dos mudanzas compiten por el mismo folio, o
+    # una mudanza choca contra un `asignar_ticket` corriendo al mismo tiempo)
+    # saldría dejando los tres UPDATE masivos ya aplicados y sin revertir.
+    # El `IntegrityError` tiene además su propio `except`, más abajo: sin
+    # traducirlo a `CajaError` la ruta (`app/caja/routes.py`) no lo atrapa -solo
+    # captura `services.CajaError`- y el admin vería un 500 crudo en una
+    # pantalla de dinero, en vez del 409 con instrucciones que sí puede seguir.
+    try:
+        if mueve:
+            if corte_cerrado(tenant_id, sucursal_destino_id, fecha):
+                raise CajaError(
+                    "La caja de la sucursal a la que quieres mover ya fue "
+                    f"cerrada el {fecha.strftime('%d/%m/%Y')}. Reábrela "
+                    "primero.",
+                    codigo="dia_cerrado",
+                )
+            _mover_caja(tenant_id, sucursal_id, sucursal_destino_id, fecha)
+            # Hay que releer, pero no por lo que parece: el UPDATE masivo de
+            # `_mover_caja` corrió con `synchronize_session=False`, así que
+            # SQLAlchemy no le avisó a la sesión del cambio, pero eso no hace
+            # que las instancias en memoria queden mal apuntadas -el
+            # `commit()` de abajo, con `expire_on_commit=True`, las expira y
+            # las recarga solas. Lo que esta relectura sí aporta es traer los
+            # turnos que YA vivían en el destino (la fusión que describe el
+            # docstring): sin ella `turnos` seguiría apuntando solo a los del
+            # origen.
+            turnos = _turnos_del_dia(tenant_id, sucursal_destino_id, fecha).all()
+
+        for turno in turnos:
+            turno.fondo_inicial = monto
+        db.session.commit()
+    except IntegrityError:
+        # `uq_ticket_folio_sucursal`: dos mudanzas a la vez, o una mudanza
+        # contra un `asignar_ticket` concurrente, calcularon el mismo folio
+        # nuevo para el mismo destino. No es un dato inválido -el cliente mandó
+        # algo bien formado- es una carrera; reintentar (ahora sin la otra
+        # operación de por medio) sí funciona, así que se le dice eso al admin
+        # en vez de dejarlo con un 500 sin explicación.
+        db.session.rollback()
+        raise CajaError(
+            "Dos movimientos de caja chocaron por el mismo folio al mismo "
+            "tiempo. Vuelve a intentar mover la caja.",
+            codigo="folio_en_disputa",
+        )
+    except Exception:
+        db.session.rollback()
+        raise
     return turnos[0]
+
+
+def _sucursales_del_tenant(tenant_id):
+    """Las sucursales del tenant, de la más vieja a la más nueva.
+
+    El orden importa: con exactamente una, `resolver_sucursal_del_turno` la
+    impone, y "la única" tiene que resolver siempre a la misma fila.
+    """
+    from app.facturacion.models import Sucursal
+    return Sucursal.query.filter_by(tenant_id=tenant_id).order_by(
+        Sucursal.id).all()
+
+
+def resolver_sucursal_del_turno(tenant_id, sucursal_id):
+    """La sucursal con la que se abre la caja. Nunca a medias.
+
+    «Sin sucursal» dejó de ser un estado en el que se pueda abrir caja: era el
+    hueco por el que el ingreso nacía huérfano y el ticket no llegaba a
+    crearse. La regla se resuelve por cuántas sucursales tiene el tenant:
+
+    - una  → el servidor la IMPONE y se ignora lo que mande el cliente. Pedir lo
+             que tiene una única respuesta posible es inventar una oportunidad
+             de equivocarse, y es a primera hora y con prisa cuando se abre caja.
+    - dos+ → es OBLIGATORIA. Decir dónde se trabaja es el punto entero del turno.
+    - cero → None es el único valor posible: no se puede obligar a elegir de una
+             lista vacía, y bloquear la caja de un tenant que todavía no
+             configuró facturación sería un remedio peor que la enfermedad.
+
+    OJO: esto NO es `sucursal_separa_cajas`. Aquella decide si el CORTE parte el
+    día en varias cajas (y con una sola sucursal sigue diciendo que no, para que
+    los movimientos viejos en NULL caigan en el mismo corte que los nuevos).
+    Esta decide con qué sucursal NACE el movimiento. Son preguntas distintas y
+    confundirlas fue exactamente el bug.
+    """
+    sucursales = _sucursales_del_tenant(tenant_id)
+    if len(sucursales) == 1:
+        return sucursales[0].id
+    if not sucursales:
+        return None
+    if sucursal_id is None:
+        raise CajaError("Elige en qué sucursal vas a trabajar",
+                        codigo="sucursal_requerida")
+    return sucursal_id
 
 
 def abrir_turno(tenant_id, usuario_id, *, sucursal_id, fondo_inicial):
@@ -192,14 +520,7 @@ def abrir_turno(tenant_id, usuario_id, *, sucursal_id, fondo_inicial):
     """
     hoy = date.today()
 
-    if sucursal_separa_cajas(tenant_id):
-        # Con dos o más sedes, decir dónde trabaja es el punto entero del turno:
-        # si se deja adivinar, vuelve el bug que este diseño existe para cerrar.
-        if sucursal_id is None:
-            raise CajaError("Elige en qué sucursal vas a trabajar",
-                            codigo="sucursal_requerida")
-    else:
-        sucursal_id = None
+    sucursal_id = resolver_sucursal_del_turno(tenant_id, sucursal_id)
 
     vigente = turno_vigente(tenant_id, usuario_id)
     if vigente is not None:

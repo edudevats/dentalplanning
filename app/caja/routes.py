@@ -7,7 +7,7 @@ from marshmallow import ValidationError
 from app.caja import services
 from app.caja.models import CorteCaja
 from app.caja.schemas import (
-    CierreSchema, FondoSchema, ReaperturaSchema, SalidaSchema, TurnoSchema,
+    CierreSchema, CorreccionDiaSchema, ReaperturaSchema, SalidaSchema, TurnoSchema,
 )
 from app.middleware.tenant import require_auth, require_role
 
@@ -24,6 +24,16 @@ _CODIGOS_409 = {
     # Corregir el fondo sobre un día sin turno o que no es hoy: dato bien
     # formado contra un estado que no lo admite.
     "sin_turno_del_dia", "fecha_no_editable",
+    # Mover la caja sobre tickets que no pueden mudarse: el cliente mandó algo
+    # bien formado contra un estado que no lo admite. `ticket_en_error` y
+    # `ticket_cancelado` son la misma familia que `ticket_timbrado`: un CFDI
+    # que se emitió -timbrado, en error con la respuesta perdida, o ya
+    # cancelado- lleva la sucursal metida adentro y no se puede mover.
+    "ticket_timbrado", "ticket_mixto", "ticket_en_error", "ticket_cancelado",
+    # La carrera de folios (`uq_ticket_folio_sucursal`) contra otra mudanza o un
+    # `asignar_ticket` concurrente: dato bien formado, conflicto de estado, se
+    # resuelve reintentando -no es un 400.
+    "folio_en_disputa",
     # Los tres del candado de captura: el cliente manda una fecha y una
     # sucursal legítimas que chocan con el turno abierto. Es conflicto con el
     # estado, no dato inválido — y `dia_cerrado`, el candado hermano, ya es 409;
@@ -155,6 +165,15 @@ def ver_corte():
     corte = services.obtener_corte(g.tenant_id, sucursal_id, fecha)
     cerrado = bool(corte and corte.cerrado)
 
+    # Corregir la caja es del admin, sobre el día en curso, y solo si
+    # alguien ya la abrió: las mismas tres condiciones que exige
+    # `services.corregir_caja_del_dia`.
+    puede_corregir_dia = (
+        g.current_user.role == "admin" and not cerrado
+        and fecha == date.today()
+        and services.hay_turno_del_dia(g.tenant_id, sucursal_id, fecha)
+    )
+
     resumen.update({
         "fecha": fecha.isoformat(),
         "sucursal_id": sucursal_id,
@@ -163,13 +182,16 @@ def ver_corte():
         "tolerancia": services.tolerancia(g.tenant_id),
         # La UI deshabilita el botón; el servicio vuelve a validarlo al cerrar.
         "puede_cerrar": not cerrado and not resumen["sin_clasificar"],
-        # Corregir el fondo es del admin, sobre el día en curso, y solo si
-        # alguien ya abrió caja: las mismas tres condiciones que exige
-        # `services.corregir_fondo_del_dia`.
-        "puede_editar_fondo": (
-            g.current_user.role == "admin" and not cerrado
-            and fecha == date.today()
-            and services.hay_turno_del_dia(g.tenant_id, sucursal_id, fecha)
+        "puede_corregir_dia": puede_corregir_dia,
+        # Mover la sucursal es un caso particular de corregir el día -viaja en
+        # el mismo PATCH- así que hereda las mismas condiciones que su hermano
+        # y encima exige que haya a dónde mover: con una sola sucursal (o
+        # ninguna) no hay destino, y ofrecerlo sería otro hueco por el que
+        # equivocarse. Sin el `and` de la izquierda, una recepcionista viendo
+        # el corte con 2+ sucursales recibiría `true` aunque el PATCH la
+        # rechace con 403.
+        "puede_mover_sucursal": (
+            puede_corregir_dia and services.sucursal_separa_cajas(g.tenant_id)
         ),
     })
     return jsonify(resumen)
@@ -222,26 +244,31 @@ def abrir_turno():
     return jsonify(_dump_turno(turno)), 201
 
 
-@caja_bp.route("/fondo", methods=["PATCH"])
+@caja_bp.route("/dia", methods=["PATCH"])
 @require_auth
 @require_role("admin")
-def corregir_fondo():
-    """Enmienda el fondo con el que arrancó el cajón hoy.
+def corregir_dia():
+    """Enmienda el fondo y la sucursal del cajón de hoy, en una sola transacción.
 
-    Es `/fondo` y no `/turno/<id>/fondo` porque hay UN cajón por sucursal: el
-    fondo es del día, no de la persona que abrió primero.
+    Es `/dia` y no `/turno/<id>`: hay UN cajón por sucursal, así que lo que se
+    corrige es el día, no la persona que abrió primero. Y las dos correcciones
+    viajan juntas porque se hacen en el mismo momento — partirlas dejaría la
+    puerta abierta a que una pase y la otra falle.
     """
     try:
-        data = FondoSchema().load(request.get_json() or {})
+        data = CorreccionDiaSchema().load(request.get_json() or {})
     except ValidationError as err:
         return jsonify({"error": "Datos inválidos", "detalles": err.messages}), 400
     try:
         sucursal_id = _validar_sucursal(data["sucursal_id"])
+        destino_id = _validar_sucursal(data["sucursal_destino_id"])
     except _SucursalInvalida:
         return jsonify({"error": "Sucursal inválida"}), 400
     try:
-        turno = services.corregir_fondo_del_dia(
-            g.tenant_id, sucursal_id, date.today(), data["fondo_inicial"],
+        turno = services.corregir_caja_del_dia(
+            g.tenant_id, sucursal_id, date.today(),
+            fondo_inicial=data["fondo_inicial"],
+            sucursal_destino_id=destino_id,
         )
     except services.CajaError as exc:
         return _error(exc)

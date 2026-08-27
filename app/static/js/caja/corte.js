@@ -61,11 +61,11 @@ function render() {
   document.getElementById('leyenda-fondo').style.display =
     CorteUX.muestraLeyendaFondo(resumen) ? '' : 'none';
   document.getElementById('stat-fondo').textContent = fmt(resumen.fondo_inicial);
-  // Quién puede corregir lo decide el servidor (`puede_editar_fondo`): repetir
+  // Quién puede corregir lo decide el servidor (`puede_corregir_dia`): repetir
   // aquí las tres condiciones sería una copia que se desincroniza a la primera.
   // `inline-flex` y no `''`: el botón nace con `display:none` en el marcado.
-  document.getElementById('btn-editar-fondo').style.display =
-    resumen.puede_editar_fondo ? 'inline-flex' : 'none';
+  document.getElementById('btn-corregir-dia').style.display =
+    resumen.puede_corregir_dia ? 'inline-flex' : 'none';
 
   // "Otro" solo se asoma cuando hay algo que asomar (ver #aviso-otro en la
   // plantilla). `hidden` sí está en el marcado inicial de ese div y el div no
@@ -237,38 +237,74 @@ async function guardarSalida() {
   }
 }
 
-function abrirEditarFondo() {
+function abrirCorregirDia() {
   // Arranca con el fondo vigente, no en blanco: casi siempre se corrige a
-  // partir de lo que ya hay, y así el campo dice de dónde parte.
-  document.getElementById('f-editar-fondo').value =
+  // partir de lo que ya se declaró, no desde cero.
+  document.getElementById('f-corregir-fondo').value =
     Number(resumen.fondo_inicial || 0) !== 0 ? String(resumen.fondo_inicial) : '';
-  document.getElementById('error-editar-fondo').style.display = 'none';
-  Modal.open('modal-editar-fondo');
+
+  // El campo de sucursal solo aparece con dos o más: con una no hay a dónde
+  // mover, y ofrecerlo sería otro hueco por el que equivocarse.
+  const wrap = document.getElementById('wrap-corregir-sucursal');
+  wrap.style.display = resumen.puede_mover_sucursal ? '' : 'none';
+  if (resumen.puede_mover_sucursal) {
+    populateSelect(document.getElementById('f-corregir-sucursal'),
+      sucursales.map(s => ({ value: String(s.id), label: s.nombre })),
+      resumen.sucursal_id ? String(resumen.sucursal_id) : '',
+      // El placeholder que crea populateSelect nace `disabled`, así que "Sin
+      // sucursal" se puede LEER (es lo que aparece cuando el día en curso es el
+      // cubo de los huérfanos) pero no se puede ELEGIR: mover una caja hacia
+      // ningún lado es exactamente el estado que este trabajo vino a cerrar.
+      // El camino sí existe al revés — desde "Sin sucursal" hacia una real —, y
+      // es cómo el admin rescata los movimientos viejos que quedaron sueltos.
+      'Sin sucursal');
+  }
+
+  document.getElementById('error-corregir-dia').style.display = 'none';
+  Modal.open('modal-corregir-dia');
 }
 
-async function guardarFondo() {
-  const err = document.getElementById('error-editar-fondo');
-  const monto = CorteUX.normalizarMonto(document.getElementById('f-editar-fondo').value);
-  if (monto === null) {
-    // El error va dentro del modal y no en un toast: el dato malo está a la
-    // vista, y el mensaje tiene que quedarse junto al campo que hay que
-    // arreglar. Cero SÍ es válido — corregir a cero es una corrección legítima.
-    err.textContent = 'Escribe un monto válido (0 o más)';
+async function guardarCorreccionDia() {
+  const err = document.getElementById('error-corregir-dia');
+  const monto = CorteUX.normalizarMonto(
+    document.getElementById('f-corregir-fondo').value);
+  if (monto === null || monto < 0) {
+    err.textContent = 'El fondo inicial no es un monto válido';
     err.style.display = '';
     return;
   }
+
+  const destino = resumen.puede_mover_sucursal
+    ? (Number(document.getElementById('f-corregir-sucursal').value) || null)
+    : null;
+
+  const btn = document.getElementById('btn-confirmar-corregir');
+  const texto = document.getElementById('texto-confirmar-corregir');
+  btn.disabled = true; texto.textContent = 'Guardando...';
   try {
-    await API.patch('/caja/fondo', {
-      fondo_inicial: monto, sucursal_id: sucursalSel || null,
+    await API.patch('/caja/dia', {
+      fondo_inicial: monto,
+      sucursal_id: sucursalSel || null,
+      sucursal_destino_id: destino,
     });
-    Modal.close('modal-editar-fondo');
-    Toast.success('Fondo inicial actualizado');
+    Modal.close('modal-corregir-dia');
+    Toast.success('Caja corregida');
+    // Si la caja se mudó, la pantalla tiene que seguirla: quedarse en la
+    // sucursal vieja mostraría el día que acaba de vaciarse.
+    if (destino !== null && String(destino) !== String(sucursalSel || '')) {
+      sucursalSel = String(destino);
+      const sel = document.getElementById('sel-sucursal');
+      if (sel) sel.value = sucursalSel;
+    }
     // Recargar y no parchear el objeto en memoria: el fondo mueve el esperado
-    // y la diferencia, y recalcularlos aquí sería duplicar `resumen_dia`.
+    // y la mudanza mueve los totales enteros.
     await cargarResumen();
+    if (userRole === 'admin') cargarHistorico();
   } catch (e) {
-    err.textContent = e.message || 'No se pudo corregir el fondo';
+    err.textContent = e.message || 'No se pudo corregir la caja';
     err.style.display = '';
+  } finally {
+    btn.disabled = false; texto.textContent = 'Guardar';
   }
 }
 
@@ -715,13 +751,13 @@ async function init() {
     // Fail-closed: las dos vistas parten ocultas y se revela la que toca.
     document.getElementById('vista-recepcion').classList.remove('hidden');
 
-    // Corrección del fondo. Los listeners se enganchan siempre; quien no puede
-    // corregir nunca ve el botón (`puede_editar_fondo`, en render()).
-    document.getElementById('btn-editar-fondo').addEventListener('click', abrirEditarFondo);
-    document.getElementById('btn-confirmar-fondo').addEventListener('click', guardarFondo);
-    ['btn-cancelar-fondo', 'btn-cerrar-fondo', 'backdrop-fondo'].forEach(id =>
+    // Corrección de la caja del día. Los listeners se enganchan siempre; quien
+    // no puede corregir nunca ve el botón (`puede_corregir_dia`, en render()).
+    document.getElementById('btn-corregir-dia').addEventListener('click', abrirCorregirDia);
+    document.getElementById('btn-confirmar-corregir').addEventListener('click', guardarCorreccionDia);
+    ['btn-cancelar-corregir', 'btn-cerrar-corregir', 'backdrop-corregir'].forEach(id =>
       document.getElementById(id).addEventListener(
-        'click', () => Modal.close('modal-editar-fondo')));
+        'click', () => Modal.close('modal-corregir-dia')));
     // OJO: NO es "distinto de recepcionista". Un asistente con el permiso
     // `caja` también llega a esta página (ver NAV_POR_RECURSO en app.js) y
     // puede cerrar caja como la vista de recepción, pero /caja/cortes,
