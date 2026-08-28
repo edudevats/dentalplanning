@@ -9,7 +9,9 @@ import secrets
 from app.extensions import db
 from app.edr.models import Ingreso
 from app.tratamientos.models import Tratamiento
-from app.facturacion.services import asignar_ticket, recalcular_total
+from app.facturacion.services import (
+    FacturacionError, asignar_ticket, recalcular_total,
+)
 
 
 def hermanos_de_visita(ingreso):
@@ -89,6 +91,24 @@ def crear_ingresos_visita(tenant_id, usuario, comun, lineas, ticket_folio=None):
     fecha = comun.get("fecha")
     sucursal_id = comun.get("sucursal_id")
 
+    # La sucursal es obligatoria porque el folio del ticket es secuencial POR
+    # sucursal: sin ella no hay serie de la que colgar el folio, y el cobro
+    # nacería sin número con el que rastrearlo. Se resuelve antes de tocar
+    # nada, con la MISMA regla con la que se abre la caja (una sucursal → el
+    # servidor la impone; dos o más → hay que elegir), para que capturar y
+    # abrir turno no contesten cosas distintas a la misma pregunta.
+    sucursal_id = caja_services.resolver_sucursal_del_turno(tenant_id, sucursal_id)
+    if not sucursal_id:
+        # Aquí sí se separa de `resolver_sucursal_del_turno`: cero sucursales es
+        # un valor válido para abrir caja, pero no para cobrar. Es exactamente
+        # el hueco por el que el ingreso nacía sin ticket.
+        raise FacturacionError(
+            "Da de alta una sucursal en Ajustes > Sucursales antes de "
+            "registrar ingresos: de ella salen la serie y el folio del ticket."
+        )
+    comun = dict(comun)
+    comun["sucursal_id"] = sucursal_id
+
     # Los candados se evalúan UNA vez para la visita, no una por línea: es el
     # mismo día, la misma sucursal y el mismo turno para todas.
     #
@@ -102,7 +122,6 @@ def crear_ingresos_visita(tenant_id, usuario, comun, lineas, ticket_folio=None):
         tenant_id, usuario, fecha, sucursal_id, es_admin=es_admin,
     )
 
-    comun = dict(comun)
     # Sin módulo CRM no se acepta paciente_id (evita FKs cross-tenant sin validar)
     if comun.get("paciente_id") and not crm_activo(tenant_id):
         comun["paciente_id"] = None
@@ -137,13 +156,14 @@ def crear_ingresos_visita(tenant_id, usuario, comun, lineas, ticket_folio=None):
     if crm_activo(tenant_id) and comun.get("paciente_id"):
         sincronizar_visita_ingreso(ingresos[0])
 
-    ticket = None
-    if comun.get("factura") and sucursal_id:
-        # La primera línea abre (o encuentra) el ticket; las demás caen en ESE
-        # folio. Una visita, una factura.
-        ticket = asignar_ticket(ingresos[0], sucursal_id, ticket_folio)
-        for extra in ingresos[1:]:
-            asignar_ticket(extra, sucursal_id, ticket.folio)
-        recalcular_total(ticket)
+    # Todo cobro sale con folio, se facture o no: es el número con el que el
+    # paciente reclama. `factura` sólo decide si además se timbra.
+    #
+    # La primera línea abre (o encuentra) el ticket; las demás caen en ESE
+    # folio. Una visita, un ticket.
+    ticket = asignar_ticket(ingresos[0], sucursal_id, ticket_folio)
+    for extra in ingresos[1:]:
+        asignar_ticket(extra, sucursal_id, ticket.folio)
+    recalcular_total(ticket)
 
     return ingresos, visita_uid, ticket

@@ -484,7 +484,10 @@ function renderTable_() {
       const div = domEl('div', 'flex items-center justify-end gap-1');
       const pBtn = domEl('button', 'rounded-lg p-1.5 text-text-muted hover:bg-primary-50 hover:text-primary-700 transition-colors cursor-pointer');
       pBtn.type = 'button'; pBtn.title = 'Reimprimir ticket'; pBtn.appendChild(domIcon('printer'));
-      pBtn.addEventListener('click', () => row.ticket_id ? imprimirTicket(row.ticket_id) : imprimirSimple(row.id));
+      // El ticket fiscal (con QR de autofacturacion) solo para lo que se
+      // factura; lo demas sale como recibo simple, que ya trae su folio.
+      pBtn.addEventListener('click', () => (row.factura && row.ticket_id)
+        ? imprimirTicket(row.ticket_id) : imprimirSimple(row.id));
       div.appendChild(pBtn);
       const eBtn = domEl('button', 'rounded-lg p-1.5 text-text-muted hover:bg-primary-50 hover:text-primary-700 transition-colors cursor-pointer');
       eBtn.type = 'button'; eBtn.title = 'Editar'; eBtn.appendChild(domIcon('pencil')); eBtn.addEventListener('click', () => openEdit(row));
@@ -710,7 +713,15 @@ async function handleSave() {
   const sucursalId = turnoDelDia
     ? TurnoCaja.sucursalDelTurno(turnoDelDia)
     : (Number(document.getElementById('f-sucursal').value) || null);
-  if (facturaOn && !sucursalId) { Toast.warning('Selecciona una sucursal para facturar (o apaga Factura)'); return; }
+  // La sucursal es obligatoria SIEMPRE, no solo al facturar: el folio del
+  // ticket es secuencial por sucursal, y sin folio el cobro no se puede
+  // rastrear en una reclamacion.
+  if (!sucursalId) {
+    Toast.warning(sucursales.length
+      ? 'Selecciona la sucursal del cobro'
+      : 'Da de alta una sucursal en Ajustes > Sucursales antes de registrar ingresos');
+    return;
+  }
   const ticketFolio = Number(document.getElementById('f-ticket-folio').value) || null;
 
   const btn = document.getElementById('save-btn'); const txt = document.getElementById('save-text');
@@ -742,13 +753,12 @@ async function handleSave() {
     } else {
       const visita = await API.post('/edr/ingresos/visita', { ...comun, lineas });
       const creados = visita.ingresos || [];
-      if (visita.ticket_id) {
-        Toast.success('Ingreso creado · Ticket ' + (visita.ticket_folio_display || ''));
-        imprimirTicket(visita.ticket_id);  // una sola impresión para la visita
-      } else {
-        Toast.success('Ingreso creado');
-        if (creados.length) imprimirSimple(creados[0].id);
-      }
+      // Toda visita sale con folio; lo que cambia es el papel: el ticket
+      // fiscal si se factura, el recibo simple si no. Una sola impresion para
+      // la visita entera en los dos casos.
+      Toast.success('Ingreso creado · Ticket ' + (visita.ticket_folio_display || ''));
+      if (facturaOn && visita.ticket_id) imprimirTicket(visita.ticket_id);
+      else if (creados.length) imprimirSimple(creados[0].id);
     }
     Modal.close('modal-form'); fetchData();
   } catch { Toast.error('Error al guardar ingreso'); }

@@ -92,6 +92,9 @@ class Sucursal(db.Model):
     )
 
 
+# Digitos a los que se rellena el folio impreso (ver Ticket.folio_display).
+FOLIO_ANCHO = 6
+
 TICKET_SIN_TIMBRAR = "sin_timbrar"
 TICKET_TIMBRADA = "timbrada"
 TICKET_EN_PROCESO_CANCELACION = "en_proceso_cancelacion"
@@ -158,4 +161,9 @@ class Ticket(db.Model):
 
     @property
     def folio_display(self):
-        return f"{self.serie}-{self.folio}" if self.serie else str(self.folio)
+        # Folio a ancho fijo: el numero impreso no cambia de largo al pasar de
+        # 9 a 10, asi que las columnas de ticket quedan alineadas y el paciente
+        # dicta siempre la misma cantidad de digitos. Pasado el millon de
+        # folios crece solo: nunca se trunca.
+        numero = f"{self.folio:0{FOLIO_ANCHO}d}" if self.folio is not None else ""
+        return f"{self.serie}-{numero}" if self.serie else numero

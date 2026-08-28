@@ -39,27 +39,38 @@ def asignar_ticket(ingreso, sucursal_id, ticket_folio=None):
     """Asigna `ingreso` a un ticket. Si `ticket_folio` se da, lo agrega a ese ticket
     sin timbrar de la misma sucursal; si no, crea un ticket nuevo con folio propio.
     Devuelve el Ticket. No hace commit.
+
+    TODO cobro lleva ticket, se facture o no: el folio es el número con el que
+    el paciente reclama, y un cobro sin folio no se puede rastrear. Los
+    requisitos que son del CFDI -configuración fiscal activa y el candado de
+    los abonos de un plan abierto- se exigen sólo cuando el ingreso viene
+    marcado `factura`, que es la intención de timbrar; el ticket sin factura es
+    un comprobante interno y no necesita ninguno de los dos.
     """
     from app.facturacion.models import ConfiguracionFiscal
 
-    # Cobranza conserva la regla de bloqueo junto a su dominio. El import local
-    # evita cargar el módulo si el ingreso normal no proviene de un plan.
-    from app.cobranza.services import ingreso_bloqueado_para_factura
-    bloqueo = ingreso_bloqueado_para_factura(ingreso)
-    if bloqueo:
-        raise FacturacionError(bloqueo)
+    if ingreso.factura:
+        # Cobranza conserva la regla de bloqueo junto a su dominio. El import
+        # local evita cargar el módulo si el ingreso no proviene de un plan.
+        from app.cobranza.services import ingreso_bloqueado_para_factura
+        bloqueo = ingreso_bloqueado_para_factura(ingreso)
+        if bloqueo:
+            raise FacturacionError(bloqueo)
 
-    cfg = ConfiguracionFiscal.query.filter_by(tenant_id=ingreso.tenant_id).first()
-    if not cfg or not cfg.facturacion_activa:
-        raise FacturacionError(
-            "Activa la facturación en Ajustes > Configuración fiscal antes de generar facturas."
-        )
+        cfg = ConfiguracionFiscal.query.filter_by(tenant_id=ingreso.tenant_id).first()
+        if not cfg or not cfg.facturacion_activa:
+            raise FacturacionError(
+                "Activa la facturación en Ajustes > Configuración fiscal antes de generar facturas."
+            )
 
     suc = Sucursal.query.filter_by(
         id=sucursal_id, tenant_id=ingreso.tenant_id
     ).first()
     if not suc:
-        raise FacturacionError("Selecciona una sucursal válida para facturar.")
+        raise FacturacionError(
+            "Selecciona una sucursal válida: de ella salen la serie y el folio "
+            "del ticket."
+        )
 
     if ticket_folio is not None:
         ticket = Ticket.query.filter_by(

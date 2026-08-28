@@ -470,6 +470,10 @@ def ticket_simple(ingreso_id):
         "facturable": False,
         "logo": logo_b64(g.tenant_id),
         "empresa": empresa,
+        # El recibo sin factura tambien lleva folio: es el numero con el que el
+        # paciente reclama, y desde que todo cobro nace con ticket siempre hay
+        # uno que imprimir. `None` solo en los ingresos viejos, de antes.
+        "folio": ing.ticket.folio_display if ing.ticket else None,
         "sucursal": suc.nombre if suc else None,
         "direccion": suc.direccion if suc else None,
         "telefono": suc.telefono if suc else None,
