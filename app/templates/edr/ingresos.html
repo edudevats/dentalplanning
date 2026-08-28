@@ -96,9 +96,20 @@
        exigir_turno_abierto). Nace oculto por `style.display` porque turno.js lo
        revela por la misma via. -->
   <div id="aviso-sin-turno" style="display:none" class="rounded-xl border border-warning-100 bg-warning-50 p-5">
-    <p class="text-sm font-medium text-warning-600 font-body">Todavia no abres tu caja de hoy.</p>
-    <p class="text-sm text-text-secondary font-body mt-1">Para registrar ingresos, primero abre tu caja y di en que sucursal vas a trabajar.</p>
-    <button type="button" onclick="TurnoCaja.abrirModal(false)" class="inline-flex items-center gap-2 mt-3 text-sm font-medium text-primary-600 hover:text-primary-700 font-body cursor-pointer">Abrir mi caja &rarr;</button>
+    {# El titulo, el detalle y el boton se le quitan al admin: el backend lo
+       exime del turno (exigir_turno_abierto hace `if es_admin: return`), asi
+       que decirle "todavia no abres tu caja" era decirle algo falso. De este
+       aviso solo le sirve la linea de las cajas abiertas. Lo decide
+       avisoDeTurno() en turno.js. #}
+    <p id="aviso-turno-titulo" class="text-sm font-medium text-warning-600 font-body">Todavia no abres tu caja de hoy.</p>
+    <p id="aviso-turno-detalle" class="text-sm text-text-secondary font-body mt-1">Para registrar ingresos, primero abre tu caja y di en que sucursal vas a trabajar.</p>
+    {# Que sucursales ya estan trabajando y cuales no, una linea por sede. Nace
+       oculta por `style.display` y no por la clase `hidden`: el JIT de Tailwind
+       del navegador solo genera esa regla si la ve al cargar. Las filas las
+       crea turno.js, y el punto de color va por `style` con variables del tema
+       justamente porque el JIT no puede generar clases que nunca ve. #}
+    <ul id="aviso-estado-cajas" style="display:none" class="text-sm text-text-primary font-body mt-3 space-y-1"></ul>
+    <button type="button" id="btn-aviso-abrir-caja" onclick="TurnoCaja.abrirModal(false)" class="inline-flex items-center gap-2 mt-3 text-sm font-medium text-primary-600 hover:text-primary-700 font-body cursor-pointer">Abrir mi caja &rarr;</button>
   </div>
 
   <!-- Table -->
@@ -125,9 +136,22 @@
             <input id="f-paciente-id" type="hidden" />
             <datalist id="dl-pacientes"></datalist>
             <p id="f-paciente-hint" class="hidden text-[11px] text-text-muted mt-1 font-body"></p></div>
-          <div><label class="block text-sm font-medium text-text-secondary mb-1 font-body">Tratamiento</label>
-            <input id="f-tratamiento" list="dl-tratamientos" autocomplete="off" placeholder="Escribe para buscar..." class="block w-full rounded-lg border border-border px-3 py-2.5 text-sm font-body text-text-primary placeholder:text-text-muted min-h-[44px] bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-500" />
-            <datalist id="dl-tratamientos"></datalist></div>
+          <div class="sm:col-span-2">
+            <label class="block text-sm font-medium text-text-secondary mb-1 font-body">Tratamientos</label>
+            <div id="f-lineas" class="space-y-2"></div>
+            <!-- style.display y no la clase `hidden`: el boton trae `inline-flex` y el
+                 JIT de Tailwind del navegador perderia la cascada al insertar `.hidden`
+                 despues (mismo motivo que btn-inicio-caja, arriba). -->
+            <button type="button" id="btn-agregar-linea"
+                    class="mt-2 inline-flex items-center gap-1.5 text-sm font-medium text-primary-600 hover:text-primary-700 font-body cursor-pointer">
+              <i data-lucide="plus" class="h-4 w-4"></i> Agregar tratamiento
+            </button>
+            <div class="flex justify-end mt-2 pt-2 border-t border-border">
+              <span class="text-sm font-body text-text-secondary">Total de la visita:
+                <strong id="f-total-visita" class="text-text-primary">$0.00</strong></span>
+            </div>
+          </div>
+          <datalist id="dl-tratamientos"></datalist>
           <div><label class="block text-sm font-medium text-text-secondary mb-1 font-body">Especialista <span class="text-danger-500">*</span></label>
             <input id="f-especialista" list="dl-especialistas" autocomplete="off" placeholder="Escribe para buscar..." class="block w-full rounded-lg border border-border px-3 py-2.5 text-sm font-body text-text-primary placeholder:text-text-muted min-h-[44px] bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-500" />
             <datalist id="dl-especialistas"></datalist></div>
@@ -141,12 +165,8 @@
               <option value="30">30%</option>
               <option value="50">50%</option>
             </select></div>
-          <div><label class="block text-sm font-medium text-text-secondary mb-1 font-body">Monto</label>
-            <input id="f-monto" type="number" placeholder="0.00" class="block w-full rounded-lg border border-border px-3 py-2.5 text-sm font-body min-h-[44px] bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-500" /></div>
           <div><label class="block text-sm font-medium text-text-secondary mb-1 font-body">Comision Bancaria</label>
             <input id="f-com-ban" type="number" placeholder="0.00" class="block w-full rounded-lg border border-border px-3 py-2.5 text-sm font-body min-h-[44px] bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-500" /></div>
-          <div><label class="block text-sm font-medium text-text-secondary mb-1 font-body">Comision Doctor</label>
-            <input id="f-com-doc" type="number" placeholder="0.00" class="block w-full rounded-lg border border-border px-3 py-2.5 text-sm font-body min-h-[44px] bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-500" /></div>
           <div><label class="block text-sm font-medium text-text-secondary mb-1 font-body">Estrategia</label>
             <select id="f-estrategia" class="block w-full rounded-lg border border-border px-3 py-2.5 text-sm font-body min-h-[44px] bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-500"></select></div>
           <div class="flex items-center gap-3 pt-6">
@@ -174,6 +194,21 @@
     </div>
   </div>
 </div>
+
+<template id="tpl-linea">
+  <div class="linea grid grid-cols-1 sm:grid-cols-[2fr_1fr_1fr_auto] gap-2 items-start">
+    <input list="dl-tratamientos" autocomplete="off" placeholder="Tratamiento..."
+           class="l-tratamiento block w-full rounded-lg border border-border px-3 py-2.5 text-sm font-body min-h-[44px] bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300" />
+    <input type="number" placeholder="Monto"
+           class="l-monto block w-full rounded-lg border border-border px-3 py-2.5 text-sm font-body min-h-[44px] bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300" />
+    <input type="number" placeholder="Com. doctor"
+           class="l-com-doc block w-full rounded-lg border border-border px-3 py-2.5 text-sm font-body min-h-[44px] bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300" />
+    <button type="button" title="Quitar"
+            class="l-quitar p-2.5 rounded-lg text-text-muted hover:bg-surface-hover cursor-pointer">
+      <i data-lucide="x" class="h-4 w-4"></i>
+    </button>
+  </div>
+</template>
 
 <!-- Delete modal -->
 <div id="modal-del" class="hidden fixed inset-0 z-50 overflow-y-auto">
@@ -484,7 +519,7 @@ function openCreate() {
   editingId = null;
   document.getElementById('modal-title').textContent = 'Nuevo Ingreso';
   document.getElementById('save-text').textContent = 'Guardar';
-  ['f-fecha','f-paciente','f-paciente-id','f-monto','f-com-ban','f-com-doc'].forEach(id => document.getElementById(id).value = '');
+  ['f-fecha','f-paciente','f-paciente-id','f-com-ban'].forEach(id => document.getElementById(id).value = '');
   const hintP = document.getElementById('f-paciente-hint');
   if (hintP) hintP.classList.add('hidden');
   document.getElementById('f-factura').checked = false;  // Factura OFF por defecto
@@ -495,13 +530,15 @@ function openCreate() {
   selSuc.value = sucursales.length === 1 ? String(sucursales[0].id) : '';
   document.getElementById('f-descuento').value = '0';
 
-  ['f-tratamiento','f-especialista','f-estrategia'].forEach(id => document.getElementById(id).value = '');
+  ['f-especialista','f-estrategia'].forEach(id => document.getElementById(id).value = '');
   // Sin default: el método de pago es el dato sobre el que se construye el
   // corte de caja, y adivinar "Efectivo" aquí generaba faltantes fantasma
   // cuando el cobro real era con tarjeta o transferencia. Quien captura elige;
   // si lo olvida, el ingreso cae en "sin_clasificar" y el corte bloquea el
   // cierre hasta que se corrija (en vez de perderse en silencio).
   document.getElementById('f-metodo').value = '';
+  reiniciarLineas();
+  document.getElementById('btn-agregar-linea').style.display = '';
   aplicarTurnoAlFormulario();
   Modal.open('modal-form');
 }
@@ -515,18 +552,30 @@ function openEdit(row) {
   document.getElementById('f-paciente-id').value = row.paciente_id || '';
   const hintP = document.getElementById('f-paciente-hint');
   if (hintP) hintP.classList.add('hidden');
-  document.getElementById('f-monto').value = row.monto ?? '';
   document.getElementById('f-com-ban').value = row.comision_bancaria ?? '';
-  document.getElementById('f-com-doc').value = row.comision_doctor ?? '';
   document.getElementById('f-factura').checked = !!row.factura;
   document.getElementById('f-descuento').value = row.descuento_pct ? String(row.descuento_pct) : '0';
-  document.getElementById('f-tratamiento').value = tratamientos.find(t => String(t.id) === String(row.tratamiento_id))?.nombre || '';
   document.getElementById('f-especialista').value = especialistas.find(e => String(e.id) === String(row.especialista_id))?.nombre || '';
   document.getElementById('f-metodo').value = row.metodo_pago_id ? String(row.metodo_pago_id) : '';
   document.getElementById('f-estrategia').value = row.estrategia_id ? String(row.estrategia_id) : '';
   document.getElementById('f-sucursal').value = row.sucursal_id ? String(row.sucursal_id) : '';
   document.getElementById('f-ticket-folio').value = '';
   document.getElementById('f-comentarios').value = row.comentarios || '';
+  // Editar es siempre de un renglón: la tabla del mes muestra un tratamiento
+  // por fila, y el PUT mueve exactamente ese.
+  // preservarComisionBancaria=true: al abrir el modal no se debe recalcular
+  // f-com-ban (línea de arriba) con el % del método de pago — pisaría una
+  // comisión capturada a mano, o la borraría a '0.00' si el renglón no tiene
+  // método. Dentro del modal, un cambio real de Monto o Método sí debe
+  // recalcularla (ver los listeners de esos campos, que llaman a
+  // actualizarTotales() directo y sin este flag).
+  reiniciarLineas([{
+    nombre: tratamientos.find(t => String(t.id) === String(row.tratamiento_id))?.nombre
+            || row.nombre_tratamiento || '',
+    monto: row.monto ?? '',
+    comisionDoctor: row.comision_doctor ?? '',
+  }], { preservarComisionBancaria: true });
+  document.getElementById('btn-agregar-linea').style.display = 'none';
   Modal.open('modal-form');
 }
 
@@ -538,11 +587,114 @@ function openComentario(row) {
   Modal.open('modal-comentario');
 }
 
+// ── Líneas de tratamiento de la visita ──
+// El paciente vino una vez y pagó una vez: fecha, especialista, método de pago
+// y descuento son de la visita. Lo único que se repite es el tratamiento.
+
+function lineasEl() { return document.getElementById('f-lineas'); }
+function todasLasLineas() { return Array.from(lineasEl().querySelectorAll('.linea')); }
+
+function agregarLinea(datos) {
+  const nodo = document.getElementById('tpl-linea').content.firstElementChild.cloneNode(true);
+  if (datos) {
+    nodo.querySelector('.l-tratamiento').value = datos.nombre || '';
+    nodo.querySelector('.l-monto').value = datos.monto ?? '';
+    nodo.querySelector('.l-com-doc').value = datos.comisionDoctor ?? '';
+  }
+  nodo.querySelector('.l-tratamiento').addEventListener('change', () => recalcularLinea(nodo));
+  // soloPorcentaje: true — al tocar el monto a mano solo se re-deriva la
+  // comisión cuando depende de ese monto (porcentaje). Una comisión fija se
+  // autocompleta al elegir el tratamiento (ver recalcularLinea) y de ahí en
+  // adelante es editable a mano sin que cada tecleo en Monto la borre.
+  nodo.querySelector('.l-monto').addEventListener('input', () => { recalcularComisionDoctor(nodo, { soloPorcentaje: true }); actualizarTotales(); });
+  nodo.querySelector('.l-com-doc').addEventListener('input', actualizarTotales);
+  nodo.querySelector('.l-quitar').addEventListener('click', () => { nodo.remove(); sincronizarBotonesQuitar(); actualizarTotales(); });
+  lineasEl().appendChild(nodo);
+  sincronizarBotonesQuitar();
+  if (window.lucide) lucide.createIcons();
+  return nodo;
+}
+
+function sincronizarBotonesQuitar() {
+  // Con una sola línea no hay nada que quitar: la visita necesita al menos un
+  // tratamiento, y un botón que no se puede usar sólo confunde.
+  const lineas = todasLasLineas();
+  lineas.forEach(l => l.querySelector('.l-quitar').classList.toggle('invisible', lineas.length === 1));
+}
+
+function reiniciarLineas(datos, opts) {
+  lineasEl().innerHTML = '';
+  (datos && datos.length ? datos : [null]).forEach(d => agregarLinea(d));
+  actualizarTotales(opts);
+}
+
+function recalcularLinea(nodo) {
+  // El precio de catálogo menos el descuento de la visita.
+  const tx = findByName(tratamientos, nodo.querySelector('.l-tratamiento').value);
+  if (!tx) return;
+  const desc = Number(document.getElementById('f-descuento').value) || 0;
+  const precio = (Number(tx.precio_paciente) || 0) * (1 - desc / 100);
+  nodo.querySelector('.l-monto').value = precio.toFixed(2);
+  recalcularComisionDoctor(nodo);
+  actualizarTotales();
+}
+
+function recalcularComisionDoctor(nodo, opts) {
+  const tx = findByName(tratamientos, nodo.querySelector('.l-tratamiento').value);
+  if (!tx || !tx.comision_especialista) return;
+  const esPorcentaje = tx.comision_especialista.tipo === 'porcentaje';
+  // opts.soloPorcentaje lo manda el listener de Monto: una comisión fija no
+  // depende del monto, así que un tecleo ahí no debe pisar un valor que quien
+  // captura ya haya corregido a mano. recalcularLinea (al elegir tratamiento)
+  // no manda esta opción y sigue autocompletando ambos tipos.
+  if (opts && opts.soloPorcentaje && !esPorcentaje) return;
+  const monto = Number(nodo.querySelector('.l-monto').value) || 0;
+  const com = esPorcentaje
+    ? monto * (Number(tx.comision_especialista.valor) || 0) / 100
+    : Number(tx.comision_especialista.valor) || 0;
+  nodo.querySelector('.l-com-doc').value = com.toFixed(2);
+}
+
+function totalVisita() {
+  return todasLasLineas()
+    .reduce((s, l) => s + (Number(l.querySelector('.l-monto').value) || 0), 0);
+}
+
+function actualizarTotales(opts) {
+  const total = totalVisita();
+  // La plantilla no tiene helper de moneda; el resto del formulario formatea
+  // con toFixed(2), así que aquí se hace igual.
+  document.getElementById('f-total-visita').textContent = '$' + total.toFixed(2);
+  // La comisión bancaria se cobra una vez, sobre el total de la visita.
+  // opts.preservarComisionBancaria lo manda openEdit vía reiniciarLineas: al
+  // abrir el modal se respeta el valor ya guardado (pudo capturarse a mano o
+  // el % del método pudo cambiar desde entonces en Ajustes); un cambio real
+  // del usuario dentro del modal sigue recalculando como siempre porque pasa
+  // por los listeners de Monto/Método, que llaman a esta función sin opts.
+  if (!(opts && opts.preservarComisionBancaria)) {
+    updateBankCommission(total);
+  }
+}
+
+function lineasDelFormulario() {
+  return todasLasLineas().map(l => {
+    const tx = findByName(tratamientos, l.querySelector('.l-tratamiento').value);
+    return {
+      tratamiento_id: tx ? tx.id : null,
+      nombre_tratamiento: tx ? tx.nombre : (l.querySelector('.l-tratamiento').value.trim() || null),
+      monto: Number(l.querySelector('.l-monto').value) || 0,
+      comision_doctor: Number(l.querySelector('.l-com-doc').value) || 0,
+    };
+  }).filter(l => l.monto > 0 || l.nombre_tratamiento);
+}
+
 async function handleSave() {
   const fecha = document.getElementById('f-fecha').value;
   const paciente = document.getElementById('f-paciente').value.trim();
-  const monto = document.getElementById('f-monto').value;
-  if (!fecha || !paciente || !monto) { Toast.warning('Completa los campos obligatorios'); return; }
+  const lineas = lineasDelFormulario();
+  if (!fecha || !paciente || !lineas.length) {
+    Toast.warning('Completa los campos obligatorios'); return;
+  }
 
   // Especialista es obligatorio (autocompletado -> debe resolver a uno válido)
   const esp = findByName(especialistas, document.getElementById('f-especialista').value);
@@ -566,16 +718,11 @@ async function handleSave() {
   try { pacienteId = await resolverPacienteId(); }
   catch (e) { Toast.error('No se pudo crear el paciente en el CRM'); btn.disabled = false; txt.textContent = editingId ? 'Actualizar' : 'Guardar'; return; }
 
-  const trat = findByName(tratamientos, document.getElementById('f-tratamiento').value);
-
-  const payload = {
-    fecha, paciente, monto: Number(monto),
+  const comun = {
+    fecha, paciente,
     descuento_pct: Number(document.getElementById('f-descuento').value) || 0,
     comision_bancaria: Number(document.getElementById('f-com-ban').value) || 0,
-    comision_doctor: Number(document.getElementById('f-com-doc').value) || 0,
     factura: facturaOn,
-    tratamiento_id: trat ? trat.id : null,
-    nombre_tratamiento: trat ? trat.nombre : null,
     especialista_id: esp.id,
     metodo_pago_id: Number(document.getElementById('f-metodo').value) || null,
     estrategia_id: Number(document.getElementById('f-estrategia').value) || null,
@@ -585,15 +732,20 @@ async function handleSave() {
     ...(pacienteId !== undefined ? { paciente_id: pacienteId } : {}),
   };
   try {
-    if (editingId) { await API.put('/edr/ingresos/' + editingId, payload); Toast.success('Ingreso actualizado'); }
-    else {
-      const creado = await API.post('/edr/ingresos', payload);
-      if (creado && creado.ticket_id) {
-        Toast.success('Ingreso creado · Ticket ' + (creado.ticket_folio_display || ''));
-        imprimirTicket(creado.ticket_id);  // impresión automática (no bloquea)
+    if (editingId) {
+      // Editar sigue siendo de un renglón: el PUT de siempre, con la única
+      // línea del formulario.
+      await API.put('/edr/ingresos/' + editingId, { ...comun, ...lineas[0] });
+      Toast.success('Ingreso actualizado');
+    } else {
+      const visita = await API.post('/edr/ingresos/visita', { ...comun, lineas });
+      const creados = visita.ingresos || [];
+      if (visita.ticket_id) {
+        Toast.success('Ingreso creado · Ticket ' + (visita.ticket_folio_display || ''));
+        imprimirTicket(visita.ticket_id);  // una sola impresión para la visita
       } else {
         Toast.success('Ingreso creado');
-        if (creado && creado.id) imprimirSimple(creado.id);  // recibo simple (no facturable)
+        if (creados.length) imprimirSimple(creados[0].id);
       }
     }
     Modal.close('modal-form'); fetchData();
@@ -611,32 +763,6 @@ async function handleDelete() {
   finally { btn.disabled = false; txt.textContent = 'Eliminar'; }
 }
 
-function onTreatmentOrDiscountChange() {
-  const discountPct = Number(document.getElementById('f-descuento').value) || 0;
-
-  const tx = findByName(tratamientos, document.getElementById('f-tratamiento').value);
-  if (!tx) return;
-  
-  // 1. Calculate Monto
-  const basePrice = Number(tx.precio_paciente) || 0;
-  const discountedPrice = basePrice * (1 - discountPct / 100);
-  document.getElementById('f-monto').value = discountedPrice.toFixed(2);
-  
-  // 2. Calculate Doctor Commission
-  let comDoc = 0;
-  if (tx.comision_especialista) {
-    if (tx.comision_especialista.tipo === 'porcentaje') {
-      comDoc = discountedPrice * (Number(tx.comision_especialista.valor) || 0) / 100;
-    } else {
-      comDoc = Number(tx.comision_especialista.valor) || 0;
-    }
-  }
-  document.getElementById('f-com-doc').value = comDoc.toFixed(2);
-  
-  // 3. Update Bank Commission
-  updateBankCommission(discountedPrice);
-}
-
 function updateBankCommission(montoVal) {
   const metId = document.getElementById('f-metodo').value;
   if (!metId) {
@@ -646,27 +772,19 @@ function updateBankCommission(montoVal) {
   const mp = metodosPago.find(m => String(m.id) === String(metId));
   if (mp) {
     const comPct = Number(mp.comision_pct) || 0;
-    const amount = montoVal !== undefined ? montoVal : (Number(document.getElementById('f-monto').value) || 0);
-    const comBan = amount * (comPct / 100);
+    // Siempre se llama con el total de la visita (ver actualizarTotales); ya
+    // no hay un solo campo de monto del que leer.
+    const comBan = (Number(montoVal) || 0) * (comPct / 100);
     document.getElementById('f-com-ban').value = comBan.toFixed(2);
   }
 }
 
 // Setup event listeners
-document.getElementById('f-tratamiento').addEventListener('change', onTreatmentOrDiscountChange);
-document.getElementById('f-descuento').addEventListener('change', onTreatmentOrDiscountChange);
-document.getElementById('f-metodo').addEventListener('change', () => updateBankCommission());
-document.getElementById('f-monto').addEventListener('input', e => {
-  const amount = Number(e.target.value) || 0;
-  updateBankCommission(amount);
-  
-  // Recalculate doctor commission if treatment is selected and uses percentage
-  const tx = findByName(tratamientos, document.getElementById('f-tratamiento').value);
-  if (tx && tx.comision_especialista && tx.comision_especialista.tipo === 'porcentaje') {
-    const comDoc = amount * (Number(tx.comision_especialista.valor) || 0) / 100;
-    document.getElementById('f-com-doc').value = comDoc.toFixed(2);
-  }
+document.getElementById('btn-agregar-linea').addEventListener('click', () => agregarLinea());
+document.getElementById('f-descuento').addEventListener('change', () => {
+  todasLasLineas().forEach(recalcularLinea);
 });
+document.getElementById('f-metodo').addEventListener('change', () => updateBankCommission(totalVisita()));
 
 function applyStatsRole() {
   // Fail-closed: ambos contenedores parten ocultos; se revela el que corresponde.

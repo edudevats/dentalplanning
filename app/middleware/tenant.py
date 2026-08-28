@@ -15,6 +15,7 @@ _RECEP_RULES = [
     ("PUT", r"/api/v1/auth/password"),
     ("GET", r"/api/v1/edr/ingresos"),
     ("POST", r"/api/v1/edr/ingresos"),
+    ("POST", r"/api/v1/edr/ingresos/visita"),
     ("PUT", r"/api/v1/edr/ingresos/\d+"),
     ("GET", r"/api/v1/facturacion/tickets"),
     ("GET", r"/api/v1/facturacion/tickets/resumen-iva"),

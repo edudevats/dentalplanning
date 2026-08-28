@@ -32,9 +32,23 @@ async function cargarResumen() {
     // plantilla sin avisar nada: en una conciliación de efectivo, un dato
     // silenciosamente equivocado es peor que un error visible.
     Toast.error('No se pudo cargar el corte de caja');
+    // El `resumen` en memoria se queda con el de la sucursal anterior (no se
+    // toca en este catch), pero `sucursalSel` ya cambió. Sin apagar el aviso
+    // aquí, el botón se queda rojo hablando de una caja que ya no es la que se
+    // está mirando, y ese rojo es justo el que abre abrirCorregirDia().
+    TurnoCaja.marcarCajaAjena({ abierta: false });
     return;
   }
   render();
+  // Después de render() y en la misma función a propósito: el estado del botón
+  // depende de la sucursal seleccionada, así que tiene que refrescarse en el
+  // mismo sitio donde se refresca el resumen —incluido el cambio de sucursal,
+  // que pasa por aquí—. Si no, el botón se quedaría hablando de la sucursal
+  // anterior.
+  TurnoCaja.marcarCajaAjena({
+    abierta: !!resumen.caja_abierta,
+    por: resumen.caja_abierta_por,
+  });
 }
 
 function render() {
@@ -238,6 +252,15 @@ async function guardarSalida() {
 }
 
 function abrirCorregirDia() {
+  // Mismo candado que render() ya aplica a btn-corregir-dia, dicho aquí porque
+  // la cara roja del botón de la cabecera llega a este mismo modal sin pasar
+  // por render(): este botón abre una operación que mueve dinero (fondo,
+  // sucursal, turnos, re-foliado de tickets), así que no puede fiarse de un
+  // `resumen` que quedó viejo — p. ej. tras un cambio de sucursal tan rápido
+  // que cargarResumen() todavía no volvió, tendríamos `sucursalSel` apuntando
+  // a una sucursal y `resumen` describiendo otra.
+  if (!resumen || !resumen.puede_corregir_dia) return;
+
   // Arranca con el fondo vigente, no en blanco: casi siempre se corrige a
   // partir de lo que ya se declaró, no desde cero.
   document.getElementById('f-corregir-fondo').value =
@@ -736,9 +759,17 @@ async function init() {
     // Con una sola sucursal (o ninguna) el selector estorba: no se muestra.
     if (sucursales.length >= 2) {
       document.getElementById('wrap-sucursal').classList.remove('hidden');
+      // Preseleccionar la primera sucursal y NO el placeholder "Sin sucursal":
+      // desde el candado de sucursal obligatoria (2026-08-26) ya no nace ningún
+      // turno con sucursal_id NULL, así que arrancar en ese cubo le mostraba al
+      // admin $0.00 en todas las tarjetas y el aviso de caja abierta no podía
+      // encenderse nunca — cargarResumen() pedía el corte de un cubo donde ya
+      // no vive nadie. Se fija ANTES de la primera cargarResumen() (al final de
+      // init()) para que esa primera carga no repita el mismo hueco.
+      sucursalSel = String(sucursales[0].id);
       populateSelect(document.getElementById('sel-sucursal'),
         sucursales.map(s => ({ value: String(s.id), label: s.nombre })),
-        '', 'Sin sucursal');
+        sucursalSel, 'Sin sucursal');
       document.getElementById('sel-sucursal').addEventListener('change', e => {
         sucursalSel = e.target.value || null;
         cargarResumen();
@@ -792,6 +823,11 @@ async function init() {
     // pedir /auth/me ni /facturacion/sucursales.
     await TurnoCaja.iniciar({
       rol: userRole, sucursales: sucursales, alAbrir: cargarResumen,
+      // La cara roja del botón lleva aquí. No puede caer en un 409: el rojo
+      // implica turno vivo y día abierto, que son dos de las tres condiciones de
+      // `puede_corregir_dia`, y la tercera (`fecha == hoy`) siempre se cumple en
+      // esta pantalla, que solo mira el día en curso.
+      alCorregir: abrirCorregirDia,
     });
 
     await cargarResumen();

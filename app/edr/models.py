@@ -35,6 +35,11 @@ class Ingreso(db.Model):
         db.Integer, db.ForeignKey("estrategias_marketing.id"), nullable=True
     )
     comentarios = db.Column(db.Text)
+    # Une los ingresos capturados juntos como una sola visita del paciente.
+    # NULL = ingreso suelto: es TODO el histórico y también la visita de un
+    # solo tratamiento, que así no necesita caso especial en ninguna lectura.
+    # Es un token opaco, no un folio: no se le muestra a nadie.
+    visita_uid = db.Column(db.String(32), nullable=True)
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
 
     tratamiento = db.relationship("Tratamiento", backref="ingresos")
@@ -45,6 +50,7 @@ class Ingreso(db.Model):
     # Toda consulta del dashboard/EDR filtra por (tenant_id, fecha-en-un-mes).
     __table_args__ = (
         db.Index("ix_ingresos_tenant_fecha", "tenant_id", "fecha"),
+        db.Index("ix_ingresos_tenant_visita", "tenant_id", "visita_uid"),
     )
 
 

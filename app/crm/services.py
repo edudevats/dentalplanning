@@ -169,34 +169,94 @@ def agregar_nota(tenant_id, paciente_id, texto, usuario_id=None):
 
 # ── Hooks del EDR (SIN commit: participan en la transacción del caller) ──
 
+def _motivo_de(hermanos):
+    """El motivo de la visita: los tratamientos del grupo, uno tras otro."""
+    nombres = [h.nombre_tratamiento for h in hermanos if h.nombre_tratamiento]
+    return " + ".join(nombres) if nombres else "Tratamiento"
+
+
 def sincronizar_visita_ingreso(ingreso):
-    """Crea/actualiza la visita ligada a un ingreso. Llamar tras flush del ingreso."""
-    visita = PacienteVisita.query.filter_by(ingreso_id=ingreso.id, tenant_id=ingreso.tenant_id).first()
+    """Crea/actualiza la visita ligada al GRUPO del ingreso. Llamar tras flush.
+
+    La visita es del paciente, no del renglón: una visita por grupo, anclada al
+    primer ingreso. Buscarla por cualquier hermano —y no solo por `ingreso.id`—
+    es lo que evita que editar la segunda línea abra una visita duplicada.
+    """
+    from app.edr.services import hermanos_de_visita
+    hermanos = hermanos_de_visita(ingreso)
+    ids = [h.id for h in hermanos]
+    visita = PacienteVisita.query.filter(
+        PacienteVisita.tenant_id == ingreso.tenant_id,
+        PacienteVisita.ingreso_id.in_(ids),
+    ).first()
+
     if not ingreso.paciente_id:
         if visita:
             db.session.delete(visita)
         return
+
     p = Paciente.query.filter_by(
         id=ingreso.paciente_id, tenant_id=ingreso.tenant_id, eliminado=False
     ).first()
     if not p:
         raise CrmError("Paciente no encontrado en el CRM")
-    motivo = ingreso.nombre_tratamiento or "Tratamiento"
+
+    ancla = hermanos[0]
+    motivo = _motivo_de(hermanos)
     if visita:
         visita.paciente_id = p.id
-        visita.fecha = ingreso.fecha
+        visita.fecha = ancla.fecha
         visita.motivo = motivo
     else:
         db.session.add(PacienteVisita(
             tenant_id=ingreso.tenant_id, paciente_id=p.id,
-            fecha=ingreso.fecha, motivo=motivo, ingreso_id=ingreso.id,
+            fecha=ancla.fecha, motivo=motivo, ingreso_id=ancla.id,
         ))
 
 
 def eliminar_visita_ingreso(tenant_id, ingreso_id):
-    PacienteVisita.query.filter_by(
+    """Suelta al ingreso de su visita antes de borrarlo.
+
+    Si era el que la anclaba y quedan hermanos, la visita no se va con él: se
+    re-ancla al siguiente y su motivo se recalcula sin el tratamiento borrado.
+    Si no era el ancla, la visita del grupo se queda donde está, pero su
+    motivo igual nombraba este tratamiento y debe recalcularse sin él. Sólo
+    desaparece cuando se fue el último del grupo.
+    """
+    from app.edr.models import Ingreso
+    from app.edr.services import hermanos_de_visita
+
+    # hermanos_de_visita ya devuelve [ingreso] cuando visita_uid es NULL, así
+    # que no hace falta comprobarlo aparte: sólo se necesita que el ingreso
+    # exista (db.session.get puede devolver None).
+    ingreso = db.session.get(Ingreso, ingreso_id)
+    restantes = []
+    if ingreso:
+        restantes = [h for h in hermanos_de_visita(ingreso) if h.id != ingreso_id]
+
+    visita = PacienteVisita.query.filter_by(
         tenant_id=tenant_id, ingreso_id=ingreso_id
-    ).delete()
+    ).first()
+    if visita:
+        if not restantes:
+            db.session.delete(visita)
+            return
+        visita.ingreso_id = restantes[0].id
+        visita.fecha = restantes[0].fecha
+        visita.motivo = _motivo_de(restantes)
+        return
+
+    # El ingreso borrado no anclaba la visita (era un hermano). La visita del
+    # grupo, si existe, sigue en su renglón de siempre — pero su motivo
+    # mencionaba este tratamiento, así que hay que recalcularlo sin él.
+    if not restantes:
+        return
+    visita_grupo = PacienteVisita.query.filter(
+        PacienteVisita.tenant_id == tenant_id,
+        PacienteVisita.ingreso_id.in_([h.id for h in restantes]),
+    ).first()
+    if visita_grupo:
+        visita_grupo.motivo = _motivo_de(restantes)
 
 
 # ── Importación CSV / XLSX ──
@@ -357,6 +417,7 @@ def sugerencias_edr(tenant_id):
 def vincular_paciente_edr(tenant_id, nombre, usuario_id=None):
     from sqlalchemy import func
     from app.edr.models import Ingreso
+    from app.edr.services import hermanos_de_visita
 
     nombre = (nombre or "").strip()
     if not nombre:
@@ -383,14 +444,28 @@ def vincular_paciente_edr(tenant_id, nombre, usuario_id=None):
             PacienteVisita.ingreso_id.isnot(None),
         )
     }
+
+    # Una visita por GRUPO (visita_uid), no por renglón: llamar a
+    # sincronizar_visita_ingreso por cada ingreso deja que ella misma se
+    # encargue de encontrar/reancarlar la visita del grupo por cualquiera de
+    # sus hermanos, así que basta con no repetir el mismo grupo dos veces en
+    # esta pasada. hermanos_de_visita ya devuelve [ingreso] cuando
+    # visita_uid es NULL, así que un ingreso suelto sigue siendo su propio
+    # grupo de uno — eso preserva el comportamiento previo para el caso sin
+    # agrupar.
     visitas_creadas = 0
+    grupos_vistos = set()
     for i in ingresos:
         i.paciente_id = paciente.id
-        if i.id not in con_visita:
-            db.session.add(PacienteVisita(
-                tenant_id=tenant_id, paciente_id=paciente.id, fecha=i.fecha,
-                motivo=i.nombre_tratamiento or "Tratamiento", ingreso_id=i.id,
-            ))
+        clave_grupo = i.visita_uid or ("__ingreso__", i.id)
+        if clave_grupo in grupos_vistos:
+            continue
+        grupos_vistos.add(clave_grupo)
+
+        hermanos = hermanos_de_visita(i)
+        ya_tenia_visita = any(h.id in con_visita for h in hermanos)
+        sincronizar_visita_ingreso(i)
+        if not ya_tenia_visita:
             visitas_creadas += 1
 
     db.session.commit()

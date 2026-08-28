@@ -149,6 +149,120 @@ def hay_turno_del_dia(tenant_id, sucursal_id, fecha):
     return _primer_turno_del_dia(tenant_id, sucursal_id, fecha) is not None
 
 
+def turno_abierto_del_dia(tenant_id, sucursal_id, fecha):
+    """El turno más antiguo de ese día y sucursal que siga ABIERTO, o None.
+
+    Distinto de `_primer_turno_del_dia`, y la diferencia es la razón de que
+    exista: aquella devuelve la fila más vieja esté cerrada o no, porque
+    responde "¿cuál fue el fondo declarado?" —un dato que sobrevive al cierre—,
+    y esta filtra por `cerrado_at IS NULL` porque responde "¿hay alguien con la
+    caja abierta AHORA MISMO?", que es lo que decide de qué color pinta el botón
+    de la cabecera y si el admin puede abrir la suya.
+
+    De esa definición sale gratis que cerrar el día apague el aviso:
+    `cerrar_corte` marca `cerrado_at` en todos los turnos del día, así que la
+    caja deja de estar abierta sin que nadie tenga que acordarse de avisarlo.
+    """
+    return _turnos_del_dia(tenant_id, sucursal_id, fecha).filter(
+        TurnoCaja.cerrado_at.is_(None)).first()
+
+
+def estado_cajas_del_dia(tenant_id, fecha):
+    """Todas las sucursales del tenant y en que estado esta su caja hoy.
+
+    La usa el aviso de /ingresos y /gastos. Lista tambien las que NO estan
+    abiertas a proposito: la pregunta que responde es "que sucursales ya estan
+    trabajando", y eso solo se sabe viendo las dos mitades.
+
+    Tres estados, y distinguir el tercero importa:
+
+    - `abierta`   -> alguien la tiene abierta ahora mismo.
+    - `cerrada`   -> ya hizo su corte del dia; su jornada termino.
+    - `sin_abrir` -> nadie ha llegado.
+
+    Marcar como "sin abrir" una sucursal que ya cuadro y cerro sugeriria que
+    alguien deberia ir a abrirla, cuando lo que hay que hacer ahi es nada.
+
+    Los nombres se agrupan por SUCURSAL y no por persona porque hay UN cajon
+    por sede que varias personas alimentan: dos turnos de la misma sucursal son
+    la misma caja, y listarlos por separado diria que hay dos cajones donde
+    solo hay uno.
+
+    Dos cosas que NO hace, las dos a proposito:
+
+    - No filtra por `Sucursal.activa`, asi que una sede dada de baja sigue
+      saliendo "sin abrir". Es feo, pero todo el modulo `caja` la ignora igual
+      (`_sucursales_del_tenant`, `sucursal_separa_cajas`), y respetarla solo
+      aqui dejaria la lista contando sedes que el resto del modulo no cuenta.
+    - Con dos o mas sucursales, un turno anterior al relleno de la migracion
+      `a7d3f19c2b40` que traiga `sucursal_id` nulo no aparece en ninguna fila.
+      Ese turno es irresoluble de todos modos -`cerrar_corte` tampoco lo cierra,
+      porque su filtro pide una sucursal concreta-, asi que inventarle una sede
+      seria peor que omitirlo.
+    """
+    from app.facturacion.models import Sucursal
+
+    # `joinedload` sobre el usuario: el bucle lee `turno.usuario.name` de cada
+    # fila, que sin esto son N consultas extra en la pantalla que se abre a
+    # primera hora todos los dias.
+    abiertos = TurnoCaja.query.options(joinedload(TurnoCaja.usuario)).filter(
+        TurnoCaja.tenant_id == tenant_id,
+        TurnoCaja.fecha == fecha,
+        TurnoCaja.cerrado_at.is_(None),
+    ).order_by(TurnoCaja.id).all()
+
+    sucursales = Sucursal.query.filter_by(tenant_id=tenant_id).order_by(
+        Sucursal.nombre).all()
+    # Se lee de arriba abajo, asi que van por nombre y no por id: el orden de
+    # creacion no le dice nada a quien mira.
+    filas = [(s.id, s.nombre) for s in sucursales] or [(None, None)]
+
+    separa = sucursal_separa_cajas(tenant_id)
+    por_sucursal = {}
+    for turno in abiertos:
+        # Con una sucursal (o ninguna) hay UN cajon, asi que todos los turnos
+        # del dia son de el venga su fila con sucursal o sin ella: las
+        # anteriores al relleno de la migracion a7d3f19c2b40 pueden traer NULL,
+        # y agruparlas por su id propio dejaria la sede en "sin abrir" con la
+        # caja abierta.
+        clave = turno.sucursal_id if separa else filas[0][0]
+        nombres = por_sucursal.setdefault(clave, [])
+        if turno.usuario and turno.usuario.name:
+            nombres.append(turno.usuario.name)
+
+    # Los cortes del dia de una sola vez. Preguntar con `corte_cerrado` por
+    # sucursal costaba 2-3 consultas cada una -el COUNT de
+    # `sucursal_separa_cajas`, el SELECT del corte, y los `eventos` perezosos
+    # que lee la propiedad `cerrado`-, o sea ~20 viajes a un MySQL remoto en la
+    # pantalla que se abre a primera hora. Y se pagaban aunque nadie mirara: la
+    # ruta arma esta lista siempre, y /corte-caja ni siquiera tiene donde
+    # pintarla.
+    cerradas = set()
+    for corte in CorteCaja.query.options(
+        joinedload(CorteCaja.eventos),
+    ).filter(
+        CorteCaja.tenant_id == tenant_id,
+        CorteCaja.fecha == fecha,
+    ).all():
+        if corte.cerrado:
+            # Con la sucursal colapsada el corte se guarda con `sucursal_id`
+            # nulo a proposito (ver `cerrar_corte`), asi que se le atribuye a la
+            # unica fila que hay.
+            cerradas.add(corte.sucursal_id if separa else filas[0][0])
+
+    salida = []
+    for suc_id, nombre in filas:
+        if suc_id in por_sucursal:
+            estado, quienes = "abierta", por_sucursal[suc_id]
+        elif suc_id in cerradas:
+            estado, quienes = "cerrada", []
+        else:
+            estado, quienes = "sin_abrir", []
+        salida.append({"sucursal_id": suc_id, "sucursal": nombre,
+                       "estado": estado, "abierto_por": quienes})
+    return salida
+
+
 def _tickets_del_dia(tenant_id, sucursal_id, fecha):
     """Los tickets de los ingresos de ese día y sucursal, sin repetir.
 
@@ -512,11 +626,20 @@ def resolver_sucursal_del_turno(tenant_id, sucursal_id):
     return sucursal_id
 
 
-def abrir_turno(tenant_id, usuario_id, *, sucursal_id, fondo_inicial):
+def abrir_turno(tenant_id, usuario_id, *, sucursal_id, fondo_inicial,
+                es_admin=False):
     """Abre la caja de esa persona para HOY.
 
     La fecha la pone el servidor, nunca el cliente: es justamente el dato que el
     candado va a imponerle a todo lo que capture.
+
+    `es_admin` frena al administrador que intenta abrir una caja que ya está
+    abierta. Es solo suya: el admin no captura, así que un turno propio encima
+    del de la recepcionista no le sirve a nadie y ensucia el "quién trabajó aquí
+    hoy". Para cualquier otro rol el default `False` deja el comportamiento
+    intacto — y tiene que quedar intacto, porque hay UN cajón por sucursal que
+    varias personas alimentan y la segunda recepcionista del día necesita abrir
+    el suyo para poder capturar.
     """
     hoy = date.today()
 
@@ -526,6 +649,20 @@ def abrir_turno(tenant_id, usuario_id, *, sucursal_id, fondo_inicial):
     if vigente is not None:
         _exigir_misma_sucursal(vigente, sucursal_id)
         return vigente              # idempotente: recargar no crea turnos
+
+    if es_admin:
+        # Después de la idempotencia de arriba a propósito: el admin que abrió
+        # su caja a primera hora tiene que poder recargar la pantalla sin
+        # toparse con su propio candado.
+        ajena = turno_abierto_del_dia(tenant_id, sucursal_id, hoy)
+        if ajena is not None:
+            nombre = ajena.usuario.name if ajena.usuario else "Alguien"
+            raise CajaError(
+                f"{nombre} ya tiene abierta la caja de hoy aquí. Para cambiar "
+                "el fondo o la sucursal, edita ese turno en vez de abrir otro.",
+                codigo="caja_ya_abierta",
+                datos={"abierto_por": nombre},
+            )
 
     if corte_cerrado(tenant_id, sucursal_id, hoy):
         raise CajaError(

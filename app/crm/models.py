@@ -42,7 +42,9 @@ class PacienteVisita(db.Model):
     paciente_id = db.Column(db.Integer, db.ForeignKey("pacientes.id"), nullable=False)
     fecha = db.Column(db.Date, nullable=False)
     motivo = db.Column(db.String(300))
-    # Visita creada automáticamente desde un ingreso del EDR (una visita por ingreso)
+    # Visita creada automáticamente desde el EDR: una visita por GRUPO de
+    # ingresos (visita_uid), anclada a uno solo de sus renglones — el ancla.
+    # Los demás hermanos del grupo no tienen fila propia en esta tabla.
     ingreso_id = db.Column(db.Integer, db.ForeignKey("ingresos.id"), nullable=True, unique=True)
     created_by = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))

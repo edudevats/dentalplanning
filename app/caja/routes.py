@@ -40,6 +40,9 @@ _CODIGOS_409 = {
     # que dos guardianes del mismo módulo respondieran distinto ante la misma
     # clase de conflicto sería una trampa para quien consuma la API.
     "sin_turno", "fecha_fuera_de_turno", "sucursal_fuera_de_turno",
+    # El admin intentando abrir una caja que ya está abierta: dato bien formado
+    # contra un estado que no lo admite, igual que `ya_abierto`.
+    "caja_ya_abierta",
 }
 _CODIGOS_404 = {"no_encontrado"}
 _CODIGOS_403 = {"ajena"}
@@ -165,6 +168,11 @@ def ver_corte():
     corte = services.obtener_corte(g.tenant_id, sucursal_id, fecha)
     cerrado = bool(corte and corte.cerrado)
 
+    # El estado con el que la cabecera decide el color del botón. Es
+    # independiente del rol: el dato es el mismo para todos, y quién lo usa para
+    # pintarse de rojo lo decide la pantalla.
+    turno_vivo = services.turno_abierto_del_dia(g.tenant_id, sucursal_id, fecha)
+
     # Corregir la caja es del admin, sobre el día en curso, y solo si
     # alguien ya la abrió: las mismas tres condiciones que exige
     # `services.corregir_caja_del_dia`.
@@ -193,6 +201,11 @@ def ver_corte():
         "puede_mover_sucursal": (
             puede_corregir_dia and services.sucursal_separa_cajas(g.tenant_id)
         ),
+        "caja_abierta": turno_vivo is not None,
+        "caja_abierta_por": (
+            turno_vivo.usuario.name
+            if turno_vivo is not None and turno_vivo.usuario else None
+        ),
     })
     return jsonify(resumen)
 
@@ -218,6 +231,12 @@ def ver_turno():
         "turno": _dump_turno(turno) if turno else None,
         # La pantalla necesita saber si tiene que pedir sucursal ANTES de abrir.
         "separa_sucursales": services.sucursal_separa_cajas(g.tenant_id),
+        # Que sucursales ya estan trabajando y cuales no. Viaja en esta llamada
+        # y no en una propia porque el aviso que lo muestra vive en la misma
+        # pantalla que ya pregunta por el turno: pedirlo aparte seria un viaje
+        # de mas en la pantalla que se abre a primera hora todos los dias.
+        "estado_cajas": services.estado_cajas_del_dia(
+            g.tenant_id, date.today()),
     })
 
 
@@ -238,6 +257,7 @@ def abrir_turno():
             g.tenant_id, g.current_user.id,
             sucursal_id=data["sucursal_id"],
             fondo_inicial=data["fondo_inicial"],
+            es_admin=g.current_user.role == "admin",
         )
     except services.CajaError as exc:
         return _error(exc)

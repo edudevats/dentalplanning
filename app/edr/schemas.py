@@ -24,6 +24,8 @@ class IngresoSchema(Schema):
     ticket_id = fields.Int(dump_only=True)
     ticket_folio = fields.Int(dump_only=True)
     ticket_folio_display = fields.Str(dump_only=True)
+    # Solo lectura: lo asigna el servicio al crear la visita, nunca el cliente.
+    visita_uid = fields.Str(dump_only=True, allow_none=True)
     estrategia_id = fields.Int(allow_none=True)
     comentarios = fields.Str(allow_none=True)
     # Read-only enriched fields
@@ -31,6 +33,44 @@ class IngresoSchema(Schema):
     metodo_pago_nombre = fields.Str(dump_only=True)
     estrategia_nombre = fields.Str(dump_only=True)
     created_at = fields.DateTime(dump_only=True)
+
+
+class LineaVisitaSchema(Schema):
+    """Un tratamiento dentro de una visita."""
+    class Meta:
+        unknown = EXCLUDE
+
+    tratamiento_id = fields.Int(allow_none=True, load_default=None)
+    nombre_tratamiento = fields.Str(allow_none=True, load_default=None)
+    monto = fields.Float(required=True, validate=validate.Range(min=0))
+    comision_doctor = fields.Float(load_default=0)
+
+
+class VisitaSchema(Schema):
+    """Los datos que la visita comparte, más sus líneas.
+
+    Especialista, método de pago y descuento son de la visita entera: el
+    paciente vino una vez y pagó una vez.
+    """
+    class Meta:
+        unknown = EXCLUDE
+
+    fecha = fields.Date(required=True)
+    paciente = fields.Str()
+    paciente_id = fields.Int(allow_none=True)
+    especialista_id = fields.Int(allow_none=True)
+    metodo_pago_id = fields.Int(allow_none=True)
+    descuento_pct = fields.Float(load_default=0)
+    comision_bancaria = fields.Float(load_default=0)
+    factura = fields.Bool(load_default=False)
+    sucursal_id = fields.Int(allow_none=True)
+    estrategia_id = fields.Int(allow_none=True)
+    comentarios = fields.Str(allow_none=True)
+    lineas = fields.List(
+        fields.Nested(LineaVisitaSchema),
+        required=True,
+        validate=validate.Length(min=1, error="La visita necesita al menos un tratamiento."),
+    )
 
 
 class GastoOperativoSchema(Schema):

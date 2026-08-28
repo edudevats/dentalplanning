@@ -6,15 +6,15 @@ from app.middleware.tenant import require_auth, require_role
 from app.edr.models import Ingreso, GastoOperativo, PagoDoctor, PagoComisionIngreso
 from app.edr.schemas import (
     IngresoSchema,
+    VisitaSchema,
     GastoOperativoSchema,
     PagoDoctorSchema,
     ComisionPagoSchema,
 )
-from app.facturacion.services import asignar_ticket, recalcular_total, FacturacionError
+from app.facturacion.services import recalcular_total, FacturacionError
 from app.facturacion.models import TICKET_SIN_TIMBRAR
 from app.ajustes.models import Especialista
 from app.configuracion.models import ConfigConsultorio
-from app.tratamientos.models import Tratamiento
 # parse_mes y ganancia_tratamiento viven en el núcleo contable unificado
 from app.engine.accounting import parse_mes as _parse_mes, ganancia_tratamiento, filtro_mes
 from app.crm.services import (
@@ -59,65 +59,75 @@ def listar_ingresos():
 @require_auth
 @require_role("admin", "recepcionista")
 def crear_ingreso():
+    """Alta de UN ingreso. El alta de varios vive en /ingresos/visita.
+
+    Se conserva tal cual porque cobranza lo usa para los pagos de un plan.
+    """
     body = request.get_json() or {}
     ticket_folio = body.get("ticket_folio")
-    schema = IngresoSchema()
-    data = schema.load(body)
+    data = IngresoSchema().load(body)
 
-    # Import local: app.caja.services importa de app.edr.models, y un import a
-    # nivel de módulo aquí crearía un ciclo.
+    linea = {k: data.pop(k, None) for k in
+             ("tratamiento_id", "nombre_tratamiento", "monto", "comision_doctor")}
+
     from app.caja import services as caja_services
+    from app.edr.services import crear_ingresos_visita
     try:
-        # El día va primero. Cerrar el corte cierra también los turnos de ese
-        # día (`cerrar_corte`), así que quien captura sobre un día cerrado no
-        # tiene turno: preguntando primero por el turno, la respuesta sería
-        # "abre tu caja" — y abrirla es imposible, porque `abrir_turno` rechaza
-        # el día cerrado. El orden inverso da el mensaje que sí lleva a algún
-        # lado: "pide al administrador que la reabra".
-        caja_services.exigir_dia_abierto(
-            g.tenant_id, data.get("sucursal_id"), data["fecha"],
-            es_admin=g.current_user.role == "admin",
-        )
-        caja_services.exigir_turno_abierto(
-            g.tenant_id, g.current_user, data["fecha"],
-            data.get("sucursal_id"),
-            es_admin=g.current_user.role == "admin",
+        ingresos, _, _ = crear_ingresos_visita(
+            g.tenant_id, g.current_user, data, [linea], ticket_folio,
         )
     except caja_services.CajaError as exc:
+        db.session.rollback()
         return jsonify({"error": exc.mensaje, "codigo": exc.codigo}), 409
-
-    # Sin módulo CRM no se acepta paciente_id (evita FKs cross-tenant sin validar)
-    if data.get("paciente_id") and not crm_activo(g.tenant_id):
-        data["paciente_id"] = None
-
-    tipo_servicio = "clinico"
-    if data.get("tratamiento_id"):
-        _tr = Tratamiento.query.filter_by(
-            id=data["tratamiento_id"], tenant_id=g.tenant_id
-        ).first()
-        if _tr and _tr.tipo_servicio:
-            tipo_servicio = _tr.tipo_servicio
-
-    ingreso = Ingreso(tenant_id=g.tenant_id, tipo_servicio=tipo_servicio, **data)
-    db.session.add(ingreso)
-    db.session.flush()
-
-    if crm_activo(g.tenant_id) and ingreso.paciente_id:
-        try:
-            sincronizar_visita_ingreso(ingreso)
-        except CrmError as e:
-            db.session.rollback()
-            return jsonify({"error": str(e)}), 400
-
-    if ingreso.factura and data.get("sucursal_id"):
-        try:
-            asignar_ticket(ingreso, data["sucursal_id"], ticket_folio)
-        except FacturacionError as e:
-            db.session.rollback()
-            return jsonify({"error": str(e)}), 400
+    except CrmError as e:
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 400
+    except FacturacionError as e:
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 400
 
     db.session.commit()
-    return jsonify(_enrich_ingreso(ingreso)), 201
+    return jsonify(_enrich_ingreso(ingresos[0])), 201
+
+
+@edr_bp.route("/ingresos/visita", methods=["POST"])
+@require_auth
+@require_role("admin", "recepcionista")
+def crear_visita():
+    """Alta de una visita: varios tratamientos en un solo movimiento.
+
+    El paciente vino una vez, pagó una vez y se lleva un solo ticket; por
+    dentro sigue siendo un ingreso por tratamiento, que es lo que necesitan el
+    IVA por concepto y los pagos a doctores.
+    """
+    body = request.get_json() or {}
+    data = VisitaSchema().load(body)
+    lineas = data.pop("lineas")
+    ticket_folio = body.get("ticket_folio")
+
+    from app.caja import services as caja_services
+    from app.edr.services import crear_ingresos_visita
+    try:
+        ingresos, visita_uid, ticket = crear_ingresos_visita(
+            g.tenant_id, g.current_user, data, lineas, ticket_folio,
+        )
+    except caja_services.CajaError as exc:
+        db.session.rollback()
+        return jsonify({"error": exc.mensaje, "codigo": exc.codigo}), 409
+    except CrmError as e:
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 400
+    except FacturacionError as e:
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 400
+
+    db.session.commit()
+    return jsonify({
+        "ingresos": [_enrich_ingreso(i) for i in ingresos],
+        "visita_uid": visita_uid,
+        "ticket_id": ticket.id if ticket else None,
+        "ticket_folio_display": ticket.folio_display if ticket else None,
+    }), 201
 
 
 @edr_bp.route("/ingresos/<int:ingreso_id>", methods=["PUT"])

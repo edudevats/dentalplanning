@@ -459,6 +459,13 @@ def ticket_simple(ingreso_id):
         suc = Sucursal.query.filter_by(
             id=ing.sucursal_id, tenant_id=g.tenant_id
         ).first()
+
+    # El recibo es de la VISITA, no del renglón: si el paciente vino por una
+    # limpieza y una corona, se lleva un papel con las dos. Un ingreso suelto
+    # (visita_uid nulo) devuelve un solo concepto, como siempre.
+    from app.edr.services import hermanos_de_visita
+    lineas = hermanos_de_visita(ing)
+
     return jsonify({
         "facturable": False,
         "logo": logo_b64(g.tenant_id),
@@ -467,9 +474,9 @@ def ticket_simple(ingreso_id):
         "direccion": suc.direccion if suc else None,
         "telefono": suc.telefono if suc else None,
         "fecha": ing.fecha.isoformat(),
-        "conceptos": [{"nombre": ing.nombre_tratamiento or "Servicio",
-                       "monto": round(ing.monto or 0.0, 2)}],
-        "total": round(ing.monto or 0.0, 2),
+        "conceptos": [{"nombre": l.nombre_tratamiento or "Servicio",
+                       "monto": round(l.monto or 0.0, 2)} for l in lineas],
+        "total": round(sum(l.monto or 0.0 for l in lineas), 2),
     })
 
 

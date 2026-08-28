@@ -34,6 +34,7 @@
     return {
       turno: r.turno || null,
       separaSucursales: r.separa_sucursales === true,
+      estadoCajas: Array.isArray(r.estado_cajas) ? r.estado_cajas : [],
     };
   }
 
@@ -126,40 +127,265 @@
     return (turno && turno.sucursal_id) ? turno.sucursal_id : null;
   }
 
+  /* La cara del botón de la cabecera.
+   *
+   * Para el admin ese botón dejó de ser una acción y pasó a ser un ESTADO: no
+   * dice "abre tu caja" —el admin no captura— sino en qué situación está la
+   * caja de la sucursal que está mirando. De ahí las dos caras.
+   *
+   * `cajaAjena` manda sobre el turno propio a propósito: si la caja está
+   * abierta, lo que se necesita desde ese botón es corregirla, no volver a
+   * abrirla, aunque quien mire sea justo quien la abrió. */
+  function caraBotonInicio(turno, cajaAjena) {
+    if (cajaAjena) {
+      return {
+        visible: true,
+        tono: "abierta",
+        texto: "Caja abierta" + (cajaAjena.por ? " · " + cajaAjena.por : ""),
+      };
+    }
+    return { visible: !turno, tono: "abrir", texto: "Inicio de caja" };
+  }
+
+  /* "Ana", "Ana y Beatriz", "Ana, Beatriz y Carla". */
+  function unirNombres(nombres) {
+    var l = (nombres || []).filter(Boolean);
+    if (!l.length) return "";
+    if (l.length === 1) return l[0];
+    return l.slice(0, -1).join(", ") + " y " + l[l.length - 1];
+  }
+
+  /* Qué sucursales están trabajando hoy y cuáles no, una línea por sede.
+   *
+   * Lista también las que NO están abiertas a propósito: la pregunta que
+   * responde es "quién ya está trabajando", y eso solo se sabe viendo las dos
+   * mitades. Tres estados, porque marcar como "sin abrir" una sucursal que ya
+   * cuadró y cerró sugeriría que alguien debería ir a abrirla.
+   *
+   * Devuelve `{estado, texto, detalle}` y no HTML: el color lo pone quien
+   * pinta, y así esta parte se prueba sin DOM. */
+  function lineasEstadoCajas(cajas) {
+    return (cajas || []).filter(Boolean).map(function (c) {
+      var quien = unirNombres(c.abierto_por);
+      var detalle = c.estado === "cerrada" ? "caja cerrada"
+        : c.estado === "abierta" ? (quien || "abierta")
+        : "sin abrir";
+      return {
+        estado: c.estado,
+        // Sin sede que nombrar (el tenant no configuró ninguna) la línea se
+        // quedaría con un punto de color y nada al lado.
+        texto: c.sucursal || "Caja del día",
+        detalle: detalle,
+      };
+    });
+  }
+
+  /* Qué enseña el aviso de "sin caja" de /ingresos y /gastos.
+   *
+   * El admin queda fuera del regaño y del botón: el backend lo exime del turno
+   * (`exigir_turno_abierto` hace `if es_admin: return`), así que decirle
+   * "todavía no abres tu caja" era decirle algo falso. De este aviso solo le
+   * sirve la lista, y si NINGUNA caja está abierta tampoco eso: una lista
+   * entera de "sin abrir" no le dice nada que necesite, porque nadie ha llegado
+   * y él no tiene que abrir ninguna.
+   *
+   * Un rol `null` —lo que vale mientras /auth/me está en vuelo— cuenta como
+   * no-admin: la duda no puede saldarse escondiéndole el botón a quien sí lo
+   * necesita para poder trabajar. */
+  function avisoDeTurno(turno, estadoCajas, rolActual) {
+    var esAdmin = rolActual === "admin";
+    // El turno propio calla el aviso para quien captura -ya esta trabajando y
+    // sabe donde-, pero NO para el admin: el de una clinica pequena abre la
+    // caja el mismo, y justo entonces es cuando quiere ver que sedes trabajan.
+    // Como a el se le quitan el regano y el boton, lo que le queda es la lista
+    // sola, que es exactamente lo que vino a ver.
+    if (turno && !esAdmin) return { visible: false, pideAbrir: false, lineas: [] };
+    var lineas = lineasEstadoCajas(estadoCajas);
+    var algunaAbierta = lineas.some(function (l) { return l.estado === "abierta"; });
+    if (esAdmin && !algunaAbierta) {
+      return { visible: false, pideAbrir: false, lineas: [] };
+    }
+    return { visible: true, pideAbrir: !esAdmin, lineas: lineas };
+  }
+
+  /* Qué turno ve la PANTALLA que llamó a `iniciar`, que no es el mismo que ve
+   * este módulo.
+   *
+   * Para el admin siempre `null`, aunque tenga su propia caja abierta. No es un
+   * detalle: `ingresos.html` y `gastos.html` guardan este valor en `turnoDelDia`
+   * y de él sacan la sucursal de TODO lo que se captura o se edita
+   * (`handleSave`), además de bloquear la fecha y la sucursal del formulario
+   * (`aplicarTurnoAlFormulario`). Devolverle su turno al admin hacía que editar
+   * un ingreso viejo de otra sede lo reasignara en silencio a la sede de su
+   * turno —el backend no puede frenarlo, porque `exigir_turno_abierto` lo
+   * exime— y le bloqueaba la corrección de fecha y sucursal, que es justamente
+   * la razón de que esté exento.
+   *
+   * El módulo SÍ guarda el turno del admin en `estado`: de ahí salen la cara
+   * del botón y el aviso de cajas abiertas. Lo que no sale de aquí es el
+   * permiso para que una pantalla de captura lo use como contexto. */
+  function turnoParaLaPantalla(turno, rolActual) {
+    return rolActual === "admin" ? null : turno;
+  }
+
   // ── DOM ───────────────────────────────────────────────────────────────────
 
-  var estado = { turno: null, separaSucursales: false };
+  var estado = { turno: null, separaSucursales: false, estadoCajas: [] };
   var sucursales = [];
   var rol = null;
   var alAbrir = null;      // callback que cada pantalla registra
   var bloqueante = false;  // el modal que se abrió solo no se puede descartar
+  var alCorregir = null;   // qué hacer al clicar la cara roja
+  var cajaAjena = null;    // {por} cuando la caja del contexto ya está abierta
 
   function el(id) { return document.getElementById(id); }
 
+  /* El color va por `style` con variables del tema y NO por clases de Tailwind:
+   * el JIT del navegador solo genera la regla de una clase que ve en el HTML al
+   * cargar, y estas filas las crea el JS. Con la variable, el punto se pinta
+   * igual en las dos plantillas sin depender de qué clases traiga cada una. */
+  var COLOR_ESTADO = {
+    abierta: "var(--color-accent-600)",
+    cerrada: "var(--color-primary-600)",
+    sin_abrir: "var(--color-text-muted)",
+  };
+
+  function filaEstadoCaja(linea) {
+    var fila = document.createElement("li");
+    fila.className = "flex items-center gap-2";
+
+    // Sin ninguna clase de Tailwind: el punto lo crea el JS, y el JIT del
+    // navegador solo genera la regla de las clases que ve en el HTML al
+    // cargar. `rounded-full` sobrevivia de prestado por el avatar de la
+    // cabecera (layout.html) y `inline-block` no existia en ningun lado -era
+    // inocua solo porque el <li> es flex y blockifica a sus hijos-. Con todo
+    // en `style` el punto deja de depender de marcado ajeno.
+    var punto = document.createElement("span");
+    var color = COLOR_ESTADO[linea.estado] || COLOR_ESTADO.sin_abrir;
+    punto.style.width = "0.5rem";
+    punto.style.height = "0.5rem";
+    punto.style.flexShrink = "0";
+    punto.style.borderRadius = "9999px";
+    // La cerrada va hueca y no rellena: verde y cian en un punto de 8px son
+    // casi el mismo color bajo deuteranopia, y esa es justo la distincion que
+    // carga el significado ("trabajando" contra "ya termino"). Con el anillo se
+    // distinguen por forma, no solo por tono.
+    if (linea.estado === "cerrada") {
+      punto.style.backgroundColor = "transparent";
+      punto.style.border = "2px solid " + color;
+    } else {
+      punto.style.backgroundColor = color;
+    }
+    fila.appendChild(punto);
+
+    var sede = document.createElement("span");
+    sede.className = "font-medium";
+    sede.textContent = linea.texto;
+    fila.appendChild(sede);
+
+    var detalle = document.createElement("span");
+    detalle.textContent = "· " + linea.detalle;
+    // El detalle se apaga cuando no hay nadie: lo que importa de esa línea es
+    // el hueco, no el texto.
+    detalle.style.opacity = linea.estado === "abierta" ? "1" : "0.7";
+    fila.appendChild(detalle);
+
+    return fila;
+  }
+
   function render() {
     var btn = el("btn-inicio-caja");
+    if (btn) {
+      var cara = caraBotonInicio(estado.turno, cajaAjena);
+      // `style.display` y no la clase `hidden`: el botón trae `inline-flex` en
+      // el marcado y el JIT de Tailwind del navegador insertaría `.hidden`
+      // después, perdiendo la cascada.
+      btn.style.display = cara.visible ? "" : "none";
+      // `bg-danger-500`/`hover:bg-danger-600` y NO otro tono de danger: son las
+      // dos únicas que ya viven en el marcado inicial de corte.html, y el JIT
+      // del navegador solo genera la regla de las clases que ve al cargar.
+      var rojo = cara.tono === "abierta";
+      btn.classList.toggle("bg-danger-500", rojo);
+      btn.classList.toggle("hover:bg-danger-600", rojo);
+      btn.classList.toggle("bg-accent-600", !rojo);
+      btn.classList.toggle("hover:bg-accent-700", !rojo);
+      var textoBtn = el("texto-inicio-caja");
+      if (textoBtn) textoBtn.textContent = cara.texto;
+      // El icono sigue a la cara: un candado abierto invita a abrir, y la cara
+      // roja ya no abre nada — lleva a EDITAR el turno (mismo ícono que usa
+      // "Editar turno" en corte.js), así que un candado ahí invitaría a lo
+      // contrario de lo que hace. Solo existe en corte.html (único lugar con
+      // el id); en ingresos/gastos `slot` sale null y el if no hace nada.
+      var slot = el("icon-inicio-caja");
+      if (slot) {
+        // No se muta el <i> existente: lucide ya lo sustituyó por un <svg> en
+        // el primer render (createIcons() reemplaza el nodo, no lo actualiza
+        // in-place), así que cambiarle el atributo data-lucide a lo que quedó
+        // no repinta nada — ese atributo ni siquiera sobrevive al reemplazo.
+        // En vez de eso se recrea el <i> desde cero dentro de un wrapper que
+        // lucide nunca toca, y se deja que createIcons() lo convierta de
+        // nuevo. Mismo patrón que setBtnContent() en
+        // app/static/js/admin/admin_pagos.js:216.
+        slot.replaceChildren();
+        var ic = document.createElement("i");
+        ic.setAttribute("data-lucide", rojo ? "pencil" : "unlock");
+        ic.className = "h-4 w-4";
+        slot.appendChild(ic);
+        if (typeof lucide !== "undefined") lucide.createIcons();
+      }
+    }
     var etiqueta = el("turno-actual");
-    // Con turno abierto el botón sobra: se quita del flujo, no solo se apaga.
-    // `style.display` y no la clase `hidden`: el botón trae `inline-flex` en el
-    // marcado y el JIT de Tailwind del navegador insertaría `.hidden` después,
-    // perdiendo la cascada (ver la trampa documentada en el plan).
-    if (btn) btn.style.display = estado.turno ? "none" : "";
     if (etiqueta) {
       etiqueta.style.display = estado.turno ? "" : "none";
       etiqueta.textContent = etiquetaTurno(estado.turno);
     }
     var aviso = el("aviso-sin-turno");
-    if (aviso) aviso.style.display = estado.turno ? "none" : "";
+    if (aviso) {
+      var av = avisoDeTurno(estado.turno, estado.estadoCajas, rol);
+      aviso.style.display = av.visible ? "" : "none";
+      // El regaño y el botón se quitan del flujo para el admin, no solo se
+      // apagan: dejarle un hueco donde estaba el botón sugeriría que algo le
+      // falta por hacer, y no le falta nada.
+      ["aviso-turno-titulo", "aviso-turno-detalle", "btn-aviso-abrir-caja"]
+        .forEach(function (id) {
+          var e = el(id);
+          if (e) e.style.display = av.pideAbrir ? "" : "none";
+        });
+      var lista = el("aviso-estado-cajas");
+      if (lista) {
+        lista.replaceChildren();
+        lista.style.display = av.lineas.length ? "" : "none";
+        av.lineas.forEach(function (linea) {
+          lista.appendChild(filaEstadoCaja(linea));
+        });
+      }
+    }
   }
 
   async function cargar() {
     try {
       estado = leerEstado(await API.get("/caja/turno"));
     } catch (e) {
-      estado = { turno: null, separaSucursales: false };
+      estado = { turno: null, separaSucursales: false, estadoCajas: [] };
     }
     render();
     return estado.turno;
+  }
+
+  /* Le dice al módulo que la caja de la sucursal que la pantalla está mirando ya
+   * está abierta, y por quién.
+   *
+   * Solo /corte-caja la usa: es la única pantalla con selector de sucursal y por
+   * tanto la única que puede estar mirando una caja que no es la de quien mira.
+   *
+   * El filtro por rol vive aquí y no en el llamador para que exista en UN solo
+   * sitio: pintarle el rojo a una recepcionista le diría que no puede trabajar,
+   * cuando la verdad es la contraria —la segunda del día abre su turno y hereda
+   * el fondo, porque el cajón es uno solo que varias personas alimentan—. */
+  function marcarCajaAjena(info) {
+    var hay = rol === "admin" && !!(info && info.abierta);
+    cajaAjena = hay ? { por: (info && info.por) || null } : null;
+    render();
   }
 
   /* `forzado` = lo disparó la carga de la pantalla, no un clic. Ese modal no se
@@ -253,9 +479,20 @@
     rol = o.rol || null;
     sucursales = o.sucursales || [];
     alAbrir = o.alAbrir || null;
+    alCorregir = o.alCorregir || null;
 
     var btn = el("btn-inicio-caja");
-    if (btn) btn.addEventListener("click", function () { abrirModal(false); });
+    if (btn) btn.addEventListener("click", function () {
+      // La cara roja no abre caja: la caja ya está abierta. Lleva a corregirla,
+      // que es lo único que se puede querer hacer desde ahí. La pantalla
+      // registra ese callback; si no lo hizo, el clic no hace nada, que es
+      // mejor que abrir un modal contra un 409 seguro.
+      if (cajaAjena) {
+        if (typeof alCorregir === "function") alCorregir();
+        return;
+      }
+      abrirModal(false);
+    });
     var confirmarBtn = el("btn-confirmar-turno");
     if (confirmarBtn) confirmarBtn.addEventListener("click", confirmar);
     ["btn-cancelar-turno", "btn-cerrar-turno", "backdrop-turno"].forEach(function (id) {
@@ -263,13 +500,15 @@
       if (e) e.addEventListener("click", cerrarModal);
     });
 
-    // El admin no necesita turno para nada de esta pantalla, y pedírselo solo
-    // gastaría una llamada: el candado del backend ya lo exime.
-    if (rol === "admin") { render(); return null; }
-
+    // El admin SÍ pide el turno, aunque el candado del backend lo exima de
+    // tenerlo: de esta misma llamada sale la lista de cajas abiertas que el
+    // aviso le muestra, que es el único trozo de este flujo que le sirve.
+    // Antes salía temprano sin pedirla, y por eso el aviso le quedaba mudo.
+    // Lo que no le aplica es el modal bloqueante, y de eso ya se encarga
+    // `debeAbrirModal`, que lo deja fuera por rol.
     await cargar();
     if (debeAbrirModal(estado.turno, rol)) abrirModal(true);
-    return estado.turno;
+    return turnoParaLaPantalla(estado.turno, rol);
   }
 
   var TurnoCaja = {
@@ -278,11 +517,16 @@
     debeAbrirModal: debeAbrirModal,
     validarApertura: validarApertura,
     etiquetaTurno: etiquetaTurno,
+    turnoParaLaPantalla: turnoParaLaPantalla,
+    lineasEstadoCajas: lineasEstadoCajas,
+    avisoDeTurno: avisoDeTurno,
     sucursalDelTurno: sucursalDelTurno,
+    caraBotonInicio: caraBotonInicio,
     // DOM
     iniciar: iniciar,
     cargar: cargar,
     abrirModal: abrirModal,
+    marcarCajaAjena: marcarCajaAjena,
     actual: function () { return estado.turno; },
   };
 

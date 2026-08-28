@@ -53,9 +53,20 @@
        exigir_turno_abierto). Nace oculto por `style.display` porque turno.js lo
        revela por la misma vía. -->
   <div id="aviso-sin-turno" style="display:none" class="rounded-xl border border-warning-100 bg-warning-50 p-5">
-    <p class="text-sm font-medium text-warning-600 font-body">Todavía no abres tu caja de hoy.</p>
-    <p class="text-sm text-text-secondary font-body mt-1">Para registrar gastos, primero abre tu caja y di en qué sucursal vas a trabajar.</p>
-    <button type="button" onclick="TurnoCaja.abrirModal(false)" class="inline-flex items-center gap-2 mt-3 text-sm font-medium text-primary-600 hover:text-primary-700 font-body cursor-pointer">Abrir mi caja &rarr;</button>
+    {# El titulo, el detalle y el boton se le quitan al admin: el backend lo
+       exime del turno (exigir_turno_abierto hace `if es_admin: return`), asi
+       que decirle "todavia no abres tu caja" era decirle algo falso. De este
+       aviso solo le sirve la linea de las cajas abiertas. Lo decide
+       avisoDeTurno() en turno.js. #}
+    <p id="aviso-turno-titulo" class="text-sm font-medium text-warning-600 font-body">Todavía no abres tu caja de hoy.</p>
+    <p id="aviso-turno-detalle" class="text-sm text-text-secondary font-body mt-1">Para registrar gastos, primero abre tu caja y di en qué sucursal vas a trabajar.</p>
+    {# Que sucursales ya estan trabajando y cuales no, una linea por sede. Nace
+       oculta por `style.display` y no por la clase `hidden`: el JIT de Tailwind
+       del navegador solo genera esa regla si la ve al cargar. Las filas las
+       crea turno.js, y el punto de color va por `style` con variables del tema
+       justamente porque el JIT no puede generar clases que nunca ve. #}
+    <ul id="aviso-estado-cajas" style="display:none" class="text-sm text-text-primary font-body mt-3 space-y-1"></ul>
+    <button type="button" id="btn-aviso-abrir-caja" onclick="TurnoCaja.abrirModal(false)" class="inline-flex items-center gap-2 mt-3 text-sm font-medium text-primary-600 hover:text-primary-700 font-body cursor-pointer">Abrir mi caja &rarr;</button>
   </div>
 
   <!-- Table -->
