@@ -472,7 +472,9 @@ function renderTable_() {
     { key: 'tratamiento_id', label: 'Tratamiento', render: (v, row) => v ? findName(tratamientos, v) : (row.nombre_tratamiento || '-') },
     { key: 'especialista_id', label: 'Especialista', render: v => findName(especialistas, v) },
     { key: 'metodo_pago_id', label: 'Metodo Pago', render: v => findName(metodosPago, v) },
-    { key: 'descuento_pct', label: 'Descuento', align: 'right', render: v => domEl('span', 'tabular-nums text-text-muted', v ? v + '%' : '-') },
+    // El folio del ticket: las filas de una misma visita lo comparten, y esa es
+    // la unica pista visible de que se capturaron juntas.
+    { key: 'ticket_folio_display', label: 'Ticket', render: (v, row) => domEl('span', 'tabular-nums text-text-muted', v || (row.ticket_folio ? String(row.ticket_folio) : '-')) },
     { key: 'monto', label: 'Monto', align: 'right', render: v => domEl('span', 'tabular-nums font-medium', fmt(v)) },
     { key: 'comision_bancaria', label: 'Com. Bancaria', align: 'right', render: v => domEl('span', 'tabular-nums text-text-muted', fmt(v)) },
     { key: 'comision_doctor', label: 'Com. Doctor', align: 'right', render: v => domEl('span', 'tabular-nums text-text-muted', fmt(v)) },

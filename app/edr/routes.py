@@ -47,6 +47,7 @@ def listar_ingresos():
         joinedload(Ingreso.especialista),
         joinedload(Ingreso.metodo_pago),
         joinedload(Ingreso.estrategia),
+        joinedload(Ingreso.ticket),
     ).filter(
         Ingreso.tenant_id == g.tenant_id,
         *filtro_mes(Ingreso.fecha, year, month),
