@@ -162,6 +162,37 @@ class Sobrepago(PlanInvalido):
     """El abono excede el saldo del plan."""
 
 
+def repartir(programados, pagos):
+    """Cascada de sólo lectura: no toca `programados` ni la sesión de BD.
+
+    Es el reparto puro que `aplicar_cascada` persiste, extraído aparte para
+    poder preguntar "¿qué abono cubrió esta parcialidad?" en un GET sin
+    marcar las filas como sucias.
+
+    Devuelve `(asignaciones, cubierto, sobrantes)`:
+    - `asignaciones`: tuplas `(pago, programado, monto_aplicado)`.
+    - `cubierto`: lo aplicado a cada programado, en el orden recibido.
+    - `sobrantes`: lo que no cupo de cada pago, en el orden recibido.
+    """
+    cubierto = [0.0] * len(programados)
+    asignaciones = []
+    sobrantes = []
+    for pago in pagos:
+        restante = round(pago.monto, 2)
+        for indice, prog in enumerate(programados):
+            if restante <= TOLERANCIA:
+                break
+            hueco = round(prog.monto_programado - cubierto[indice], 2)
+            if hueco <= TOLERANCIA:
+                continue
+            aplicado = round(min(hueco, restante), 2)
+            cubierto[indice] = round(cubierto[indice] + aplicado, 2)
+            restante = round(restante - aplicado, 2)
+            asignaciones.append((pago, prog, aplicado))
+        sobrantes.append(restante)
+    return asignaciones, cubierto, sobrantes
+
+
 def aplicar_cascada(programados, pagos):
     """Reparte todos los pagos sobre el calendario, del más viejo al más nuevo.
 
@@ -173,7 +204,9 @@ def aplicar_cascada(programados, pagos):
     estado de cuenta usa para saber a qué bloque pertenece cada abono.
     """
     # Valida antes de mutar nada: si algo es inválido, `programados` debe
-    # quedar exactamente como llegó (nada de mutación parcial).
+    # quedar exactamente como llegó (nada de mutación parcial). Por eso el
+    # reparto se hace sobre `repartir`, que no escribe, y sólo se vuelca sobre
+    # las filas cuando ya se sabe que todo cupo.
     for pago in pagos:
         if pago.monto <= 0:
             raise PlanInvalido(
@@ -193,34 +226,22 @@ def aplicar_cascada(programados, pagos):
             "Ajusta el monto o revisa el plan."
         )
 
-    for prog in programados:
-        prog.monto_pagado = 0.0
-        prog.estatus = "pendiente"
-
-    asignaciones = []
-    for pago in pagos:
-        restante = round(pago.monto, 2)
-        for prog in programados:
-            if restante <= TOLERANCIA:
-                break
-            hueco = round(prog.monto_programado - prog.monto_pagado, 2)
-            if hueco <= TOLERANCIA:
-                continue
-            aplicado = round(min(hueco, restante), 2)
-            prog.monto_pagado = round(prog.monto_pagado + aplicado, 2)
-            restante = round(restante - aplicado, 2)
-            asignaciones.append((pago, prog, aplicado))
+    asignaciones, cubierto, sobrantes = repartir(programados, pagos)
+    for restante in sobrantes:
         if restante > TOLERANCIA:
             raise Sobrepago(
                 f"El pago excede el saldo del plan por ${restante:,.2f}. "
                 "Ajusta el monto o revisa el plan."
             )
 
-    for prog in programados:
-        if prog.monto_pagado >= prog.monto_programado - TOLERANCIA:
+    for prog, pagado in zip(programados, cubierto):
+        prog.monto_pagado = pagado
+        if pagado >= prog.monto_programado - TOLERANCIA:
             prog.estatus = "pagado"
-        elif prog.monto_pagado > TOLERANCIA:
+        elif pagado > TOLERANCIA:
             prog.estatus = "parcial"
+        else:
+            prog.estatus = "pendiente"
 
     return asignaciones
 

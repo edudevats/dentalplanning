@@ -99,6 +99,33 @@
     ::-webkit-scrollbar-thumb { background-color: var(--color-border-strong); border-radius: 3px; }
 
     .tabular-nums { font-variant-numeric: tabular-nums; }
+
+    /* Columna de acciones anclada a la derecha (renderTable con stickyLastCol).
+       Sin esto el usuario tiene que bajar hasta el final de la tabla para
+       encontrar la barra horizontal y recorrerla hasta los botones.
+       El fondo de la celda anclada va por `inherit` para que siga el color de
+       su fila (hover y filas resaltadas incluidos), y para eso la fila necesita
+       un fondo opaco propio. Ese par de reglas va dentro de @layer base a
+       proposito: lo que se escribe aqui sin capa le gana a CUALQUIER utilidad
+       de Tailwind (las utilidades viven en @layer utilities y lo sin capa
+       siempre pesa mas), y eso borraba el bg-primary-50 de las filas con
+       comentario. En base, la utilidad del <tr> vuelve a mandar. */
+    @layer base {
+      table[data-sticky-actions] thead tr { background-color: var(--color-surface-alt); }
+      table[data-sticky-actions] tbody tr { background-color: var(--color-surface); }
+    }
+    table[data-sticky-actions] th:last-child,
+    table[data-sticky-actions] td:last-child:not(:only-child) {
+      position: sticky;
+      right: 0;
+      z-index: 1;
+      background-color: inherit;
+      /* Separador para que las columnas que pasan por debajo no se vean
+         pegadas a los botones. Fijo y sin JS: medir el desborde para poner la
+         sombra solo cuando hace falta obliga a tocar el DOM, y eso desata al
+         JIT de Tailwind del navegador en un bucle de recompilado. */
+      border-left: 1px solid var(--color-border);
+    }
   </style>
 
   <!-- Chart.js -->

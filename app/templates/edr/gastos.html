@@ -191,12 +191,14 @@ function renderTable_() {
       div.appendChild(eBtn); div.appendChild(dBtn); return div;
     }},
   ];
-  renderTable('table-wrap', cols, tableData, 'No hay gastos registrados', false);
+  // Los botones son la ultima columna: anclada, se alcanzan sin recorrer la
+  // barra horizontal del final de la tabla.
+  renderTable('table-wrap', cols, tableData, 'No hay gastos registrados', false, { stickyLastCol: true });
   lucide.createIcons();
 }
 
 async function fetchData() {
-  renderTable('table-wrap', [], [], '', true);
+  renderTable('table-wrap', [], [], '', true, { stickyLastCol: true });
   try {
     const mes = selYear + '-' + String(selMonth).padStart(2, '0');
     const res = await API.get('/edr/gastos?mes=' + mes);

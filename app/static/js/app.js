@@ -691,6 +691,11 @@ function badgeEl(text, variant = 'neutral') {
 //   Si rowClass devuelve algo, se omite el hover por defecto y lo aporta el
 //   llamador: dos utilidades hover:bg-* con la misma especificidad se resuelven
 //   por orden de aparicion en el CSS generado, y no queremos depender de eso.
+// options: { stickyLastCol: true } ancla la ultima columna al borde derecho del
+//   contenedor. Para tablas anchas cuya ultima columna son los botones de
+//   accion: quedan siempre a la vista y nadie tiene que bajar al final de la
+//   tabla a buscar la barra de desplazamiento horizontal. El estilo vive en
+//   base.html (data-sticky-actions), no en clases de Tailwind.
 function renderTable(containerId, columns, data, emptyMessage, loading, options = {}) {
   const container = document.getElementById(containerId);
   if (!container) return;
@@ -773,6 +778,13 @@ function renderTable(containerId, columns, data, emptyMessage, loading, options 
   wrap.appendChild(table);
 
   container.replaceChildren(wrap);
+
+  // Todo el anclado es CSS (ver base.html). Nada de medir el desborde desde JS
+  // para adornar solo cuando haga falta: cualquier atributo que se toque aqui
+  // dispara al JIT de Tailwind del navegador, que recompila, provoca un
+  // relayout y vuelve a disparar al observador. Ese bucle deja a las filas de
+  // color en una transicion eterna hacia el blanco.
+  if (options.stickyLastCol) table.setAttribute('data-sticky-actions', '');
 }
 
 // ── Stat card update ──────────────────────────────────────────────────────────

@@ -201,13 +201,32 @@ const Cobranza = (() => {
     });
   }
 
+  // `fecha_vencimiento` es la fecha programada y no se mueve al pagar. Estos
+  // dos helpers muestran la fecha real en que entró el dinero, para que las
+  // dos no se lean como si fueran la misma.
+  function abonoTexto(item) {
+    if (!item.fecha_pagado) return '—';
+    const fechas = item.abonos_fechas || [];
+    const ultima = formatDate(item.fecha_pagado);
+    return fechas.length > 1 ? `${ultima} (+${fechas.length - 1})` : ultima;
+  }
+
+  function abonoTitulo(item) {
+    const fechas = item.abonos_fechas || [];
+    if (!fechas.length) return 'Sin abonos aplicados a esta parcialidad';
+    if (fechas.length === 1) return `Abonado el ${formatDate(fechas[0])}`;
+    return `Cubierta con ${fechas.length} abonos: `
+      + fechas.map(formatDate).join(', ');
+  }
+
   function scheduleTable(quote) {
     if (!quote.programados || !quote.programados.length) {
       return '<p class="text-sm text-text-muted">El calendario se generará al aprobar.</p>';
     }
     return `<div class="overflow-x-auto"><table class="w-full text-sm">
       <thead class="text-xs text-text-muted"><tr>
-        <th class="py-2 text-left">Pago</th><th class="py-2 text-left">Fecha</th>
+        <th class="py-2 text-left">Pago</th><th class="py-2 text-left">Vence</th>
+        <th class="py-2 text-left">Pagado el</th>
         <th class="py-2 text-right">Programado</th><th class="py-2 text-right">Cubierto</th>
         <th class="py-2 text-right"></th></tr></thead>
       <tbody>${quote.programados.map(item => {
@@ -215,6 +234,8 @@ const Cobranza = (() => {
         return `<tr class="border-t border-border">
           <td class="py-2">${item.numero === 0 ? 'Anticipo' : `Pago ${item.numero}`}</td>
           <td class="py-2">${formatDate(item.fecha_vencimiento)}</td>
+          <td class="py-2 ${item.fecha_pagado ? '' : 'text-text-muted'}"
+              title="${esc(abonoTitulo(item))}">${abonoTexto(item)}</td>
           <td class="py-2 text-right tabular-nums">${fmt(item.monto_programado)}</td>
           <td class="py-2 text-right tabular-nums">${fmt(item.monto_pagado)}</td>
           <td class="py-2 text-right">${quote.estatus === 'aprobada' && pending > 0
@@ -230,7 +251,7 @@ const Cobranza = (() => {
     }
     return `<div class="overflow-x-auto"><table class="w-full text-sm">
       <thead class="text-xs text-text-muted"><tr>
-        <th class="py-2 text-left">Fecha</th><th class="py-2 text-left">Método</th>
+        <th class="py-2 text-left">Fecha de pago</th><th class="py-2 text-left">Método</th>
         <th class="py-2 text-right">Monto</th><th class="py-2 text-center">Origen</th>
       </tr></thead>
       <tbody>${quote.pagos.map(payment => `<tr class="border-t border-border">
@@ -539,6 +560,17 @@ const Cobranza = (() => {
       inputFecha.className = 'w-full rounded-lg border border-border px-2 py-1 text-sm disabled:bg-surface-alt disabled:text-text-muted';
       tdFecha.appendChild(inputFecha);
       tr.appendChild(tdFecha);
+
+      // La fecha real del abono: es la que la usuaria busca cuando compara
+      // esta tabla contra el historial, y la que antes no aparecía por ningún
+      // lado, así que el vencimiento programado parecía un dato corrupto.
+      const tdPagado = domEl(
+        'td',
+        `py-2 text-sm ${item.fecha_pagado ? '' : 'text-text-muted'}`,
+        abonoTexto(item),
+      );
+      tdPagado.title = abonoTitulo(item);
+      tr.appendChild(tdPagado);
 
       const tdMonto = document.createElement('td');
       tdMonto.className = 'py-2 text-right';

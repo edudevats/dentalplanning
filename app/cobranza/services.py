@@ -833,6 +833,28 @@ def _recalcular_cascada(cot):
         raise CobranzaError(str(error))
 
 
+def fechas_abono_por_parcialidad(cot):
+    """`{numero: [fecha, ...]}` — cuándo entró el dinero que cubre cada fila.
+
+    `fecha_vencimiento` es la fecha *programada* de la parcialidad y nunca se
+    mueve cuando el paciente paga; esta es la fecha *real* de los abonos que la
+    cubrieron. Presentarlas juntas evita que se lean como si fueran la misma.
+
+    Usa `repartir`, no `aplicar_cascada`: el detalle es un GET y no debe dejar
+    `monto_pagado` ni `estatus` marcados como sucios en la sesión.
+    """
+    from app.cobranza.calculo import repartir
+
+    programados = sorted(cot.programados, key=lambda p: p.numero)
+    pagos = sorted(cot.pagos, key=lambda p: (p.fecha, p.id or 0))
+    asignaciones, _cubierto, _sobrantes = repartir(programados, pagos)
+
+    fechas = {}
+    for pago, prog, _monto in asignaciones:
+        fechas.setdefault(prog.numero, []).append(pago.fecha)
+    return fechas
+
+
 def _etiqueta_abono(cot, pago, asignaciones):
     """Etiqueta legible del abono en el EDR.
 

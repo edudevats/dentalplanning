@@ -322,7 +322,9 @@ function renderTable_() {
       }
     },
   ];
-  renderTable('table-wrap', cols, tableData, 'No hay pagos registrados', false);
+  // Los botones son la ultima columna: anclada, se alcanzan sin recorrer la
+  // barra horizontal del final de la tabla.
+  renderTable('table-wrap', cols, tableData, 'No hay pagos registrados', false, { stickyLastCol: true });
   lucide.createIcons();
 }
 
@@ -396,7 +398,9 @@ function renderTableResumen() {
       }
     }
   ];
-  renderTable('table-resumen-wrap', cols, resumenDoctoresData, 'No hay Doctores con actividad registrada', false);
+  // Idem: la columna Acciones ("Ver Detalles") es la ultima, y esta tabla es
+  // la mas ancha de la pantalla.
+  renderTable('table-resumen-wrap', cols, resumenDoctoresData, 'No hay Doctores con actividad registrada', false, { stickyLastCol: true });
   lucide.createIcons();
 }
 
@@ -628,8 +632,8 @@ function renderCharts() {
 }
 
 async function fetchData() {
-  renderTable('table-wrap', [], [], '', true);
-  renderTable('table-resumen-wrap', [], [], '', true);
+  renderTable('table-wrap', [], [], '', true, { stickyLastCol: true });
+  renderTable('table-resumen-wrap', [], [], '', true, { stickyLastCol: true });
   try {
     const mes = selYear + '-' + String(selMonth).padStart(2, '0');
     

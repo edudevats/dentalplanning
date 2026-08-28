@@ -505,12 +505,15 @@ function renderTable_() {
   const empty = (userRole === 'recepcionista') ? 'No hay ingresos registrados hoy' : 'No hay ingresos registrados';
   renderTable('table-wrap', cols, rows, empty, false, {
     rowClass: row => tieneComentario(row) ? 'bg-primary-50 hover:bg-primary-100' : '',
+    // La tabla es ancha y los botones son la ultima columna: anclada, se
+    // alcanzan sin recorrer la barra horizontal del final de la tabla.
+    stickyLastCol: true,
   });
   lucide.createIcons();
 }
 
 async function fetchData() {
-  renderTable('table-wrap', [], [], '', true);
+  renderTable('table-wrap', [], [], '', true, { stickyLastCol: true });
   try {
     const mes = selYear + '-' + String(selMonth).padStart(2, '0');
     const res = await API.get('/edr/ingresos?mes=' + mes);

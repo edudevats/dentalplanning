@@ -98,6 +98,14 @@ def _dump(cotizacion, *, detallado=False):
     else:
         data["dias_sin_pago"] = None
     if detallado:
+        # `fecha_vencimiento` es la fecha programada y no se mueve al pagar;
+        # se acompaña de la fecha real de los abonos que cubrieron la fila
+        # para que la UI pueda distinguirlas en vez de rotular ambas "Fecha".
+        fechas_abono = services.fechas_abono_por_parcialidad(cotizacion)
+        for fila in data["programados"]:
+            fechas = fechas_abono.get(fila["numero"], [])
+            fila["abonos_fechas"] = [f.isoformat() for f in fechas]
+            fila["fecha_pagado"] = fechas[-1].isoformat() if fechas else None
         data["pagos"] = [_dump_pago(pago) for pago in cotizacion.pagos]
         data["devoluciones"] = [
             {
