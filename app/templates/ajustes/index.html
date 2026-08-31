@@ -1773,7 +1773,7 @@
       addBtn.appendChild(domIcon('plus', 'h-3.5 w-3.5'));
       addBtn.appendChild(domEl('span', '', 'Solicitar recepcionista adicional' + precio));
       addBtn.disabled = false;
-      addBtn.onclick = solicitarAsiento;
+      addBtn.onclick = () => solicitarAsiento('recepcionista');
     } else {
       addBtn.appendChild(domEl('span', '', 'Solicitud en curso'));
       addBtn.disabled = true;
@@ -1782,31 +1782,54 @@
     addBtn.classList.toggle('cursor-not-allowed', addBtn.disabled);
 
     // Cupo de asistentes: se consulta aparte porque la capacidad es por rol.
+    // Mismo ciclo que el de recepcionista: con cupo crea, sin cupo solicita el
+    // asiento de pago. Antes solo se deshabilitaba, asi que la solicitud de
+    // asistente no tenia por donde nacer y la bandeja del super-admin nunca la
+    // recibia.
     const btnAsis = document.getElementById('btn-add-asistente');
     if (btnAsis) {
-      let seatAsis = { capacidad: 1, usados: 0 };
-      let cupoConocido = true;
+      let seatAsis = null;
       try { seatAsis = await API.get('/auth/asientos?rol=asistente'); }
-      catch { cupoConocido = false; }
-      const cupoAsis = cupoConocido && seatAsis.usados < seatAsis.capacidad;
-      btnAsis.disabled = !cupoAsis;
-      btnAsis.title = !cupoConocido
-        ? 'No se pudo verificar el cupo de asistentes. Intenta de nuevo.'
-        : (cupoAsis ? '' : 'Necesitas un asiento adicional para otro asistente');
-      btnAsis.onclick = cupoAsis ? openAddAsistenteModal : null;
-      btnAsis.classList.toggle('opacity-50', !cupoAsis);
-      btnAsis.classList.toggle('cursor-not-allowed', !cupoAsis);
+      catch { seatAsis = null; }
+      btnAsis.replaceChildren();
+      btnAsis.title = '';
+      if (!seatAsis) {
+        btnAsis.appendChild(domIcon('stethoscope', 'h-3.5 w-3.5'));
+        btnAsis.appendChild(domEl('span', '', 'Agregar asistente dental'));
+        btnAsis.disabled = true;
+        btnAsis.title = 'No se pudo verificar el cupo de asistentes. Intenta de nuevo.';
+        btnAsis.onclick = null;
+      } else if (seatAsis.usados < seatAsis.capacidad) {
+        btnAsis.appendChild(domIcon('stethoscope', 'h-3.5 w-3.5'));
+        btnAsis.appendChild(domEl('span', '', 'Agregar asistente dental'));
+        btnAsis.disabled = false;
+        btnAsis.onclick = openAddAsistenteModal;
+      } else if (!(seatAsis.asientos || []).find(a => a.estado === 'pendiente' || a.estado === 'aprobada')) {
+        const precioAsis = seatAsis.precio_addon ? ` ($${seatAsis.precio_addon}/mes)` : '';
+        btnAsis.appendChild(domIcon('plus', 'h-3.5 w-3.5'));
+        btnAsis.appendChild(domEl('span', '', 'Solicitar asistente adicional' + precioAsis));
+        btnAsis.disabled = false;
+        btnAsis.onclick = () => solicitarAsiento('asistente');
+      } else {
+        btnAsis.appendChild(domEl('span', '', 'Solicitud en curso'));
+        btnAsis.disabled = true;
+        btnAsis.onclick = null;
+      }
+      btnAsis.classList.toggle('opacity-50', btnAsis.disabled);
+      btnAsis.classList.toggle('cursor-not-allowed', btnAsis.disabled);
+      renderSeats(seatAsis || { asientos: [] }, 'asistente');
     }
 
-    renderSeats(seatInfo);
+    renderSeats(seatInfo, 'recepcionista');
     lucide.createIcons();
   }
 
-  function renderSeats(seatInfo) {
-    let box = document.getElementById('seats-box');
+  function renderSeats(seatInfo, rol) {
+    const boxId = rol === 'asistente' ? 'seats-box-asistente' : 'seats-box';
+    let box = document.getElementById(boxId);
     if (!box) {
       box = domEl('div', 'px-5 py-3 space-y-2 border-t border-border');
-      box.id = 'seats-box';
+      box.id = boxId;
       document.getElementById('users-list').after(box);
     }
     box.replaceChildren();
@@ -1815,7 +1838,9 @@
       const labels = {
         pendiente: 'Asiento solicitado — en revisión',
         aprobada: 'Asiento aprobado — paga para activarlo',
-        activa: a.usuario_id ? 'Asiento activo (en uso)' : 'Asiento activo — ya puedes crear el recepcionista',
+        activa: a.usuario_id
+          ? 'Asiento activo (en uso)'
+          : `Asiento activo — ya puedes crear ${rol === 'asistente' ? 'el asistente' : 'el recepcionista'}`,
       };
       row.appendChild(domEl('span', 'flex-1 text-text-secondary font-body', labels[a.estado]));
       if (a.estado === 'aprobada' && seatInfo.subscription_link) {
@@ -1833,16 +1858,16 @@
     });
   }
 
-  async function solicitarAsiento() {
+  async function solicitarAsiento(rol) {
     try {
-      await API.post('/auth/asientos', {});
+      await API.post('/auth/asientos', { rol: rol || 'recepcionista' });
       Toast.success('Solicitud enviada. El equipo la revisará.');
       loadUsuarios();
     } catch (e) { Toast.error(e?.error || 'No se pudo solicitar'); }
   }
 
   async function cancelarAsiento(id) {
-    if (!confirm('¿Cancelar el asiento? Se dejará de cobrar y el recepcionista perderá acceso.')) return;
+    if (!confirm('¿Cancelar el asiento? Se dejará de cobrar y el usuario perderá acceso.')) return;
     try {
       await API.delete('/auth/asientos/' + id);
       Toast.success('Asiento cancelado');

@@ -5,50 +5,104 @@
 
 <div class="space-y-6">
 
-  <div class="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-6">
-    <div>
-      <h1 class="font-cs-display text-4xl font-bold text-cs-on-surface tracking-tight">Planes</h1>
-      <p class="mt-1.5 text-sm text-cs-on-surface-var max-w-xl">Define los planes comerciales y sus precios. Solo los planes activos pueden asignarse a nuevas clínicas.</p>
-    </div>
-    <div class="flex items-center gap-2">
-      <button id="btn-sync-clip" class="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-cs-surface-container text-cs-on-surface text-sm font-semibold shadow-sm hover:bg-cs-surface-container-high transition-colors cursor-pointer" title="Crea los precios faltantes en Clip para los planes activos">
-        <i data-lucide="refresh-cw" class="h-4 w-4"></i>
-        Sincronizar con Clip
-      </button>
-      <button id="btn-nuevo-plan" class="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-gradient-to-br from-cs-primary to-cs-primary-dim text-cs-on-primary text-sm font-semibold shadow-sm hover:opacity-95 transition-opacity cursor-pointer">
-        <i data-lucide="plus" class="h-4 w-4"></i>
-        Nuevo plan
-      </button>
-    </div>
+  <div>
+    <h1 class="font-cs-display text-4xl font-bold text-cs-on-surface tracking-tight">Planes</h1>
+    <p class="mt-1.5 text-sm text-cs-on-surface-var max-w-xl">Lo que se le cobra a una clínica: su plan mensual por un lado, los usuarios adicionales por el otro.</p>
   </div>
 
-  <div class="rounded-lg bg-cs-surface-container-lowest p-2 overflow-x-auto">
-    <table class="w-full text-sm">
-      <thead>
-        <tr class="text-left text-cs-on-surface-var">
-          <th class="px-4 py-3 font-semibold">Nombre</th>
-          <th class="px-4 py-3 font-semibold text-right">Precio mensual</th>
-          <th class="px-4 py-3 font-semibold">Módulos</th>
-          <th class="px-4 py-3 font-semibold">Descripción</th>
-          <th class="px-4 py-3 font-semibold text-center">Tipo</th>
-          <th class="px-4 py-3 font-semibold text-center">Visibilidad</th>
-          <th class="px-4 py-3 font-semibold text-center">Suscripciones</th>
-          <th class="px-4 py-3 font-semibold text-center">Promo</th>
-          <th class="px-4 py-3 font-semibold text-center">Estado</th>
-          <th class="px-4 py-3 font-semibold text-center">Clip</th>
-          <th class="px-4 py-3"></th>
-        </tr>
-      </thead>
-      <tbody id="planes-rows"></tbody>
-    </table>
+  <div class="border-b border-cs-outline-variant/40">
+    <nav class="flex gap-1 -mb-px overflow-x-auto" id="tabs-nav">
+      <button data-tab="planes" class="tab-btn active px-4 py-2.5 text-sm font-semibold transition-colors cursor-pointer">Planes de pago</button>
+      <button data-tab="usuarios" class="tab-btn px-4 py-2.5 text-sm font-semibold transition-colors cursor-pointer">Usuarios adicionales</button>
+    </nav>
   </div>
 
-  <p id="empty-state" class="hidden text-center text-sm text-cs-on-surface-var py-10">Aún no hay planes definidos. Crea el primero para comenzar a aprobar clínicas.</p>
+  <!-- ── Planes de pago ─────────────────────────────────────────────────── -->
+  <section data-panel="planes" class="tab-panel space-y-4">
+
+    <div class="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-6">
+      <p class="text-sm text-cs-on-surface-var max-w-xl">Define los planes comerciales y sus precios. Solo los planes activos pueden asignarse a nuevas clínicas.</p>
+      <div class="flex items-center gap-2">
+        <button id="btn-sync-clip" class="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-cs-surface-container text-cs-on-surface text-sm font-semibold shadow-sm hover:bg-cs-surface-container-high transition-colors cursor-pointer" title="Crea los precios faltantes en Clip para los planes activos">
+          <i data-lucide="refresh-cw" class="h-4 w-4"></i>
+          Sincronizar con Clip
+        </button>
+        <button id="btn-nuevo-plan" class="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-gradient-to-br from-cs-primary to-cs-primary-dim text-cs-on-primary text-sm font-semibold shadow-sm hover:opacity-95 transition-opacity cursor-pointer">
+          <i data-lucide="plus" class="h-4 w-4"></i>
+          Nuevo plan
+        </button>
+      </div>
+    </div>
+
+    <div class="rounded-lg bg-cs-surface-container-lowest p-2 overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="text-left text-cs-on-surface-var">
+            <th class="px-4 py-3 font-semibold">Nombre</th>
+            <th class="px-4 py-3 font-semibold text-right">Precio mensual</th>
+            <th class="px-4 py-3 font-semibold">Módulos</th>
+            <th class="px-4 py-3 font-semibold">Descripción</th>
+            <th class="px-4 py-3 font-semibold text-center">Tipo</th>
+            <th class="px-4 py-3 font-semibold text-center">Visibilidad</th>
+            <th class="px-4 py-3 font-semibold text-center">Suscripciones</th>
+            <th class="px-4 py-3 font-semibold text-center">Promo</th>
+            <th class="px-4 py-3 font-semibold text-center">Estado</th>
+            <th class="px-4 py-3 font-semibold text-center">Clip</th>
+            <th class="px-4 py-3"></th>
+          </tr>
+        </thead>
+        <tbody id="planes-rows"></tbody>
+      </table>
+    </div>
+
+    <p id="empty-state" class="hidden text-center text-sm text-cs-on-surface-var py-10">Aún no hay planes definidos. Crea el primero para comenzar a aprobar clínicas.</p>
+
+  </section>
+
+  <!-- ── Usuarios adicionales ───────────────────────────────────────────── -->
+  <section data-panel="usuarios" class="tab-panel hidden space-y-4">
+
+    <p class="text-sm text-cs-on-surface-var max-w-2xl">Cada clínica trae un usuario gratis de cada tipo; los siguientes se cobran aparte como asiento mensual. Aquí defines cuánto cuesta cada tipo y ves cuántos están vendidos.</p>
+
+    <div id="tipos-kpis" class="grid grid-cols-1 sm:grid-cols-3 gap-3"></div>
+
+    <div class="rounded-lg bg-cs-surface-container-lowest p-2 overflow-x-auto">
+      <table data-sticky-actions class="w-full min-w-[1080px] text-sm">
+        <thead>
+          <tr class="text-left text-cs-on-surface-var">
+            <th class="px-3 py-3 font-semibold whitespace-nowrap">Tipo de usuario</th>
+            <th class="px-3 py-3 font-semibold text-right whitespace-nowrap">Precio mensual</th>
+            <th class="px-3 py-3 font-semibold">Qué puede hacer</th>
+            <th class="px-3 py-3 font-semibold text-center whitespace-nowrap">Activos</th>
+            <th class="px-3 py-3 font-semibold text-center whitespace-nowrap">Pendientes</th>
+            <th class="px-3 py-3 font-semibold text-right whitespace-nowrap">Ingreso mensual</th>
+            <th class="px-3 py-3 font-semibold text-center whitespace-nowrap">Estado</th>
+            <th class="px-3 py-3 font-semibold text-center whitespace-nowrap">Clip</th>
+            <th class="px-3 py-3 font-semibold text-right whitespace-nowrap">Acciones</th>
+          </tr>
+        </thead>
+        <tbody id="tipos-rows"></tbody>
+      </table>
+    </div>
+
+    <p class="text-xs text-cs-on-surface-var flex items-start gap-2 max-w-2xl">
+      <i data-lucide="info" class="h-3.5 w-3.5 mt-0.5 shrink-0"></i>
+      <span>Los tipos de usuario no se dan de alta desde aquí: cada uno trae sus propios permisos en el código. Para agregar un tipo nuevo, pídelo a desarrollo. Las solicitudes de asiento pendientes se aprueban en <a href="/admin/solicitudes" class="text-cs-primary font-semibold hover:underline">Solicitudes</a>.</span>
+    </p>
+
+  </section>
 
 </div>
+
+<style>
+  .tab-btn { color: var(--color-cs-on-surface-var); border-bottom: 2px solid transparent; }
+  .tab-btn:hover { color: var(--color-cs-on-surface); }
+  .tab-btn.active { color: var(--color-cs-primary); border-bottom-color: var(--color-cs-primary); }
+</style>
 
 {% endblock %}
 
 {% block scripts %}
-<script src="/static/js/admin/admin_planes.js?v=3"></script>
+<script src="/static/js/admin/admin_planes.js?v=4"></script>
+<script src="/static/js/admin/admin_tipos_usuario.js?v=3"></script>
 {% endblock %}

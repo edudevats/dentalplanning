@@ -6,7 +6,7 @@ from app.superadmin.models import (
     Plan, Subscription,
     SUBSCRIPTION_ACTIVA, SUBSCRIPTION_GRACIA, SUBSCRIPTION_VENCIDA,
 )
-from app.superadmin.models import ADDON_TIPO_RECEPCIONISTA
+from app.superadmin.models import ADDON_TIPO_RECEPCIONISTA, ADDON_TIPO_ASISTENTE
 from app.clip.service import (
     create_price, get_price, cancel_subscription, ClipAPIError,
 )
@@ -295,28 +295,46 @@ def disable_main_recurring(apply_changes):
         click.echo("Vista previa; vuelve a ejecutar con --apply para cancelar.")
 
 
+ADDONS_POR_DEFECTO = [
+    {
+        "addon_tipo": ADDON_TIPO_RECEPCIONISTA,
+        "nombre": "Recepcionista adicional",
+        "descripcion": "Asiento adicional de recepcionista (cobro recurrente mensual)",
+    },
+    {
+        "addon_tipo": ADDON_TIPO_ASISTENTE,
+        "nombre": "Asistente dental adicional",
+        "descripcion": "Asiento adicional de asistente dental (cobro recurrente mensual)",
+    },
+]
+
+
 @billing_cli.command("seed-addon")
-@click.option("--precio", default=199.0, type=float, help="Precio mensual del recepcionista adicional")
+@click.option("--precio", default=199.0, type=float, help="Precio mensual de cada asiento adicional")
 def seed_addon(precio):
-    """Crea el Plan oculto 'Recepcionista adicional' si no existe."""
-    existing = Plan.query.filter_by(addon_tipo=ADDON_TIPO_RECEPCIONISTA).first()
-    if existing:
-        click.echo(f"  EXISTS Recepcionista adicional (id={existing.id})")
-        return
-    plan = Plan(
-        nombre="Recepcionista adicional",
-        precio_mensual=precio,
-        descripcion="Asiento adicional de recepcionista (cobro recurrente mensual)",
-        modulos=[],
-        activo=True,
-        publico=False,
-        es_temporal=False,
-        addon_tipo=ADDON_TIPO_RECEPCIONISTA,
-    )
-    db.session.add(plan)
-    db.session.commit()
-    click.echo(f"  CREATED Recepcionista adicional id={plan.id} precio={precio}. "
-               f"Corre `flask billing sync-prices` para sincronizar con Clip.")
+    """Crea los Planes ocultos de asiento adicional (recepcionista y asistente)."""
+    creados = 0
+    for spec in ADDONS_POR_DEFECTO:
+        existing = Plan.query.filter_by(addon_tipo=spec["addon_tipo"]).first()
+        if existing:
+            click.echo(f"  EXISTS {spec['nombre']} (id={existing.id})")
+            continue
+        plan = Plan(
+            nombre=spec["nombre"],
+            precio_mensual=precio,
+            descripcion=spec["descripcion"],
+            modulos=[],
+            activo=True,
+            publico=False,
+            es_temporal=False,
+            addon_tipo=spec["addon_tipo"],
+        )
+        db.session.add(plan)
+        db.session.commit()
+        creados += 1
+        click.echo(f"  CREATED {spec['nombre']} id={plan.id} precio={precio}")
+    if creados:
+        click.echo("Corre `flask billing sync-prices` para sincronizar con Clip.")
 
 
 @billing_cli.command("seed-plans")

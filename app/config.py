@@ -47,9 +47,24 @@ class Config:
 
 class DevelopmentConfig(Config):
     DEBUG = True
-    SQLALCHEMY_DATABASE_URI = os.getenv(
-        "DATABASE_URL", "sqlite:///dental_saas.db"
-    )
+    # Desarrollo corre contra MySQL igual que produccion: no hay fallback a
+    # SQLite. Si falta DATABASE_URL preferimos reventar al arrancar antes que
+    # escribir en una base local que nadie mira.
+    SQLALCHEMY_DATABASE_URI = os.getenv("DATABASE_URL")
+
+    @classmethod
+    def init_app(cls, app):
+        uri = app.config.get("SQLALCHEMY_DATABASE_URI") or ""
+        if not uri:
+            raise RuntimeError(
+                "DATABASE_URL no esta definida. La app corre sobre MySQL; "
+                "define DATABASE_URL en .env (mysql://...)."
+            )
+        if uri.startswith("sqlite"):
+            raise RuntimeError(
+                "DATABASE_URL apunta a SQLite. La app corre sobre MySQL; "
+                "usa una URL mysql:// en .env."
+            )
 
 
 class TestingConfig(Config):

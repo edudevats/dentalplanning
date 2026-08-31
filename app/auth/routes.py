@@ -7,7 +7,7 @@ from flask_jwt_extended import (
 )
 from app.extensions import db
 from app.auth.models import (
-    Tenant, User, SYSTEM_TENANT_SLUG,
+    Tenant, User, SYSTEM_TENANT_SLUG, TEMP_PASSWORD_MINUTOS,
     TENANT_STATUS_PENDING, TENANT_STATUS_ACTIVE,
     TENANT_STATUS_SUSPENDED, TENANT_STATUS_REJECTED,
 )
@@ -24,6 +24,7 @@ from app.auth import seats_service
 from app.clip.billing import add_one_month, create_initial_charge
 from app.clip.service import ClipAPIError
 from app.facturacion.timezone_helper import get_today
+from app.email.service import send_email, EmailError, render_password_temporal
 
 auth_bp = Blueprint("auth", __name__, url_prefix="/api/v1/auth")
 
@@ -210,8 +211,16 @@ def login():
     data = schema.load(request.get_json() or {})
 
     user = User.query.filter_by(email=data["email"]).first()
-    if not user or not user.check_password(data["password"]):
+    if not user:
         return jsonify({"error": "Credenciales inválidas"}), 401
+
+    # La contraseña temporal enviada por correo abre sesión igual que la real,
+    # pero obliga a elegir una nueva antes de usar el sistema.
+    con_temporal = False
+    if not user.check_password(data["password"]):
+        if not user.check_temp_password(data["password"]):
+            return jsonify({"error": "Credenciales inválidas"}), 401
+        con_temporal = True
 
     if not user.is_superuser and not user.is_active:
         return jsonify({"error": "Usuario deshabilitado. Contacta al administrador."}), 403
@@ -223,6 +232,8 @@ def login():
 
     from datetime import datetime, timezone
     user.last_login = datetime.now(timezone.utc)
+    if con_temporal:
+        user.must_change_password = True
     db.session.commit()
 
     access_token = create_access_token(identity=str(user.id))
@@ -437,13 +448,90 @@ def change_password():
     schema = ChangePasswordSchema()
     data = schema.load(request.get_json() or {})
 
-    if not g.current_user.check_password(data["current_password"]):
+    user = g.current_user
+    # La temporal vale como "contraseña actual": quien la pidió justamente
+    # olvidó la real y no podría completar el cambio forzado sin esto.
+    if not user.check_password(data["current_password"]) and not user.check_temp_password(
+        data["current_password"]
+    ):
         return jsonify({"error": "Contraseña actual incorrecta"}), 400
 
-    g.current_user.set_password(data["new_password"])
-    g.current_user.must_change_password = False
+    user.set_password(data["new_password"])
+    user.clear_temp_password()
+    user.must_change_password = False
     db.session.commit()
     return jsonify({"message": "Contraseña actualizada"})
+
+
+# Mismo texto exista o no el correo: no debe revelar qué direcciones están
+# dadas de alta ni cuáles son de un administrador.
+MENSAJE_TEMPORAL_ENVIADA = (
+    "Si el correo pertenece a una cuenta de administrador, "
+    "te enviamos una contraseña temporal."
+)
+
+
+def generar_password_temporal(largo=12):
+    """Contraseña aleatoria que cumple la política del sistema (mayúscula,
+    minúscula y dígito). Sin caracteres ambiguos: se lee de un correo y se
+    teclea a mano."""
+    import secrets
+
+    mayus = "ABCDEFGHJKLMNPQRSTUVWXYZ"
+    minus = "abcdefghijkmnopqrstuvwxyz"
+    digitos = "23456789"
+    alfabeto = mayus + minus + digitos
+
+    chars = [
+        secrets.choice(mayus),
+        secrets.choice(minus),
+        secrets.choice(digitos),
+    ]
+    chars += [secrets.choice(alfabeto) for _ in range(max(0, largo - 3))]
+    secrets.SystemRandom().shuffle(chars)
+    return "".join(chars)
+
+
+@auth_bp.route("/password/olvide", methods=["POST"])
+@rate_limit(max_calls=3, period_seconds=300)
+def olvide_password():
+    """Envía una contraseña temporal al admin que perdió la suya.
+
+    Solo atiende al rol admin: recepcionistas y asistentes le piden el cambio
+    a su administrador desde Ajustes → Usuarios. La contraseña real NO se
+    toca, así que pedir un reset ajeno no deja fuera a nadie.
+    """
+    data = request.get_json(silent=True) or {}
+    email = (data.get("email") or "").strip().lower()
+    respuesta = jsonify({"message": MENSAJE_TEMPORAL_ENVIADA}), 200
+
+    if not email:
+        return respuesta
+
+    user = User.query.filter(db.func.lower(User.email) == email).first()
+    if (
+        not user
+        or user.role != "admin"
+        or not user.is_active
+        or not user.tenant
+        or user.tenant.status != TENANT_STATUS_ACTIVE
+    ):
+        current_app.logger.info("Reset de contraseña ignorado para %s", email)
+        return respuesta
+
+    temporal = generar_password_temporal()
+    user.set_temp_password(temporal, minutos=TEMP_PASSWORD_MINUTOS)
+    db.session.commit()
+
+    html, texto = render_password_temporal(user.name, temporal, TEMP_PASSWORD_MINUTOS)
+    try:
+        send_email(user.email, "Contraseña temporal — Dental Planning", html, texto)
+    except EmailError as e:
+        # El correo puede fallar (SMTP caído); la respuesta no cambia para no
+        # convertir este endpoint en un detector de cuentas existentes.
+        current_app.logger.error("No se pudo enviar la temporal a %s: %s", user.email, e)
+
+    return respuesta
 
 
 @auth_bp.route("/me", methods=["GET"])

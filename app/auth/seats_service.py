@@ -18,6 +18,26 @@ ADDON_POR_ROL = {
     ROL_ASISTENTE: ADDON_TIPO_ASISTENTE,
 }
 
+# Etiqueta y alcance de cada rol de pago, para el panel del super-admin. Vive
+# aquí —junto a ADDON_POR_ROL— para que dar de alta un rol nuevo sea tocar un
+# solo archivo del lado de los asientos.
+ROLES_META = {
+    ROL_RECEPCIONISTA: {
+        "etiqueta": "Recepcionista",
+        "descripcion": (
+            "Alcance fijo: turno de caja, cobros, gastos y agenda. "
+            "No se configura por clínica."
+        ),
+    },
+    ROL_ASISTENTE: {
+        "etiqueta": "Asistente dental",
+        "descripcion": (
+            "Permisos por recurso que cada clínica define usuario por usuario "
+            "(ver / editar), sin llegar a lo que es del admin."
+        ),
+    },
+}
+
 
 class SeatError(Exception):
     """Error de negocio en la gestión de asientos (mapear a 409/400 en las rutas)."""

@@ -49,11 +49,37 @@
               class="block w-full rounded-lg border border-border pl-10 px-3 py-2.5 text-sm font-body text-text-primary placeholder:text-text-muted min-h-[44px] bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-500" />
           </div>
           <p id="password-error" class="hidden mt-1 text-xs text-danger-600 font-body"></p>
+          <div class="mt-2 text-right">
+            <button type="button" id="olvide-link" class="text-xs font-medium text-primary-600 hover:text-primary-700 transition-colors">
+              Olvidaste tu contrasena?
+            </button>
+          </div>
+        </div>
+
+        <!-- Recuperacion: pide el correo y envia una contrasena temporal -->
+        <div id="olvide-box" class="hidden rounded-lg border border-border bg-surface-alt px-4 py-3">
+          <p class="text-xs text-text-secondary mb-2">
+            Escribe el correo del administrador de la clinica y te enviamos una
+            contrasena temporal. Si eres recepcionista o asistente, pidele el
+            cambio a tu administrador.
+          </p>
+          <div class="flex gap-2">
+            <input id="olvide-email" type="email" autocomplete="email" placeholder="correo@clinica.com"
+              class="block w-full rounded-lg border border-border px-3 py-2 text-sm font-body text-text-primary placeholder:text-text-muted min-h-[40px] bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-500" />
+            <button type="button" id="olvide-submit"
+              class="shrink-0 rounded-lg bg-primary-500 hover:bg-primary-600 text-white px-3 py-2 text-sm font-medium min-h-[40px] transition-colors">
+              Enviar
+            </button>
+          </div>
+          <p id="olvide-msg" class="hidden mt-2 text-xs font-body"></p>
         </div>
 
         <button type="submit" id="submit-btn"
           class="inline-flex items-center justify-center gap-2 w-full rounded-lg font-medium font-body cursor-pointer select-none transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-offset-1 bg-primary-500 hover:bg-primary-600 text-white focus:ring-primary-300 px-4 py-2.5 text-sm min-h-[44px]">
           <i data-lucide="arrow-right" class="h-4 w-4" id="submit-icon"></i>
+          <svg id="submit-spinner" class="hidden animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M21 12a9 9 0 1 1-6.219-8.56" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          </svg>
           <span id="submit-text">Iniciar sesion</span>
         </button>
       </form>
@@ -110,6 +136,10 @@ lucide.createIcons();
 document.getElementById('login-form').addEventListener('submit', async (e) => {
   e.preventDefault();
 
+  const srvErr = document.getElementById('server-error');
+  const srvMsg = document.getElementById('server-error-msg');
+  srvErr.classList.add('hidden');
+
   const email = document.getElementById('email').value.trim();
   const password = document.getElementById('password').value;
   let valid = true;
@@ -127,13 +157,20 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
 
   const btn = document.getElementById('submit-btn');
   const icon = document.getElementById('submit-icon');
+  const spinner = document.getElementById('submit-spinner');
   const txt = document.getElementById('submit-text');
-  btn.disabled = true;
-  icon.outerHTML = `<svg class="animate-spin h-4 w-4" id="submit-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-6.219-8.56" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>`;
-  txt.textContent = 'Ingresando...';
 
-  const srvErr = document.getElementById('server-error');
-  const srvMsg = document.getElementById('server-error-msg');
+  // El icono NO se destruye: se alterna con el spinner. Recrearlo con
+  // outerHTML dejaba `icon` en null en el segundo intento y el handler
+  // reventaba antes del fetch, con el error anterior todavia en pantalla.
+  const setCargando = (cargando) => {
+    btn.disabled = cargando;
+    icon.classList.toggle('hidden', cargando);
+    spinner.classList.toggle('hidden', !cargando);
+    txt.textContent = cargando ? 'Ingresando...' : 'Iniciar sesion';
+  };
+
+  setCargando(true);
   srvErr.classList.add('hidden');
 
   try {
@@ -163,13 +200,55 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
       window.location.href = '/selector';
     }
   } catch (err) {
-    const msg = err.response?.data?.message || 'Credenciales incorrectas. Intenta de nuevo.';
-    srvMsg.textContent = msg;
+    // El backend responde con la clave `error`; leyendo solo `message` todo
+    // fallo (cuenta suspendida, usuario deshabilitado, demasiados intentos)
+    // se mostraba como "Credenciales incorrectas".
+    const d = err.response?.data;
+    srvMsg.textContent = d?.error || d?.message || 'Credenciales incorrectas. Intenta de nuevo.';
     srvErr.classList.remove('hidden');
-    btn.disabled = false;
-    document.getElementById('submit-icon')?.remove();
-    txt.textContent = 'Iniciar sesion';
-    lucide.createIcons();
+  } finally {
+    setCargando(false);
+  }
+});
+
+// ── Olvide mi contrasena ─────────────────────────────────────────────────────
+const olvideBox = document.getElementById('olvide-box');
+const olvideMsg = document.getElementById('olvide-msg');
+
+document.getElementById('olvide-link').addEventListener('click', () => {
+  olvideBox.classList.toggle('hidden');
+  if (!olvideBox.classList.contains('hidden')) {
+    const campo = document.getElementById('olvide-email');
+    campo.value = document.getElementById('email').value.trim();
+    campo.focus();
+  }
+});
+
+document.getElementById('olvide-submit').addEventListener('click', async (ev) => {
+  const boton = ev.currentTarget;
+  const correo = document.getElementById('olvide-email').value.trim();
+
+  const aviso = (texto, ok) => {
+    olvideMsg.textContent = texto;
+    olvideMsg.className = `mt-2 text-xs font-body ${ok ? 'text-accent-700' : 'text-danger-600'}`;
+  };
+
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(correo)) {
+    aviso('Ingresa un correo valido', false);
+    return;
+  }
+
+  boton.disabled = true;
+  boton.textContent = 'Enviando...';
+  try {
+    const data = await API.post('/auth/password/olvide', { email: correo });
+    aviso(data.message, true);
+  } catch (err) {
+    const d = err.response?.data;
+    aviso(d?.error || d?.message || 'No pudimos enviar el correo. Intenta mas tarde.', false);
+  } finally {
+    boton.disabled = false;
+    boton.textContent = 'Enviar';
   }
 });
 </script>

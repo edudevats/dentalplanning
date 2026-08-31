@@ -79,7 +79,7 @@
 
       // Clínica
       const tdName = document.createElement('td');
-      tdName.className = 'px-4 py-3.5';
+      tdName.className = 'px-3 py-3.5 min-w-[180px]';
       const nameEl = document.createElement('p');
       nameEl.className = 'font-semibold text-cs-on-surface';
       nameEl.textContent = t.name;
@@ -91,12 +91,12 @@
 
       // Contacto
       const tdContact = document.createElement('td');
-      tdContact.className = 'px-4 py-3.5 text-cs-on-surface-var';
+      tdContact.className = 'px-3 py-3.5 text-cs-on-surface-var';
       tdContact.textContent = t.contact_email || '—';
 
       // Status
       const tdStatus = document.createElement('td');
-      tdStatus.className = 'px-4 py-3.5';
+      tdStatus.className = 'px-3 py-3.5 whitespace-nowrap';
       tdStatus.appendChild(statusBadge(t.status));
       if (t.subscription && t.subscription.estado && t.subscription.estado !== 'activa') {
         const subBadge = document.createElement('span');
@@ -112,7 +112,7 @@
 
       // Plan + modules
       const tdPlan = document.createElement('td');
-      tdPlan.className = 'px-4 py-3.5';
+      tdPlan.className = 'px-3 py-3.5 min-w-[110px]';
       if (t.subscription && t.subscription.plan_nombre) {
         const planName = document.createElement('p');
         planName.className = 'font-semibold text-cs-on-surface text-xs';
@@ -138,7 +138,7 @@
 
       // Estado suscripción
       const tdSubEstado = document.createElement('td');
-      tdSubEstado.className = 'px-4 py-3.5';
+      tdSubEstado.className = 'px-3 py-3.5 whitespace-nowrap';
       if (t.subscription && t.subscription.estado) {
         tdSubEstado.appendChild(statusBadge(t.subscription.estado));
       } else {
@@ -148,18 +148,18 @@
 
       // Próximo cobro
       const tdProximo = document.createElement('td');
-      tdProximo.className = 'px-4 py-3.5 text-cs-on-surface-var';
+      tdProximo.className = 'px-3 py-3.5 text-cs-on-surface-var whitespace-nowrap';
       tdProximo.textContent = (t.subscription && t.subscription.proximo_cobro)
         ? formatDate(t.subscription.proximo_cobro) : '—';
 
       // Users
       const tdUsers = document.createElement('td');
-      tdUsers.className = 'px-4 py-3.5 text-right font-cs-display font-semibold text-cs-on-surface';
+      tdUsers.className = 'px-3 py-3.5 text-right font-cs-display font-semibold text-cs-on-surface';
       tdUsers.textContent = t.users_count != null ? t.users_count : '—';
 
       // Último pago
       const tdPago = document.createElement('td');
-      tdPago.className = 'px-4 py-3.5 text-cs-on-surface-var';
+      tdPago.className = 'px-3 py-3.5 text-cs-on-surface-var whitespace-nowrap';
       if (t.ultimo_pago) {
         tdPago.textContent = `${formatDate(t.ultimo_pago.fecha)} · ${currency(t.ultimo_pago.monto)}`;
       } else {
@@ -168,12 +168,12 @@
 
       // Última actividad
       const tdActividad = document.createElement('td');
-      tdActividad.className = 'px-4 py-3.5 text-cs-on-surface-var';
+      tdActividad.className = 'px-3 py-3.5 text-cs-on-surface-var whitespace-nowrap';
       tdActividad.textContent = t.ultima_actividad ? formatDate(t.ultima_actividad) : 'Nunca';
 
       // Acciones
       const tdActions = document.createElement('td');
-      tdActions.className = 'px-4 py-3.5 text-right space-x-1';
+      tdActions.className = 'px-3 py-3.5 text-right space-x-1 whitespace-nowrap';
       buildActions(tdActions, t);
 
       tr.appendChild(tdName);
@@ -210,7 +210,7 @@
       critical: 'bg-cs-error/90 text-white hover:bg-cs-error',
       neutral:  'bg-cs-surface-container text-cs-on-surface hover:bg-cs-surface-container-high',
     }[variant] || 'bg-cs-surface-container text-cs-on-surface';
-    btn.className = `inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-semibold transition-colors cursor-pointer ${styles}`;
+    btn.className = `inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-semibold whitespace-nowrap transition-colors cursor-pointer ${styles}`;
     const i = document.createElement('i');
     i.setAttribute('data-lucide', icon);
     i.className = 'h-3 w-3';

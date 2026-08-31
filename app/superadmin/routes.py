@@ -18,6 +18,7 @@ from app.superadmin.models import (
     Plan, Subscription, Payment, TenantNote, AdminAuditLog,
     AsientoRecepcionista,
     SUBSCRIPTION_ACTIVA, SUBSCRIPTION_GRACIA, SUBSCRIPTION_VENCIDA,
+    ASIENTO_ACTIVA, ASIENTO_PENDIENTE,
 )
 from app.auth import seats_service
 from app.middleware.permisos import ROLE_ASISTENTE, PERMISOS_MINIMOS
@@ -766,11 +767,91 @@ def delete_note(note_id):
 
 # ── Plans ───────────────────────────────────────────────────────────────────
 
+PLAN_TIPOS = ("comercial", "asiento", "todos")
+
+
 @superadmin_bp.route("/plans", methods=["GET"])
 @require_superuser
 def list_plans():
-    plans = Plan.query.order_by(Plan.precio_mensual.asc()).all()
+    """Planes que se le venden a una clínica.
+
+    Los asientos adicionales (recepcionista, asistente) son también filas de
+    `plans`, pero no son planes de la clínica: se piden aparte con
+    `?tipo=asiento` y se administran en su propia pestaña. Por eso el default
+    los excluye — así ni la tabla de planes ni los combos de "asignar plan"
+    los ofrecen por error.
+    """
+    tipo = request.args.get("tipo", "comercial")
+    if tipo not in PLAN_TIPOS:
+        return jsonify({"error": f"tipo debe ser uno de: {', '.join(PLAN_TIPOS)}"}), 400
+
+    q = Plan.query
+    if tipo == "comercial":
+        q = q.filter(Plan.addon_tipo.is_(None))
+    elif tipo == "asiento":
+        q = q.filter(Plan.addon_tipo.isnot(None))
+    plans = q.order_by(Plan.precio_mensual.asc()).all()
     return jsonify({"plans": [_serialize_plan(p) for p in plans]})
+
+
+@superadmin_bp.route("/tipos-usuario", methods=["GET"])
+@require_superuser
+def list_tipos_usuario():
+    """Un renglón por tipo de usuario de pago, con su precio y su uso real.
+
+    La fuente de los tipos es `ROLES_META` (código), no la tabla: un rol sin
+    plan configurado aparece igual, con el precio en NULL, para que se note
+    que falta darlo de alta en vez de desaparecer de la vista.
+    """
+    planes = {
+        p.addon_tipo: p
+        for p in Plan.query.filter(Plan.addon_tipo.isnot(None)).all()
+        if p.activo
+    }
+
+    conteos = dict(
+        db.session.query(
+            AsientoRecepcionista.rol,
+            func.count(AsientoRecepcionista.id),
+        )
+        .filter(AsientoRecepcionista.estado == ASIENTO_ACTIVA)
+        .group_by(AsientoRecepcionista.rol)
+        .all()
+    )
+    pendientes = dict(
+        db.session.query(
+            AsientoRecepcionista.rol,
+            func.count(AsientoRecepcionista.id),
+        )
+        .filter(AsientoRecepcionista.estado == ASIENTO_PENDIENTE)
+        .group_by(AsientoRecepcionista.rol)
+        .all()
+    )
+
+    tipos = []
+    for rol, meta in seats_service.ROLES_META.items():
+        plan = planes.get(seats_service.ADDON_POR_ROL[rol])
+        activos = conteos.get(rol, 0)
+        precio = plan.precio_mensual if plan else None
+        tipos.append({
+            "rol": rol,
+            "etiqueta": meta["etiqueta"],
+            "descripcion_rol": meta["descripcion"],
+            "plan_id": plan.id if plan else None,
+            "nombre": plan.nombre if plan else None,
+            "descripcion": plan.descripcion if plan else None,
+            "precio_mensual": precio,
+            "activo": bool(plan.activo) if plan else False,
+            "clip_price_id": plan.clip_price_id if plan else None,
+            "clip_subscription_link": plan.clip_subscription_link if plan else None,
+            "clip_synced": bool(
+                plan and plan.clip_price_id and plan.clip_subscription_link
+            ),
+            "asientos_activos": activos,
+            "asientos_pendientes": pendientes.get(rol, 0),
+            "ingreso_mensual": round(activos * (precio or 0), 2),
+        })
+    return jsonify({"tipos": tipos})
 
 
 def _sync_plan_to_clip(plan, app_base_url):
@@ -855,6 +936,20 @@ def update_plan(plan_id):
 
     for k, v in data.items():
         setattr(p, k, v)
+
+    # Un asiento adicional no es un plan de clínica: no sale en el catálogo
+    # público, no lleva módulos, vigencia ni promociones. La pestaña "Usuarios
+    # adicionales" manda un body corto y PlanSchema rellena el resto con sus
+    # defaults (publico=True entre ellos), así que el candado va aquí.
+    if p.addon_tipo:
+        p.publico = False
+        p.modulos = []
+        p.es_temporal = False
+        p.dias_expiracion = None
+        p.cupo_maximo = None
+        p.fecha_inicio_promo = None
+        p.fecha_fin_promo = None
+        p.codigo_invitacion = None
 
     sync_warning = None
     # If price or es_temporal changed, the Clip price is stale. We can't update

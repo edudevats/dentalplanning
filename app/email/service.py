@@ -159,3 +159,33 @@ def render_billing_reminder(tenant_name, plan_name, monto, fecha_cobro, payment_
         "Si ya pagaste, ignora este correo.\n— Dental Planning"
     )
     return html, text
+
+
+def render_password_temporal(nombre, password, minutos):
+    """HTML + texto del correo con la contraseña temporal de acceso."""
+    html = f"""<!DOCTYPE html>
+<html><body style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px;">
+  <h2 style="color:#1a73e8;">Contraseña temporal de acceso</h2>
+  <p>Hola <strong>{nombre}</strong>,</p>
+  <p>Recibimos una solicitud para recuperar el acceso a tu cuenta de Dental Planning.
+     Entra con esta contraseña temporal y el sistema te pedirá que elijas una nueva:</p>
+  <p style="background:#f5f5f5;padding:15px;border-radius:6px;text-align:center;
+            font-family:monospace;font-size:22px;letter-spacing:2px;">
+    <strong>{password}</strong>
+  </p>
+  <p>Vence en <strong>{minutos} minutos</strong>. Tu contraseña anterior sigue
+     funcionando mientras tanto.</p>
+  <p style="color:#777;font-size:13px;">Si no pediste esto, puedes ignorar el correo:
+     nadie entró a tu cuenta y tu contraseña no cambió.</p>
+  <p style="color:#999;font-size:12px;">— Dental Planning</p>
+</body></html>"""
+
+    text = (
+        f"Contraseña temporal de acceso\n\nHola {nombre},\n\n"
+        f"Contraseña temporal: {password}\n"
+        f"Vence en {minutos} minutos.\n\n"
+        "Al entrar, el sistema te pedirá elegir una contraseña nueva. "
+        "Tu contraseña anterior sigue funcionando mientras tanto.\n\n"
+        "Si no pediste esto, ignora este correo.\n— Dental Planning"
+    )
+    return html, text
