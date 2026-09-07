@@ -8,10 +8,15 @@ import secrets
 
 from app.extensions import db
 from app.edr.models import Ingreso
+from app.ajustes.models import Especialista
 from app.tratamientos.models import Tratamiento
 from app.facturacion.services import (
     FacturacionError, asignar_ticket, recalcular_total,
 )
+
+
+class EdrError(Exception):
+    """Dato inválido en el alta de un ingreso (lo traduce a HTTP el llamador)."""
 
 
 def hermanos_de_visita(ingreso):
@@ -56,9 +61,29 @@ def repartir_proporcional(total, montos):
 # propósito: así el dashboard, el EDR, los pagos a doctores y el corte de caja
 # siguen leyendo una sola tabla, sin join ni caso especial para las visitas.
 CAMPOS_COMUNES = (
-    "fecha", "paciente", "paciente_id", "especialista_id", "metodo_pago_id",
+    "fecha", "paciente", "paciente_id", "metodo_pago_id",
     "descuento_pct", "factura", "sucursal_id", "estrategia_id", "comentarios",
 )
+
+
+def _validar_especialistas(tenant_id, ids):
+    """Todos los doctores de la visita tienen que ser de este tenant.
+
+    Se comprueban de una sola pasada, antes de escribir nada: son ids que
+    llegan del cliente (uno por línea, más el de la visita) y una FK a otro
+    consultorio dejaría la comisión colgada de un doctor ajeno.
+    """
+    ids = {i for i in ids if i}
+    if not ids:
+        return
+    encontrados = {
+        e.id for e in Especialista.query.filter(
+            Especialista.tenant_id == tenant_id, Especialista.id.in_(ids)
+        ).all()
+    }
+    faltan = ids - encontrados
+    if faltan:
+        raise EdrError("Especialista no encontrado en este consultorio")
 
 
 def _tipo_servicio(tenant_id, tratamiento_id):
@@ -122,6 +147,11 @@ def crear_ingresos_visita(tenant_id, usuario, comun, lineas, ticket_folio=None):
         tenant_id, usuario, fecha, sucursal_id, es_admin=es_admin,
     )
 
+    _validar_especialistas(
+        tenant_id,
+        [comun.get("especialista_id")] + [l.get("especialista_id") for l in lineas],
+    )
+
     # Sin módulo CRM no se acepta paciente_id (evita FKs cross-tenant sin validar)
     if comun.get("paciente_id") and not crm_activo(tenant_id):
         comun["paciente_id"] = None
@@ -134,6 +164,7 @@ def crear_ingresos_visita(tenant_id, usuario, comun, lineas, ticket_folio=None):
     comisiones = repartir_proporcional(comun.get("comision_bancaria") or 0.0, montos)
 
     ingresos = []
+    esp_visita = comun.get("especialista_id")
     for linea, monto, com_ban in zip(lineas, montos, comisiones):
         datos = {k: comun[k] for k in CAMPOS_COMUNES if k in comun}
         ingreso = Ingreso(
@@ -145,6 +176,10 @@ def crear_ingresos_visita(tenant_id, usuario, comun, lineas, ticket_folio=None):
             monto=monto,
             comision_doctor=linea.get("comision_doctor") or 0.0,
             comision_bancaria=com_ban,
+            # El doctor es POR LÍNEA, no de la visita: el de la visita sólo
+            # es el default de quien no trajo el suyo. Así los pagos a doctores
+            # y el reparto de comisiones siguen leyendo una sola columna.
+            especialista_id=linea.get("especialista_id") or esp_visita,
             **datos,
         )
         db.session.add(ingreso)

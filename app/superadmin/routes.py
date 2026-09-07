@@ -803,11 +803,14 @@ def list_tipos_usuario():
     plan configurado aparece igual, con el precio en NULL, para que se note
     que falta darlo de alta en vez de desaparecer de la vista.
     """
-    planes = {
-        p.addon_tipo: p
-        for p in Plan.query.filter(Plan.addon_tipo.isnot(None)).all()
-        if p.activo
-    }
+    # Sin filtrar por `activo`: un tipo desactivado se sigue mostrando con su
+    # plan, porque si desapareciera de la vista no habría forma de volver a
+    # activarlo desde el panel. Si hubiera duplicados, gana el activo.
+    planes = {}
+    for p in Plan.query.filter(Plan.addon_tipo.isnot(None)).all():
+        actual = planes.get(p.addon_tipo)
+        if actual is None or (p.activo and not actual.activo):
+            planes[p.addon_tipo] = p
 
     conteos = dict(
         db.session.query(
@@ -852,6 +855,75 @@ def list_tipos_usuario():
             "ingreso_mensual": round(activos * (precio or 0), 2),
         })
     return jsonify({"tipos": tipos})
+
+
+@superadmin_bp.route("/tipos-usuario/<rol>", methods=["POST"])
+@require_superuser
+def configurar_tipo_usuario(rol):
+    """Da de alta el plan de cobro de un tipo de usuario que no lo tenía.
+
+    Sin este plan `aprobar_asiento` falla y las solicitudes quedan atoradas sin
+    salida desde el panel: el alta solo existía como `flask billing seed-addon`,
+    que en un entorno desplegado no siempre está a la mano.
+    """
+    if rol not in seats_service.ROLES_META:
+        return jsonify({"error": "Tipo de usuario desconocido"}), 404
+
+    addon_tipo = seats_service.ADDON_POR_ROL[rol]
+    if Plan.query.filter_by(addon_tipo=addon_tipo).first():
+        return jsonify({"error": "Este tipo de usuario ya está configurado"}), 409
+
+    data = PlanSchema().load(request.get_json() or {})
+    nombre = data["nombre"]
+
+    # `plans.nombre` es único. Un plan suelto con ese nombre suele ser el mismo
+    # asiento creado a mano desde la pantalla de planes (que no puede escribir
+    # addon_tipo): se adopta en vez de chocar y dejar al super-admin sin salida.
+    plan = Plan.query.filter_by(nombre=nombre).first()
+    if plan and plan.addon_tipo:
+        return jsonify({"error": "Ese nombre ya lo usa otro tipo de usuario"}), 409
+    if plan and Subscription.query.filter_by(plan_id=plan.id).first():
+        return jsonify({
+            "error": "Ya existe un plan con ese nombre y tiene clínicas suscritas. "
+                     "Usa otro nombre."
+        }), 409
+
+    if plan is None:
+        plan = Plan(nombre=nombre)
+        db.session.add(plan)
+
+    plan.addon_tipo = addon_tipo
+    plan.precio_mensual = data["precio_mensual"]
+    plan.descripcion = data.get("descripcion") or seats_service.ROLES_META[rol]["etiqueta"]
+    plan.activo = True
+    plan.publico = False
+    plan.modulos = []
+    plan.es_temporal = False
+    plan.dias_expiracion = None
+    plan.cupo_maximo = None
+    plan.fecha_inicio_promo = None
+    plan.fecha_fin_promo = None
+    plan.codigo_invitacion = None
+    plan.clip_price_id = None
+    plan.clip_subscription_link = None
+    db.session.flush()
+
+    sync_warning = None
+    try:
+        _sync_plan_to_clip(plan, request.host_url.rstrip("/"))
+    except ClipAPIError as e:
+        current_app.logger.warning("Clip price sync failed for addon %s: %s", rol, e)
+        sync_warning = ("Tipo configurado, pero no se pudo sincronizar con Clip. "
+                        "Usa el botón de Clip en el renglón.")
+
+    log_admin_action("plan.addon_configure", target_type="plan", target_id=plan.id,
+                     summary=f"Configuró el tipo de usuario {rol}")
+    db.session.commit()
+    body = _serialize_plan(plan)
+    body["rol"] = rol
+    if sync_warning:
+        body["sync_warning"] = sync_warning
+    return jsonify(body), 201
 
 
 def _sync_plan_to_clip(plan, app_base_url):

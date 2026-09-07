@@ -40,6 +40,11 @@ class ConfiguracionFiscal(db.Model):
     # y cada CFDI timbrado se contabiliza por separado en el siguiente corte.
     facturacion_activa = db.Column(db.Boolean, default=False, nullable=False)
     facturacion_activada_at = db.Column(db.DateTime)
+    # ¿La captura de /ingresos ofrece el campo "agregar a un ticket ya
+    # abierto"? Es solo una preferencia de pantalla: la serie y la secuencia
+    # del folio las sigue poniendo la sucursal, y la API acepta `ticket_folio`
+    # esté como esté esta bandera (los abonos de un plan lo usan por dentro).
+    folio_manual_activo = db.Column(db.Boolean, default=False, nullable=False)
     # Conserva el cargo de uso aunque el tenant desactive el módulo antes del
     # corte. Se limpia únicamente cuando el cobro mensual queda generado.
     facturacion_cargo_pendiente = db.Column(db.Boolean, default=False, nullable=False)

@@ -1273,6 +1273,27 @@ def ingreso_bloqueado_para_edicion(ingreso):
     return None
 
 
+def absorber_ajuste_de_comision(ingreso, delta):
+    """Traslada al plan un ajuste manual de la comisión de uno de sus abonos.
+
+    `_comision_doctor_del_pago` reparte de forma acumulada contra
+    `comision_doctor_total`: si el admin sube la comisión de un abono y el
+    total se queda igual, los abonos que faltan generan menos para no pasarse
+    del total. Subiendo el total por el mismo delta, el ajuste se queda en el
+    abono editado y los siguientes siguen generando lo suyo.
+
+    No hace nada si el ingreso no es el abono de un plan.
+    """
+    pago = getattr(ingreso, "cobranza_pago", None)
+    if pago is None or pago.cotizacion is None:
+        return None
+    cot = pago.cotizacion
+    cot.comision_doctor_total = max(
+        0.0, round((cot.comision_doctor_total or 0) + delta, 2),
+    )
+    return cot
+
+
 def agrupar_en_ticket(cot):
     """Crea o reutiliza un único ticket para los ingresos no históricos.
 

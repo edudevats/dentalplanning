@@ -72,7 +72,7 @@ def crear_ingreso():
              ("tratamiento_id", "nombre_tratamiento", "monto", "comision_doctor")}
 
     from app.caja import services as caja_services
-    from app.edr.services import crear_ingresos_visita
+    from app.edr.services import crear_ingresos_visita, EdrError
     try:
         ingresos, _, _ = crear_ingresos_visita(
             g.tenant_id, g.current_user, data, [linea], ticket_folio,
@@ -80,7 +80,7 @@ def crear_ingreso():
     except caja_services.CajaError as exc:
         db.session.rollback()
         return jsonify({"error": exc.mensaje, "codigo": exc.codigo}), 409
-    except CrmError as e:
+    except (CrmError, EdrError) as e:
         db.session.rollback()
         return jsonify({"error": str(e)}), 400
     except FacturacionError as e:
@@ -107,7 +107,7 @@ def crear_visita():
     ticket_folio = body.get("ticket_folio")
 
     from app.caja import services as caja_services
-    from app.edr.services import crear_ingresos_visita
+    from app.edr.services import crear_ingresos_visita, EdrError
     try:
         ingresos, visita_uid, ticket = crear_ingresos_visita(
             g.tenant_id, g.current_user, data, lineas, ticket_folio,
@@ -115,7 +115,7 @@ def crear_visita():
     except caja_services.CajaError as exc:
         db.session.rollback()
         return jsonify({"error": exc.mensaje, "codigo": exc.codigo}), 409
-    except CrmError as e:
+    except (CrmError, EdrError) as e:
         db.session.rollback()
         return jsonify({"error": str(e)}), 400
     except FacturacionError as e:
@@ -758,6 +758,100 @@ def pagar_comisiones():
 
     db.session.commit()
     return jsonify(PagoDoctorSchema().dump(pago)), 201
+
+
+def _comision_pendiente_o_error(ingreso_id):
+    """(ingreso, pendiente_neto, None) si la comisión se puede tocar.
+
+    Devuelve (None, 0.0, respuesta_de_error) si el ingreso no tiene comisión,
+    si ya se liquidó o si una devolución ya la revirtió por completo.
+    """
+    ingreso = Ingreso.query.filter_by(
+        id=ingreso_id, tenant_id=g.tenant_id
+    ).first_or_404()
+
+    if not (ingreso.comision_doctor and ingreso.comision_doctor > 0):
+        return None, 0.0, (jsonify({
+            "error": "Este ingreso no tiene comisión."
+        }), 400)
+    if ingreso.id in _ingresos_liquidados_ids(g.tenant_id):
+        return None, 0.0, (jsonify({
+            "error": "Esa comisión ya fue pagada; no se puede modificar."
+        }), 400)
+
+    revertido = _reversiones_no_pagadas_por_ingreso(g.tenant_id).get(ingreso.id, 0)
+    pendiente = round((ingreso.comision_doctor or 0) - revertido, 2)
+    if pendiente <= 0:
+        return None, 0.0, (jsonify({
+            "error": "Esa comisión fue revertida por una devolución."
+        }), 400)
+    return ingreso, pendiente, None
+
+
+@edr_bp.route("/comisiones/<int:ingreso_id>", methods=["PUT"])
+@require_auth
+@require_role("admin")
+def editar_comision(ingreso_id):
+    """Ajusta a mano la comisión pendiente de un ingreso.
+
+    Existe porque un doctor puede negociar una comisión mayor a la que calculó
+    su porcentaje, y hasta ahora la única salida era capturar un pago suelto
+    —que dejaba la comisión original marcada como pendiente para siempre.
+    """
+    ingreso, _, error = _comision_pendiente_o_error(ingreso_id)
+    if error:
+        return error
+
+    try:
+        monto = round(float((request.get_json() or {}).get("comision_doctor")), 2)
+    except (TypeError, ValueError):
+        return jsonify({"error": "comision_doctor debe ser un número"}), 400
+    if monto <= 0:
+        return jsonify({
+            "error": "La comisión debe ser mayor a cero. "
+                     "Si no aplica, elimínala del recuadro."
+        }), 400
+
+    delta = round(monto - (ingreso.comision_doctor or 0), 2)
+    ingreso.comision_doctor = monto
+
+    # Un plan reparte su comisión total entre los abonos: si el total no sube
+    # con el ajuste, los abonos que falten se recortan para cuadrar al total
+    # viejo y el aumento se le quitaría al propio doctor más adelante.
+    from app.cobranza.services import absorber_ajuste_de_comision
+    absorber_ajuste_de_comision(ingreso, delta)
+
+    db.session.commit()
+    return jsonify({"ingreso_id": ingreso.id, "comision_doctor": monto})
+
+
+@edr_bp.route("/comisiones/<int:ingreso_id>", methods=["DELETE"])
+@require_auth
+@require_role("admin")
+def saldar_comision(ingreso_id):
+    """Saca una comisión del recuadro de pendientes sin generar gasto.
+
+    Para cuando ya se pagó por fuera (p. ej. el monto negociado, capturado como
+    un pago suelto): ese gasto ya está registrado, así que duplicarlo aquí
+    contaría la comisión dos veces. `Ingreso.comision_doctor` queda intacto —la
+    ganancia neta del tratamiento no se mueve— y sólo se escribe la fila puente
+    sin PagoDoctor, que es como el modelo ya representa una comisión liquidada
+    fuera de un pago.
+    """
+    ingreso, pendiente, error = _comision_pendiente_o_error(ingreso_id)
+    if error:
+        return error
+
+    nota = ((request.get_json(silent=True) or {}).get("nota") or "").strip()
+    db.session.add(PagoComisionIngreso(
+        tenant_id=g.tenant_id,
+        pago_id=None,
+        ingreso_id=ingreso.id,
+        monto=pendiente,
+        nota=nota[:200] or None,
+    ))
+    db.session.commit()
+    return jsonify({"message": "Comisión marcada como saldada"})
 
 
 @edr_bp.route("/pagos-doctores/resumen", methods=["GET"])

@@ -52,6 +52,7 @@ class ConfiguracionFiscalSchema(Schema):
     )
     facturacion_activa = fields.Bool(load_default=False)
     facturacion_activada_at = fields.DateTime(dump_only=True)
+    folio_manual_activo = fields.Bool(load_default=False)
     # Estado del CSD (solo lectura)
     csd_no_certificado = fields.Str(dump_only=True)
     csd_valido_desde = fields.DateTime(dump_only=True)

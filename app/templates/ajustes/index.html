@@ -286,6 +286,27 @@
 
     <!-- SUCURSALES -->
     <div id="panel-sucursales" class="hidden space-y-6">
+      <!-- El folio ya sale solo: la serie es de la sucursal y la secuencia la
+           lleva la API. Este interruptor decide si la captura de ingresos
+           ADEMÁS ofrece escribir un folio a mano para caer en un ticket ya
+           abierto. Vive aquí porque es lo mismo que configura la serie. -->
+      <div class="bg-surface rounded-xl border border-border shadow-sm">
+        <div class="p-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div class="max-w-2xl">
+            <h3 class="text-sm font-semibold font-heading text-text-primary">Agregar un cobro a un ticket ya abierto</h3>
+            <p class="mt-1 text-sm text-text-muted font-body">
+              Muestra en Nuevo Ingreso un campo para escribir el folio de un ticket que ya existe, y sumar ahí el cobro en vez de abrir uno nuevo. Con el interruptor apagado cada cobro abre su propio ticket, con la serie y el folio que le toque a su sucursal.
+            </p>
+            <p id="folio-manual-estado" class="mt-2 text-xs font-semibold text-text-muted font-body">Consultando estado…</p>
+          </div>
+          <label class="inline-flex items-center gap-3 cursor-pointer select-none shrink-0">
+            <span class="text-sm font-semibold text-text-secondary font-body">Mostrar el campo</span>
+            <input id="folio-manual-toggle" type="checkbox" class="peer sr-only" />
+            <span class="relative w-12 h-7 rounded-full bg-gray-300 peer-checked:bg-primary-600 transition-colors after:content-[''] after:absolute after:top-1 after:left-1 after:w-5 after:h-5 after:rounded-full after:bg-white after:shadow after:transition-transform peer-checked:after:translate-x-5"></span>
+          </label>
+        </div>
+      </div>
+
       <div class="bg-surface rounded-xl border border-border shadow-sm">
         <div class="px-5 py-4 border-b border-border">
           <h3 class="text-sm font-semibold font-heading text-text-primary">Agregar sucursal</h3>
@@ -508,7 +529,7 @@
     else if (key === 'estrategias') loadCrud('estrategias');
     else if (key === 'distribucion') loadDist();
     else if (key === 'fiscal') cargarConfigFiscal();
-    else if (key === 'sucursales') cargarSucursales();
+    else if (key === 'sucursales') { cargarSucursales(); cargarFolioManual(); }
     else if (key === 'impresion') loadImpresion();
     else if (key === 'usuarios') loadUsuarios();
   }
@@ -1695,6 +1716,45 @@
       console.error('Error al cargar sucursales', e);
     }
   }
+
+  function pintarFolioManual(activo) {
+    const toggle = document.getElementById('folio-manual-toggle');
+    const estado = document.getElementById('folio-manual-estado');
+    if (!toggle || !estado) return;
+    toggle.checked = Boolean(activo);
+    estado.textContent = activo
+      ? 'Visible · Nuevo Ingreso pide el folio del ticket (opcional)'
+      : 'Oculto · cada cobro abre su propio ticket';
+    estado.className = activo
+      ? 'mt-2 text-xs font-semibold text-accent-700 font-body'
+      : 'mt-2 text-xs font-semibold text-text-muted font-body';
+  }
+
+  async function cargarFolioManual() {
+    try {
+      const cfg = await API.get('/facturacion/configuracion');
+      pintarFolioManual(cfg.folio_manual_activo);
+    } catch (e) {
+      console.error('Error al leer el folio manual', e);
+    }
+  }
+
+  document.getElementById('folio-manual-toggle').addEventListener('change', async (e) => {
+    const activo = e.currentTarget.checked;
+    try {
+      const cfg = await API.put('/facturacion/configuracion',
+                                { folio_manual_activo: activo });
+      pintarFolioManual(cfg.folio_manual_activo);
+      Toast.success(activo
+        ? 'El campo de folio ya aparece en Nuevo Ingreso'
+        : 'El campo de folio ya no aparece en Nuevo Ingreso');
+    } catch (err) {
+      // Se revierte a lo que el backend tenga: dejar el switch mostrando algo
+      // que no se guardó engañaría sobre lo que ve quien captura.
+      e.currentTarget.checked = !activo;
+      Toast.error(err?.error || err?.message || 'No se pudo guardar el cambio');
+    }
+  });
 
   document.getElementById('form-sucursal').addEventListener('submit', async (e) => {
     e.preventDefault();

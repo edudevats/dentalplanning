@@ -132,6 +132,11 @@ class PagoComisionIngreso(db.Model):
     )
     # Comisión liquidada de ese ingreso (= Ingreso.comision_doctor al pagar).
     monto = db.Column(db.Float, nullable=False)
+    # Por qué se saldó sin un PagoDoctor. La llena el admin al marcar una
+    # comisión pendiente como saldada a mano (típicamente porque ya la pagó
+    # por fuera con un monto negociado). NULL en las liquidaciones normales y
+    # en las históricas de la migración inicial.
+    nota = db.Column(db.String(200))
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
 
     pago = db.relationship("PagoDoctor", backref="comisiones_liquidadas")

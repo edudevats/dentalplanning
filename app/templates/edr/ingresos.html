@@ -152,9 +152,12 @@
             </div>
           </div>
           <datalist id="dl-tratamientos"></datalist>
-          <div><label class="block text-sm font-medium text-text-secondary mb-1 font-body">Especialista <span class="text-danger-500">*</span></label>
-            <input id="f-especialista" list="dl-especialistas" autocomplete="off" placeholder="Escribe para buscar..." class="block w-full rounded-lg border border-border px-3 py-2.5 text-sm font-body text-text-primary placeholder:text-text-muted min-h-[44px] bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-500" />
-            <datalist id="dl-especialistas"></datalist></div>
+          <!-- El especialista se elige POR TRATAMIENTO (ver #tpl-linea): en una
+               misma visita puede haber tratamientos de doctores distintos, y un
+               campo unico de arriba obligaba a capturarlos como visitas
+               separadas. El datalist se queda aqui porque lo comparten todas
+               las lineas. -->
+          <datalist id="dl-especialistas"></datalist>
           <div><label class="block text-sm font-medium text-text-secondary mb-1 font-body">Metodo de Pago</label>
             <select id="f-metodo" class="block w-full rounded-lg border border-border px-3 py-2.5 text-sm font-body min-h-[44px] bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-500"></select></div>
           <div><label class="block text-sm font-medium text-text-secondary mb-1 font-body">Descuento</label>
@@ -177,7 +180,12 @@
             <label class="block text-sm font-medium text-text-secondary mb-1 font-body">Sucursal <span class="text-danger-500" id="suc-req">*</span></label>
             <select id="f-sucursal" class="block w-full rounded-lg border border-border px-3 py-2.5 text-sm font-body min-h-[44px] bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-500"></select>
           </div>
-          <div>
+          <!-- Solo si el consultorio lo pidio en Ajustes > Sucursales
+               (folio_manual_activo). Apagado, cada cobro abre su propio ticket
+               con la serie y el folio de su sucursal, que es el caso normal.
+               La API acepta `ticket_folio` de todas formas: los abonos de un
+               plan de cobranza lo usan por dentro. -->
+          <div id="wrap-ticket-folio" class="hidden">
             <label class="block text-sm font-medium text-text-secondary mb-1 font-body">Agregar a ticket (folio, opcional)</label>
             <input id="f-ticket-folio" type="number" placeholder="Nuevo ticket si se deja vacío" class="block w-full rounded-lg border border-border px-3 py-2.5 text-sm font-body min-h-[44px] bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-500" />
           </div>
@@ -196,9 +204,13 @@
 </div>
 
 <template id="tpl-linea">
-  <div class="linea grid grid-cols-1 sm:grid-cols-[2fr_1fr_1fr_auto] gap-2 items-start">
+  <div class="linea grid grid-cols-1 sm:grid-cols-[2fr_1.5fr_1fr_1fr_auto] gap-2 items-start">
     <input list="dl-tratamientos" autocomplete="off" placeholder="Tratamiento..."
            class="l-tratamiento block w-full rounded-lg border border-border px-3 py-2.5 text-sm font-body min-h-[44px] bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300" />
+    <!-- El doctor de ESTE tratamiento. Nace con el de la visita y sólo se
+         cambia cuando lo hizo otro; comparte el datalist de arriba. -->
+    <input list="dl-especialistas" autocomplete="off" placeholder="Doctor..."
+           class="l-especialista block w-full rounded-lg border border-border px-3 py-2.5 text-sm font-body min-h-[44px] bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300" />
     <input type="number" placeholder="Monto"
            class="l-monto block w-full rounded-lg border border-border px-3 py-2.5 text-sm font-body min-h-[44px] bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300" />
     <input type="number" placeholder="Com. doctor"
@@ -334,6 +346,10 @@ let tableData = [], especialistas = [], metodosPago = [], tratamientos = [], est
 let editingId = null;
 let userRole = null; // se resuelve en init() vía /auth/me
 let facturacionActiva = true; // se resuelve en init() vía /facturacion/configuracion (true por defecto: el backend es la fuente de verdad)
+// Preferencia del consultorio (Ajustes > Sucursales). false por defecto: si la
+// configuración no carga, la pantalla se queda limpia y el cobro abre su
+// propio ticket — que es lo que hace el backend cuando no le mandan folio.
+let folioManualActivo = false;
 
 // Fecha de hoy en hora local (YYYY-MM-DD), sin toISOString para no desfasar a medianoche.
 function todayLocalISO() {
@@ -538,7 +554,7 @@ function openCreate() {
   selSuc.value = sucursales.length === 1 ? String(sucursales[0].id) : '';
   document.getElementById('f-descuento').value = '0';
 
-  ['f-especialista','f-estrategia'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('f-estrategia').value = '';
   // Sin default: el método de pago es el dato sobre el que se construye el
   // corte de caja, y adivinar "Efectivo" aquí generaba faltantes fantasma
   // cuando el cobro real era con tarjeta o transferencia. Quien captura elige;
@@ -563,7 +579,6 @@ function openEdit(row) {
   document.getElementById('f-com-ban').value = row.comision_bancaria ?? '';
   document.getElementById('f-factura').checked = !!row.factura;
   document.getElementById('f-descuento').value = row.descuento_pct ? String(row.descuento_pct) : '0';
-  document.getElementById('f-especialista').value = especialistas.find(e => String(e.id) === String(row.especialista_id))?.nombre || '';
   document.getElementById('f-metodo').value = row.metodo_pago_id ? String(row.metodo_pago_id) : '';
   document.getElementById('f-estrategia').value = row.estrategia_id ? String(row.estrategia_id) : '';
   document.getElementById('f-sucursal').value = row.sucursal_id ? String(row.sucursal_id) : '';
@@ -582,6 +597,7 @@ function openEdit(row) {
             || row.nombre_tratamiento || '',
     monto: row.monto ?? '',
     comisionDoctor: row.comision_doctor ?? '',
+    especialista: especialistas.find(e => String(e.id) === String(row.especialista_id))?.nombre || '',
   }], { preservarComisionBancaria: true });
   document.getElementById('btn-agregar-linea').style.display = 'none';
   Modal.open('modal-form');
@@ -596,18 +612,27 @@ function openComentario(row) {
 }
 
 // ── Líneas de tratamiento de la visita ──
-// El paciente vino una vez y pagó una vez: fecha, especialista, método de pago
-// y descuento son de la visita. Lo único que se repite es el tratamiento.
+// El paciente vino una vez y pagó una vez: fecha, método de pago y descuento
+// son de la visita. Lo que se repite por línea es el tratamiento y su doctor,
+// porque en una misma visita puede trabajar más de un especialista.
 
 function lineasEl() { return document.getElementById('f-lineas'); }
 function todasLasLineas() { return Array.from(lineasEl().querySelectorAll('.linea')); }
 
 function agregarLinea(datos) {
   const nodo = document.getElementById('tpl-linea').content.firstElementChild.cloneNode(true);
+  const esp = nodo.querySelector('.l-especialista');
+  // Hereda el doctor de la línea anterior: la visita de un solo doctor se
+  // teclea una vez y "Agregar tratamiento" lo arrastra; la de varios solo
+  // corrige el renglón que cambia de manos.
+  const previa = todasLasLineas().pop();
+  if (previa) esp.value = previa.querySelector('.l-especialista').value;
   if (datos) {
     nodo.querySelector('.l-tratamiento').value = datos.nombre || '';
     nodo.querySelector('.l-monto').value = datos.monto ?? '';
     nodo.querySelector('.l-com-doc').value = datos.comisionDoctor ?? '';
+    // Editar es de un renglón: su doctor es el que ya tenía guardado.
+    if (datos.especialista !== undefined) esp.value = datos.especialista || '';
   }
   nodo.querySelector('.l-tratamiento').addEventListener('change', () => recalcularLinea(nodo));
   // soloPorcentaje: true — al tocar el monto a mano solo se re-deriva la
@@ -684,29 +709,53 @@ function actualizarTotales(opts) {
   }
 }
 
-function lineasDelFormulario() {
-  return todasLasLineas().map(l => {
+// Las líneas que de verdad cuentan, cada una con el número de renglón que se ve
+// en pantalla. Se conserva `pos` porque los avisos nombran el renglón que falla,
+// y contar solo las que cuentan desalinearía el número en cuanto haya una vacía
+// en medio.
+function lineasConPosicion() {
+  return todasLasLineas().map((l, i) => {
     const tx = findByName(tratamientos, l.querySelector('.l-tratamiento').value);
+    const esp = findByName(especialistas, l.querySelector('.l-especialista').value);
     return {
-      tratamiento_id: tx ? tx.id : null,
-      nombre_tratamiento: tx ? tx.nombre : (l.querySelector('.l-tratamiento').value.trim() || null),
-      monto: Number(l.querySelector('.l-monto').value) || 0,
-      comision_doctor: Number(l.querySelector('.l-com-doc').value) || 0,
+      pos: i + 1,
+      datos: {
+        tratamiento_id: tx ? tx.id : null,
+        nombre_tratamiento: tx ? tx.nombre : (l.querySelector('.l-tratamiento').value.trim() || null),
+        monto: Number(l.querySelector('.l-monto').value) || 0,
+        comision_doctor: Number(l.querySelector('.l-com-doc').value) || 0,
+        // Un doctor que no resuelve se omite, no se manda null: en el alta el
+        // backend caería a su default, y al editar un renglón un null borraría
+        // el doctor que ya tenía. Que esté puesto lo exige handleSave.
+        ...(esp ? { especialista_id: esp.id } : {}),
+      },
     };
-  }).filter(l => l.monto > 0 || l.nombre_tratamiento);
+  }).filter(x => x.datos.monto > 0 || x.datos.nombre_tratamiento);
+}
+
+function lineasDelFormulario() {
+  return lineasConPosicion().map(x => x.datos);
 }
 
 async function handleSave() {
   const fecha = document.getElementById('f-fecha').value;
   const paciente = document.getElementById('f-paciente').value.trim();
-  const lineas = lineasDelFormulario();
+  const conPos = lineasConPosicion();
+  const lineas = conPos.map(x => x.datos);
   if (!fecha || !paciente || !lineas.length) {
     Toast.warning('Completa los campos obligatorios'); return;
   }
 
-  // Especialista es obligatorio (autocompletado -> debe resolver a uno válido)
-  const esp = findByName(especialistas, document.getElementById('f-especialista').value);
-  if (!esp) { Toast.warning('Selecciona un especialista de la lista'); return; }
+  // El doctor es obligatorio EN CADA LÍNEA: sin él la comisión de ese
+  // tratamiento nacería sin dueño en pagos a doctores. Se nombra el renglón
+  // que falta, que con varios tratamientos es lo único accionable.
+  const sinDoctor = conPos.find(x => !x.datos.especialista_id);
+  if (sinDoctor) {
+    Toast.warning(lineas.length > 1
+      ? `Selecciona el doctor del tratamiento ${sinDoctor.pos}`
+      : 'Selecciona el doctor de la lista');
+    return;
+  }
 
   const facturaOn = document.getElementById('f-factura').checked;
   if (facturaOn && !facturacionActiva) { Modal.open('modal-factura-inactiva'); return; }
@@ -725,7 +774,9 @@ async function handleSave() {
       : 'Da de alta una sucursal en Ajustes > Sucursales antes de registrar ingresos');
     return;
   }
-  const ticketFolio = Number(document.getElementById('f-ticket-folio').value) || null;
+  const ticketFolio = folioManualActivo
+    ? (Number(document.getElementById('f-ticket-folio').value) || null)
+    : null;
 
   const btn = document.getElementById('save-btn'); const txt = document.getElementById('save-text');
   btn.disabled = true; txt.textContent = 'Guardando...';
@@ -739,7 +790,6 @@ async function handleSave() {
     descuento_pct: Number(document.getElementById('f-descuento').value) || 0,
     comision_bancaria: Number(document.getElementById('f-com-ban').value) || 0,
     factura: facturaOn,
-    especialista_id: esp.id,
     metodo_pago_id: Number(document.getElementById('f-metodo').value) || null,
     estrategia_id: Number(document.getElementById('f-estrategia').value) || null,
     sucursal_id: sucursalId,
@@ -863,6 +913,12 @@ async function init() {
   facturacionActiva = fcfg.status === 'fulfilled'
     ? Boolean(fcfg.value && fcfg.value.facturacion_activa)
     : true;
+  folioManualActivo = fcfg.status === 'fulfilled'
+    && Boolean(fcfg.value && fcfg.value.folio_manual_activo);
+  // classList y no style.display: el envoltorio es un `div` de la rejilla, sin
+  // display propio que la clase pudiera pisar.
+  document.getElementById('wrap-ticket-folio')
+    .classList.toggle('hidden', !folioManualActivo);
   userRole = ((ok(me, {}).user || ok(me, {})) || {}).role || null;
 
   applyStatsRole();

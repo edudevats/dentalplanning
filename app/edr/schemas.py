@@ -44,13 +44,18 @@ class LineaVisitaSchema(Schema):
     nombre_tratamiento = fields.Str(allow_none=True, load_default=None)
     monto = fields.Float(required=True, validate=validate.Range(min=0))
     comision_doctor = fields.Float(load_default=0)
+    # El doctor de ESTA línea. Vacío = el de la visita: en la misma visita hay
+    # tratamientos que hizo otro especialista, y la comisión se paga a quien
+    # trabajó, no a quien recibió al paciente.
+    especialista_id = fields.Int(allow_none=True, load_default=None)
 
 
 class VisitaSchema(Schema):
     """Los datos que la visita comparte, más sus líneas.
 
-    Especialista, método de pago y descuento son de la visita entera: el
-    paciente vino una vez y pagó una vez.
+    Método de pago y descuento son de la visita entera: el paciente vino una
+    vez y pagó una vez. El especialista de aquí es el DEFAULT de la visita:
+    cada línea puede traer el suyo (ver LineaVisitaSchema).
     """
     class Meta:
         unknown = EXCLUDE

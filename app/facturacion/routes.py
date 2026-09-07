@@ -401,6 +401,22 @@ def obtener_ticket(ticket_id):
     return jsonify(data)
 
 
+def _paciente_del_ticket(ticket):
+    """El nombre que va impreso en el ticket, sacado de sus ingresos.
+
+    Un ticket suele ser de una visita y una persona, pero con el folio manual
+    se le puede pegar el cobro de otra. Se nombran TODAS las distintas, en el
+    orden en que se capturaron: imprimir sólo la primera pondría en el papel
+    a quien no pagó esos conceptos, y ese papel es con el que se reclama.
+    """
+    nombres = []
+    for ing in sorted(ticket.ingresos, key=lambda i: i.id):
+        nombre = (ing.paciente or "").strip()
+        if nombre and nombre not in nombres:
+            nombres.append(nombre)
+    return " / ".join(nombres) or None
+
+
 @facturacion_bp.route("/tickets/<int:ticket_id>/impresion", methods=["GET"])
 @require_auth
 def ticket_impresion(ticket_id):
@@ -432,6 +448,7 @@ def ticket_impresion(ticket_id):
         "telefono": suc.telefono if suc else None,
         "folio": t.folio_display,
         "fecha": t.fecha.isoformat(),
+        "paciente": _paciente_del_ticket(t),
         "conceptos": [{"nombre": c["nombre"], "base": c["base"],
                        "iva": c["iva"], "monto": c["importe"]} for c in d["conceptos"]],
         "subtotal": d["subtotal"],
@@ -478,6 +495,7 @@ def ticket_simple(ingreso_id):
         "direccion": suc.direccion if suc else None,
         "telefono": suc.telefono if suc else None,
         "fecha": ing.fecha.isoformat(),
+        "paciente": (ing.paciente or "").strip() or None,
         "conceptos": [{"nombre": l.nombre_tratamiento or "Servicio",
                        "monto": round(l.monto or 0.0, 2)} for l in lineas],
         "total": round(sum(l.monto or 0.0 for l in lineas), 2),

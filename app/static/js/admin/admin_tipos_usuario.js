@@ -159,15 +159,19 @@
     return btn;
   }
 
+  // Sin plan de cobro el tipo no se puede vender NI aprobar: el botón tiene que
+  // ofrecer la salida (configurarlo), no quedarse muerto mandando a la CLI.
   function editButton(t) {
     const btn = document.createElement('button');
-    btn.className = 'px-3 py-1.5 rounded-lg bg-cs-surface-container text-cs-on-surface text-xs font-semibold hover:bg-cs-surface-container-high transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed';
-    btn.textContent = 'Editar';
     if (!t.plan_id) {
-      btn.disabled = true;
-      btn.title = 'Este tipo aún no tiene plan de cobro. Córrelo con `flask billing seed-addon`.';
+      btn.className = 'px-3 py-1.5 rounded-lg bg-gradient-to-br from-cs-primary to-cs-primary-dim text-cs-on-primary text-xs font-semibold hover:opacity-95 transition-opacity cursor-pointer';
+      btn.textContent = 'Configurar';
+      btn.title = 'Define el precio para poder vender y aprobar este tipo de usuario';
+      btn.addEventListener('click', () => openTipoModal(t, true));
     } else {
-      btn.addEventListener('click', () => openTipoModal(t));
+      btn.className = 'px-3 py-1.5 rounded-lg bg-cs-surface-container text-cs-on-surface text-xs font-semibold hover:bg-cs-surface-container-high transition-colors cursor-pointer';
+      btn.textContent = 'Editar';
+      btn.addEventListener('click', () => openTipoModal(t, false));
     }
     return btn;
   }
@@ -183,11 +187,25 @@
     }
   }
 
-  function openTipoModal(t) {
+  const NOMBRE_SUGERIDO = {
+    recepcionista: 'Recepcionista adicional',
+    asistente: 'Asistente dental adicional',
+  };
+
+  function openTipoModal(t, esAlta) {
     const wrap = document.createElement('div');
     wrap.className = 'space-y-4';
 
-    const nameInput = inputEl('text', 'nombre', t.nombre || '');
+    if (esAlta) {
+      const intro = document.createElement('p');
+      intro.className = 'text-xs text-cs-on-surface-var';
+      intro.textContent = t.asientos_pendientes
+        ? `Este tipo no tiene precio, por eso no se pueden aprobar sus ${t.asientos_pendientes} solicitud(es). Defínelo aquí.`
+        : 'Este tipo aún no tiene precio, así que ninguna clínica puede contratarlo.';
+      wrap.appendChild(intro);
+    }
+
+    const nameInput = inputEl('text', 'nombre', t.nombre || NOMBRE_SUGERIDO[t.rol] || '');
     wrap.appendChild(buildField('Nombre en el cobro', nameInput));
 
     const priceInput = inputEl('number', 'precio_mensual', t.precio_mensual ?? 0);
@@ -202,9 +220,12 @@
     activoLabel.className = 'inline-flex items-center gap-2 text-sm text-cs-on-surface';
     const activoChk = document.createElement('input');
     activoChk.type = 'checkbox';
-    activoChk.checked = !!t.activo;
+    activoChk.checked = esAlta ? true : !!t.activo;
     activoLabel.appendChild(activoChk);
     activoLabel.appendChild(document.createTextNode('Se puede vender (las clínicas pueden pedir este asiento)'));
+    // En el alta el plan nace activo (es el punto de configurarlo); el check se
+    // queda visible pero sin efecto para no prometer algo que el POST no hace.
+    if (esAlta) activoChk.disabled = true;
     wrap.appendChild(activoLabel);
 
     if (t.asientos_activos > 0) {
@@ -215,20 +236,28 @@
     }
 
     openModal({
-      title: `Editar · ${t.etiqueta}`,
+      title: `${esAlta ? 'Configurar' : 'Editar'} · ${t.etiqueta}`,
       content: wrap,
-      primary: { label: 'Guardar', onClick: async () => {
+      primary: { label: esAlta ? 'Configurar' : 'Guardar', onClick: async () => {
         const nombre = nameInput.value.trim();
         const precio = parseFloat(priceInput.value);
         if (nombre.length < 4) throw new Error('El nombre debe tener al menos 4 caracteres (requerido por Clip).');
         if (isNaN(precio) || precio < 0) throw new Error('Precio inválido.');
-        await adminApi.put(`/plans/${t.plan_id}`, {
+        const body = {
           nombre,
           precio_mensual: precio,
           descripcion: descInput.value.trim() || null,
-          activo: activoChk.checked,
-        });
-        Toast.show('Tipo de usuario actualizado', 'success');
+        };
+        let r;
+        if (esAlta) {
+          r = await adminApi.post(`/tipos-usuario/${t.rol}`, body);
+          Toast.show(`"${t.etiqueta}" ya se puede vender`, 'success');
+        } else {
+          body.activo = activoChk.checked;
+          r = await adminApi.put(`/plans/${t.plan_id}`, body);
+          Toast.show('Tipo de usuario actualizado', 'success');
+        }
+        if (r && r.sync_warning) Toast.show(r.sync_warning, 'info');
         await loadTipos();
       } },
     });
