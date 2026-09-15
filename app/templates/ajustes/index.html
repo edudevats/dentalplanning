@@ -122,6 +122,48 @@
     <div id="panel-gastos-conceptos" class="hidden space-y-4"></div>
     <div id="panel-estrategias" class="hidden space-y-4"></div>
 
+    <!-- DESCUENTOS Y CUPONES -->
+    <div id="panel-descuentos-cupones" class="hidden space-y-6">
+      <div class="bg-surface rounded-xl border border-border shadow-sm">
+        <div class="p-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div class="max-w-2xl">
+            <h3 class="text-sm font-semibold font-heading text-text-primary">Descuentos y cupones</h3>
+            <p class="mt-1 text-sm text-text-muted font-body">
+              Enciéndelo si tu consultorio da descuentos. Apagado, el formulario
+              de ingresos y el de cotizaciones no muestran ningún campo de
+              descuento. Al encenderlo por primera vez se crean los porcentajes
+              de siempre (10%, 20%, 30% y 50%), que puedes editar o borrar.
+            </p>
+          </div>
+          <label class="inline-flex items-center gap-3 cursor-pointer select-none shrink-0">
+            <span class="text-sm font-semibold text-text-secondary font-body">Activar descuentos</span>
+            <input id="tg-descuentos" type="checkbox" class="peer sr-only" />
+            <span class="relative w-12 h-7 rounded-full bg-gray-300 peer-checked:bg-primary-600 transition-colors after:content-[''] after:absolute after:top-1 after:left-1 after:w-5 after:h-5 after:rounded-full after:bg-white after:shadow after:transition-transform peer-checked:after:translate-x-5"></span>
+          </label>
+        </div>
+      </div>
+
+      <div id="desc-cont" class="hidden space-y-6">
+        <div class="bg-surface rounded-xl border border-border shadow-sm">
+          <div class="px-5 py-4 border-b border-border">
+            <h3 class="text-sm font-semibold font-heading text-text-primary">Descuentos</h3>
+          </div>
+          <div id="panel-descuentos" class="p-5 space-y-4"></div>
+        </div>
+
+        <div class="bg-surface rounded-xl border border-border shadow-sm">
+          <div class="px-5 py-4 border-b border-border flex items-center justify-between">
+            <h3 class="text-sm font-semibold font-heading text-text-primary">Cupones</h3>
+            <button type="button" id="btn-nuevo-cupon"
+                    class="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-accent-600 hover:bg-accent-700 text-white text-sm font-medium font-body transition-colors cursor-pointer min-h-[40px]">
+              <i data-lucide="plus" class="h-4 w-4"></i><span>Agregar cupón</span>
+            </button>
+          </div>
+          <div id="tbl-cupones" class="p-5"></div>
+        </div>
+      </div>
+    </div>
+
     <!-- DISTRIBUCION -->
     <div id="panel-distribucion" class="hidden space-y-6">
       <!-- Bar visual -->
@@ -476,6 +518,72 @@
     </div>
   </div>
 </div>
+
+<!-- Cupon Modal -->
+<div id="modal-cupon" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4">
+  <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" id="modal-cupon-backdrop"></div>
+  <div class="relative bg-surface rounded-2xl shadow-xl w-full max-w-sm">
+    <div class="flex items-center justify-between px-5 py-4 border-b border-border">
+      <h2 class="text-base font-semibold font-heading text-text-primary" id="cupon-titulo">Nuevo cupón</h2>
+      <button id="modal-cupon-close" class="p-1.5 rounded-lg text-text-muted hover:bg-surface-hover cursor-pointer"><i
+          data-lucide="x" class="h-4 w-4"></i></button>
+    </div>
+    <div class="p-5 space-y-4">
+      <div>
+        <label class="block text-sm font-medium text-text-secondary mb-1 font-body">Tratamiento</label>
+        <select id="c-tratamiento"
+          class="block w-full rounded-lg border border-border px-3 py-2.5 text-sm font-body bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-500 min-h-[44px]"></select>
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-text-secondary mb-1 font-body">Tipo de descuento</label>
+        <select id="c-tipo"
+          class="block w-full rounded-lg border border-border px-3 py-2.5 text-sm font-body bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-500 min-h-[44px]">
+          <option value="porcentaje">Porcentaje</option>
+          <option value="monto">Cantidad ($)</option>
+        </select>
+      </div>
+      <div>
+        <label id="c-valor-label" class="block text-sm font-medium text-text-secondary mb-1 font-body">Porcentaje de descuento (%)</label>
+        <input id="c-valor" type="number" step="0.01" min="0.01"
+          class="block w-full rounded-lg border border-border px-3 py-2.5 text-sm font-body bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-500 min-h-[44px]" />
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-text-secondary mb-1 font-body">Código</label>
+        <input id="c-codigo" type="text" placeholder="p. ej. VERANO20"
+          class="block w-full rounded-lg border border-border px-3 py-2.5 text-sm font-body bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-500 min-h-[44px] uppercase" />
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block text-sm font-medium text-text-secondary mb-1 font-body">Vigente desde</label>
+          <input id="c-desde" type="date"
+            class="block w-full rounded-lg border border-border px-3 py-2.5 text-sm font-body bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-500 min-h-[44px]" />
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-text-secondary mb-1 font-body">Vigente hasta</label>
+          <input id="c-hasta" type="date"
+            class="block w-full rounded-lg border border-border px-3 py-2.5 text-sm font-body bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-500 min-h-[44px]" />
+        </div>
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-text-secondary mb-1 font-body">Máximo de usos</label>
+        <input id="c-max-usos" type="number" min="1" step="1" placeholder="Sin límite"
+          class="block w-full rounded-lg border border-border px-3 py-2.5 text-sm font-body bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-500 min-h-[44px]" />
+      </div>
+      <label class="flex items-center gap-3 cursor-pointer">
+        <input type="checkbox" id="c-activo" class="w-4 h-4 rounded border-border text-primary-500 focus:ring-primary-300" />
+        <span class="text-sm font-medium text-text-secondary font-body">Activo</span>
+      </label>
+      <div class="flex justify-end gap-3 pt-2">
+        <button type="button" id="modal-cupon-cancel"
+          class="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg border border-border bg-surface hover:bg-surface-hover text-sm font-medium font-body text-text-primary transition-colors cursor-pointer min-h-[44px]">Cancelar</button>
+        <button type="button" id="modal-cupon-save"
+          class="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-accent-600 hover:bg-accent-700 text-white text-sm font-medium font-body transition-colors cursor-pointer min-h-[44px]">
+          <i data-lucide="save" class="h-4 w-4"></i> Guardar
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
@@ -490,6 +598,7 @@
     { key: 'metodos-pago', label: 'Metodos de Pago', icon: 'credit-card' },
     { key: 'gastos-conceptos', label: 'Conceptos Gasto', icon: 'folder-open' },
     { key: 'estrategias', label: 'Estrategias MKT', icon: 'megaphone' },
+    { key: 'descuentos-cupones', label: 'Descuentos y Cupones', icon: 'ticket-percent' },
     { key: 'distribucion', label: 'Distribucion', icon: 'pie-chart' },
     { key: 'fiscal', label: 'Configuracion fiscal', icon: 'receipt' },
     { key: 'sucursales', label: 'Sucursales', icon: 'store' },
@@ -527,6 +636,7 @@
     else if (key === 'metodos-pago') loadCrud('metodos-pago');
     else if (key === 'gastos-conceptos') loadCrud('gastos-conceptos');
     else if (key === 'estrategias') loadCrud('estrategias');
+    else if (key === 'descuentos-cupones') cargarDescuentosCupones();
     else if (key === 'distribucion') loadDist();
     else if (key === 'fiscal') cargarConfigFiscal();
     else if (key === 'sucursales') { cargarSucursales(); cargarFolioManual(); }
@@ -915,6 +1025,24 @@
       cols: [{ key: 'nombre', label: 'Nombre' }],
       fields: [{ key: 'nombre', label: 'Nombre', type: 'text' }],
     },
+    'descuentos': {
+      entity: 'Descuento', endpoint: '/ajustes/descuentos',
+      cols: [
+        { key: 'nombre', label: 'Nombre' },
+        { key: 'porcentaje', label: 'Porcentaje', align: 'right', render: v => domEl('span', 'tabular-nums', v + '%') },
+        {
+          key: 'is_active', label: 'Estado', align: 'center', render: v => domEl(
+            'span',
+            'inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ' + (v ? 'bg-accent-50 text-accent-700' : 'bg-neutral-100 text-neutral-600'),
+            v ? 'Activo' : 'Inactivo'),
+        },
+      ],
+      fields: [
+        { key: 'nombre', label: 'Nombre', type: 'text' },
+        { key: 'porcentaje', label: 'Porcentaje (%)', type: 'number', step: '0.1', min: '0.01', max: '100' },
+        { key: 'is_active', label: 'Activo', type: 'checkbox', defaultValue: true },
+      ],
+    },
   };
 
   let crudState = {};
@@ -1061,9 +1189,29 @@
 
   document.getElementById('modal-crud-close').addEventListener('click', () => Modal.close('modal-crud'));
   document.getElementById('modal-crud-backdrop').addEventListener('click', () => Modal.close('modal-crud'));
-  document.getElementById('modal-delete-close').addEventListener('click', () => Modal.close('modal-delete'));
-  document.getElementById('modal-delete-cancel').addEventListener('click', () => Modal.close('modal-delete'));
-  document.getElementById('modal-delete-backdrop').addEventListener('click', () => Modal.close('modal-delete'));
+
+  // Limpiar el estado al cerrar el modal de borrado. El modal es compartido por tres
+  // flujos (dist, cupon, crud), y el handler de confirmar los revisa en cascada. Las
+  // variables sin limpiar sobreviven a un cancelar y pueden causar que el siguiente
+  // borrado apunte al objeto equivocado.
+  function clearDeleteModalState() {
+    distPendingDelete = null;
+    cuponPendingDelete = null;
+    crudState._deleteItem = null;
+    crudState._deleteTab = null;
+  }
+  document.getElementById('modal-delete-close').addEventListener('click', () => {
+    clearDeleteModalState();
+    Modal.close('modal-delete');
+  });
+  document.getElementById('modal-delete-cancel').addEventListener('click', () => {
+    clearDeleteModalState();
+    Modal.close('modal-delete');
+  });
+  document.getElementById('modal-delete-backdrop').addEventListener('click', () => {
+    clearDeleteModalState();
+    Modal.close('modal-delete');
+  });
 
   // ── DISTRIBUCION (dynamic categories) ────────────────────
   let distCats = [];        // array of {id, nombre, clave, color, porcentaje, es_sistema}
@@ -1297,7 +1445,7 @@
   }
 
   document.getElementById('modal-delete-confirm').addEventListener('click', async () => {
-    // Check if it's a dist delete or a crud delete
+    // Check if it's a dist delete, a cupon delete or a crud delete
     if (distPendingDelete) {
       const cat = distPendingDelete;
       distPendingDelete = null;
@@ -1308,6 +1456,21 @@
         buildDistList();
         Toast.success('Categoria eliminada');
       } catch (e) { Toast.error(e?.error || 'Error al eliminar'); }
+      return;
+    }
+    if (cuponPendingDelete) {
+      const cupon = cuponPendingDelete;
+      cuponPendingDelete = null;
+      try {
+        await API.delete('/ajustes/cupones/' + cupon.id);
+        Modal.close('modal-delete');
+        Toast.success('Cupón eliminado');
+        await cargarCupones();
+      } catch (e) {
+        // Un cupón ya canjeado responde 400 con un mensaje claro (no se puede
+        // borrar, hay que desactivarlo); mostrarlo tal cual y no un genérico.
+        Toast.error(mensajeError(e, 'No se pudo eliminar el cupón'));
+      }
       return;
     }
     // original crud delete
@@ -2246,6 +2409,183 @@
       Toast.error('No se pudo regenerar la clave');
     }
   });
+
+  // ── Descuentos y cupones ─────────────────────────────────
+  let tratamientosCache = [];
+  let cuponesCache = [];
+  let cuponPendingDelete = null;
+
+  async function cargarDescuentosCupones() {
+    let cfg;
+    try {
+      cfg = await API.get('/ajustes/descuentos/config');
+    } catch (e) {
+      Toast.error(mensajeError(e, 'Error al cargar la configuración de descuentos'));
+      return;
+    }
+    const activo = Boolean(cfg && cfg.activo);
+    document.getElementById('tg-descuentos').checked = activo;
+    document.getElementById('desc-cont').classList.toggle('hidden', !activo);
+    if (!activo) return;
+
+    if (!tratamientosCache.length) {
+      try {
+        tratamientosCache = await API.get('/tratamientos') || [];
+      } catch (e) {
+        Toast.error(mensajeError(e, 'Error al cargar tratamientos'));
+      }
+    }
+    await loadCrud('descuentos');
+    await cargarCupones();
+  }
+
+  document.getElementById('tg-descuentos').addEventListener('change', async (e) => {
+    const activo = e.target.checked;
+    try {
+      await API.put('/ajustes/descuentos/config', { activo });
+      Toast.success(activo ? 'Descuentos activados' : 'Descuentos desactivados');
+      await cargarDescuentosCupones();
+    } catch (err) {
+      // Devolver el switch a su sitio: el backend mandó y dijo que no.
+      e.target.checked = !activo;
+      Toast.error(mensajeError(err, 'No se pudo cambiar el ajuste'));
+    }
+  });
+
+  async function cargarCupones() {
+    try {
+      cuponesCache = await API.get('/ajustes/cupones') || [];
+    } catch (e) {
+      Toast.error(mensajeError(e, 'Error al cargar cupones'));
+      return;
+    }
+    renderTable('tbl-cupones', [
+      {
+        key: 'codigo', label: 'Código', render: (v, row) => domEl('span',
+          'font-medium ' + (row.agotado || row.vencido || !row.is_active ? 'text-text-muted' : ''), v)
+      },
+      { key: 'tratamiento_nombre', label: 'Tratamiento' },
+      {
+        key: 'valor', label: 'Descuento', align: 'right', render: (v, row) =>
+          domEl('span', 'tabular-nums', row.tipo === 'porcentaje' ? v + '%' : '$' + Number(v).toFixed(2))
+      },
+      {
+        key: 'vigencia_hasta', label: 'Vigencia', render: (v, row) => {
+          if (!row.vigencia_desde && !v) return domEl('span', 'text-text-muted', 'Sin límite');
+          return domEl('span', '', (row.vigencia_desde || '—') + ' → ' + (v || '—'));
+        }
+      },
+      {
+        key: 'usos', label: 'Usos', align: 'right', render: (v, row) =>
+          domEl('span', 'tabular-nums', row.max_usos ? `${v} / ${row.max_usos}` : String(v))
+      },
+      {
+        key: 'is_active', label: 'Estado', align: 'center', render: (v, row) => {
+          let txt, cls;
+          if (!v) { txt = 'Inactivo'; cls = 'bg-neutral-100 text-neutral-600'; }
+          else if (row.agotado) { txt = 'Agotado'; cls = 'bg-neutral-100 text-neutral-600'; }
+          else if (row.vencido) { txt = 'Vencido'; cls = 'bg-neutral-100 text-neutral-600'; }
+          else { txt = 'Activo'; cls = 'bg-accent-50 text-accent-700'; }
+          return domEl('span', 'inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ' + cls, txt);
+        }
+      },
+      {
+        key: '__acciones', label: '', align: 'right', render: (_, row) => {
+          const wrap = domEl('div', 'flex justify-end gap-1');
+          const editBtn = domEl('button', 'p-1.5 rounded-md text-text-muted hover:text-primary-600 hover:bg-primary-50 transition-colors cursor-pointer');
+          editBtn.type = 'button';
+          editBtn.appendChild(domIcon('edit-3', 'h-4 w-4'));
+          editBtn.addEventListener('click', () => openCuponModal(row));
+          const delBtn = domEl('button', 'p-1.5 rounded-md text-text-muted hover:text-danger-600 hover:bg-danger-50 transition-colors cursor-pointer');
+          delBtn.type = 'button';
+          delBtn.appendChild(domIcon('trash-2', 'h-4 w-4'));
+          delBtn.addEventListener('click', () => openDeleteCuponModal(row));
+          wrap.appendChild(editBtn); wrap.appendChild(delBtn);
+          return wrap;
+        }
+      },
+    ], cuponesCache, 'No hay cupones', false);
+    lucide.createIcons();
+  }
+
+  function openDeleteCuponModal(row) {
+    cuponPendingDelete = row;
+    document.getElementById('modal-delete-title').textContent = 'Eliminar cupón';
+    document.getElementById('modal-delete-msg').textContent =
+      `¿Eliminar el cupón "${row.codigo}"? Esta acción no se puede deshacer.`;
+    Modal.open('modal-delete');
+  }
+
+  function openCuponModal(row) {
+    const esNuevo = !row;
+    document.getElementById('cupon-titulo').textContent = esNuevo ? 'Nuevo cupón' : 'Editar cupón';
+    populateSelect(
+      document.getElementById('c-tratamiento'),
+      tratamientosCache.map(t => ({ value: String(t.id), label: t.nombre })),
+      row ? String(row.tratamiento_id) : '',
+      'Selecciona un tratamiento'
+    );
+    document.getElementById('c-tipo').value = row ? row.tipo : 'porcentaje';
+    document.getElementById('c-valor').value = row ? row.valor : '';
+    document.getElementById('c-codigo').value = row ? row.codigo : '';
+    document.getElementById('c-desde').value = (row && row.vigencia_desde) || '';
+    document.getElementById('c-hasta').value = (row && row.vigencia_hasta) || '';
+    document.getElementById('c-max-usos').value = (row && row.max_usos) || '';
+    document.getElementById('c-activo').checked = row ? !!row.is_active : true;
+    document.getElementById('modal-cupon').dataset.cuponId = row ? String(row.id) : '';
+    actualizarEtiquetaValor();
+    Modal.open('modal-cupon');
+    lucide.createIcons();
+  }
+
+  function actualizarEtiquetaValor() {
+    // La etiqueta cambia con el tipo: capturar "50" pensando en pesos cuando el
+    // cupón es de porcentaje es el error fácil de cometer aquí.
+    const esPct = document.getElementById('c-tipo').value === 'porcentaje';
+    document.getElementById('c-valor-label').textContent =
+      esPct ? 'Porcentaje de descuento (%)' : 'Cantidad de descuento ($)';
+    const valorInp = document.getElementById('c-valor');
+    if (esPct) valorInp.max = '100'; else valorInp.removeAttribute('max');
+    valorInp.placeholder = esPct ? '50' : '500.00';
+  }
+
+  document.getElementById('c-tipo').addEventListener('change', actualizarEtiquetaValor);
+
+  async function guardarCupon() {
+    const m = document.getElementById('modal-cupon');
+    const id = m.dataset.cuponId;
+    const maxUsosVal = document.getElementById('c-max-usos').value;
+    const body = {
+      tratamiento_id: Number(document.getElementById('c-tratamiento').value) || null,
+      tipo: document.getElementById('c-tipo').value,
+      valor: Number(document.getElementById('c-valor').value) || 0,
+      codigo: document.getElementById('c-codigo').value.trim(),
+      vigencia_desde: document.getElementById('c-desde').value || null,
+      vigencia_hasta: document.getElementById('c-hasta').value || null,
+      max_usos: maxUsosVal ? Number(maxUsosVal) : null,
+      is_active: document.getElementById('c-activo').checked,
+    };
+    if (!body.tratamiento_id) { Toast.error('Elige el tratamiento'); return; }
+    if (!body.codigo) { Toast.error('Captura el código'); return; }
+    if (!body.valor || body.valor <= 0) { Toast.error('Captura un valor mayor a 0'); return; }
+    try {
+      if (id) await API.put('/ajustes/cupones/' + id, body);
+      else await API.post('/ajustes/cupones', body);
+      Modal.close('modal-cupon');
+      Toast.success(id ? 'Cupón actualizado' : 'Cupón creado');
+      await cargarCupones();
+    } catch (err) {
+      Toast.error(mensajeError(err, 'No se pudo guardar el cupón'));
+    }
+  }
+
+  document.getElementById('modal-cupon-close').addEventListener('click', () => Modal.close('modal-cupon'));
+  document.getElementById('modal-cupon-backdrop').addEventListener('click', () => Modal.close('modal-cupon'));
+  document.getElementById('modal-cupon-cancel').addEventListener('click', () => Modal.close('modal-cupon'));
+  document.getElementById('modal-cupon-save').addEventListener('click', guardarCupon);
+
+  document.getElementById('btn-nuevo-cupon')
+    .addEventListener('click', () => openCuponModal(null));
 
 </script>
 {% endblock %}

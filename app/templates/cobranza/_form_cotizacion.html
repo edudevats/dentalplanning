@@ -58,17 +58,28 @@
         </section>
 
         <section class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 rounded-xl bg-surface-alt p-4">
-          <label class="text-sm">Descuento
-            <select id="cot-descuento-tipo" class="mt-1 w-full rounded-lg border border-border px-3 py-2 bg-surface">
-              <option value="">Sin descuento</option>
-              <option value="monto">Monto</option>
-              <option value="porcentaje">Porcentaje</option>
-            </select>
-          </label>
-          <label class="text-sm">Valor
-            <input id="cot-descuento-valor" type="number" min="0" step="0.01" value="0"
-                   class="mt-1 w-full rounded-lg border border-border px-3 py-2 bg-surface" />
-          </label>
+          <div id="cot-modo-wrap" class="hidden md:col-span-2 xl:col-span-4">
+            <p class="text-sm mb-1">Descuento</p>
+            <div class="flex rounded-lg border border-border overflow-hidden w-full sm:w-64">
+              <button type="button" data-modo="descuento"
+                      class="cot-modo flex-1 px-3 py-2 text-sm cursor-pointer">Descuento</button>
+              <button type="button" data-modo="cupon"
+                      class="cot-modo flex-1 px-3 py-2 text-sm cursor-pointer">Cupón</button>
+            </div>
+          </div>
+          <div id="cot-descuento-doc" class="contents">
+            <label class="text-sm">Descuento
+              <select id="cot-descuento-tipo" class="mt-1 w-full rounded-lg border border-border px-3 py-2 bg-surface">
+                <option value="">Sin descuento</option>
+                <option value="monto">Monto</option>
+                <option value="porcentaje">Porcentaje</option>
+              </select>
+            </label>
+            <label class="text-sm">Valor
+              <input id="cot-descuento-valor" type="number" min="0" step="0.01" value="0"
+                     class="mt-1 w-full rounded-lg border border-border px-3 py-2 bg-surface" />
+            </label>
+          </div>
           <label class="text-sm">Anticipo
             <input id="cot-anticipo" type="number" min="0" step="0.01" value="0"
                    class="mt-1 w-full rounded-lg border border-border px-3 py-2 bg-surface" />

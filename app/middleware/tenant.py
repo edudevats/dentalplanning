@@ -30,6 +30,10 @@ _RECEP_RULES = [
     ("GET", r"/api/v1/ajustes/especialistas"),
     ("GET", r"/api/v1/ajustes/metodos-pago"),
     ("GET", r"/api/v1/ajustes/estrategias"),
+    ("GET", r"/api/v1/ajustes/descuentos"),
+    ("GET", r"/api/v1/ajustes/descuentos/config"),
+    ("GET", r"/api/v1/ajustes/cupones"),
+    ("POST", r"/api/v1/ajustes/cupones/validar"),
     ("GET", r"/api/v1/tratamientos"),
     # CRM (todo excepto DELETE paciente y PUT config)
     ("GET", r"/api/v1/crm/pacientes"),

@@ -29,6 +29,7 @@ def _enrich_ingreso(ingreso):
     data["especialista_nombre"] = ingreso.especialista.nombre if ingreso.especialista else None
     data["metodo_pago_nombre"] = ingreso.metodo_pago.nombre if ingreso.metodo_pago else None
     data["estrategia_nombre"] = ingreso.estrategia.nombre if ingreso.estrategia else None
+    data["cupon_codigo"] = ingreso.cupon.codigo if ingreso.cupon else None
     tk = ingreso.ticket
     data["ticket_id"] = tk.id if tk else None
     data["ticket_folio"] = tk.folio if tk else None
@@ -48,6 +49,7 @@ def listar_ingresos():
         joinedload(Ingreso.metodo_pago),
         joinedload(Ingreso.estrategia),
         joinedload(Ingreso.ticket),
+        joinedload(Ingreso.cupon),
     ).filter(
         Ingreso.tenant_id == g.tenant_id,
         *filtro_mes(Ingreso.fecha, year, month),
@@ -69,7 +71,8 @@ def crear_ingreso():
     data = IngresoSchema().load(body)
 
     linea = {k: data.pop(k, None) for k in
-             ("tratamiento_id", "nombre_tratamiento", "monto", "comision_doctor")}
+             ("tratamiento_id", "nombre_tratamiento", "monto", "comision_doctor",
+              "cupon_codigo")}
 
     from app.caja import services as caja_services
     from app.edr.services import crear_ingresos_visita, EdrError
@@ -186,6 +189,62 @@ def actualizar_ingreso(ingreso_id):
 
     if data.get("paciente_id") and not crm_activo(g.tenant_id):
         data.pop("paciente_id")
+
+    # El cupón sólo se revalida si CAMBIÓ. Si no, un ingreso viejo con un cupón
+    # ya vencido o agotado sería imposible de corregir: bastaría querer
+    # arreglarle los comentarios para quedar atorado.
+    actual = ingreso.cupon.codigo if ingreso.cupon else ""
+    if "cupon_codigo" in data:
+        from app.ajustes.services import normalizar_codigo
+        codigo = normalizar_codigo(data.pop("cupon_codigo"))
+    else:
+        codigo = actual
+
+    # La exclusión mutua se valida SIEMPRE contra el resultado FINAL de este
+    # PUT, cambie o no el código: antes este chequeo vivía dentro de
+    # `if codigo != actual`, así que un PUT que sólo agregaba
+    # `descuento_pct` a un ingreso que YA tenía cupón (sin tocar
+    # `cupon_codigo`) se colaba y la fila terminaba con las dos cosas a la
+    # vez. Esto es una pregunta distinta de "revalidar el cupón contra el
+    # catálogo" (que sigue yendo sólo cuando el código cambió, más abajo).
+    if codigo and data.get("descuento_pct", ingreso.descuento_pct):
+        return jsonify({
+            "error": "Una línea con cupón no puede llevar además "
+                     "un descuento de visita"
+        }), 400
+
+    if codigo != actual:
+        from app.ajustes.services import DescuentosError, aplicar_cupon, validar_cupon
+        # `ingreso.monto` ya es el NETO si el ingreso traía cupón. El
+        # precio de lista es lo que mandó el cliente (si mandó `monto`)
+        # o, si no, se reconstruye sumando lo ya descontado -- para eso
+        # existe `descuento_monto`. "monto" in data, no .get(): así no
+        # se confunde "no lo mandaron" con "lo mandaron en 0".
+        precio_lista = (
+            data["monto"] if "monto" in data
+            else ingreso.monto + ingreso.descuento_monto
+        )
+        if not codigo:
+            ingreso.cupon_id = None
+            ingreso.descuento_monto = 0
+            data["monto"] = precio_lista
+        else:
+            try:
+                cupon = validar_cupon(
+                    g.tenant_id, codigo,
+                    data.get("tratamiento_id", ingreso.tratamiento_id),
+                    data.get("fecha", ingreso.fecha),
+                    bloquear=True,
+                )
+                # `monto` llega como el precio ANTES del cupón, igual que
+                # en el alta.
+                neto, descuento = aplicar_cupon(precio_lista, cupon)
+            except DescuentosError as e:
+                return jsonify({"error": str(e)}), 400
+            ingreso.cupon_id = cupon.id
+            ingreso.descuento_monto = descuento
+            data["monto"] = neto
+
     for key, value in data.items():
         setattr(ingreso, key, value)
 

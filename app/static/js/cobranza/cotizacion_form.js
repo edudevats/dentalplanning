@@ -8,6 +8,21 @@ const CobranzaForm = (() => {
     sucursales: [],
     calendario: [],
     loaded: false,
+    descuentosActivos: false,
+    modoDescuento: 'descuento',
+    cuponesPorId: {},
+    // Fecha de la cotización, para validar cupones contra ELLA y no contra
+    // hoy (el servidor valida contra `cot.fecha`, no contra la fecha del
+    // navegador -- ver validar_cupon en ajustes/services.py). null en una
+    // cotización nueva que todavía no tiene fecha asignada; la asigna el
+    // servidor al crear.
+    fecha: null,
+    // true cuando la cotización abierta ya no está en borrador/enviada: el
+    // servidor rechaza cualquier cambio (actualizar_cotizacion en services.py),
+    // así que los campos de cupón se deshabilitan para no ofrecer algo que se
+    // va a rechazar. El botón "Editar" de cotizaciones.js ya sólo aparece para
+    // esos dos estatus; esto es una segunda capa por si se llama open() directo.
+    cuponBloqueado: false,
   };
   const $ = id => document.getElementById(id);
 
@@ -127,6 +142,8 @@ const CobranzaForm = (() => {
       API.get('/tratamientos'),
       API.get('/ajustes/especialistas'),
       API.get('/facturacion/sucursales'),
+      API.get('/ajustes/descuentos/config'),
+      API.get('/ajustes/cupones'),
     ]);
     const value = (index, fallback) => (
       results[index].status === 'fulfilled' ? results[index].value : fallback
@@ -141,6 +158,19 @@ const CobranzaForm = (() => {
     if (results[0].status === 'rejected') {
       Toast.warning('El catálogo de tratamientos no está disponible; puedes usar conceptos libres');
     }
+    // Si la config falla queda apagado: el backend rechazaría el canje de
+    // todos modos, así que ocultar es la respuesta conservadora.
+    const dcfg = value(3, null);
+    state.descuentosActivos = Boolean(dcfg && dcfg.activo);
+    $('cot-modo-wrap').classList.toggle('hidden', !state.descuentosActivos);
+    // Mapa id → código para rehidratar los cupones de una cotización guardada:
+    // los conceptos sólo devuelven cupon_id (cupon_codigo es load_only en
+    // ConceptoSchema). Se pide aquí en vez de meterle a cobranza/routes.py una
+    // dependencia de ajustes que sólo necesita esta vista.
+    const cupones = value(4, []);
+    state.cuponesPorId = Object.fromEntries(
+      (Array.isArray(cupones) ? cupones : []).map(c => [c.id, c.codigo]),
+    );
     state.loaded = true;
     renderCatalogs();
   }
@@ -158,13 +188,13 @@ const CobranzaForm = (() => {
     const row = document.createElement('div');
     row.className = 'concepto-row grid grid-cols-1 md:grid-cols-12 gap-2 items-end rounded-lg border border-border p-3';
     row.innerHTML = `
-      <label class="text-xs md:col-span-3">Catálogo
+      <label class="text-xs md:col-span-2">Catálogo
         <div class="relative mt-1">
           <input class="concepto-buscar-tratamiento w-full rounded-lg border border-border px-2 py-2 text-sm" type="text" autocomplete="off" placeholder="Buscar…" value="${esc(treatmentName(concept.tratamiento_id))}" />
           <input class="concepto-tratamiento" type="hidden" value="${concept.tratamiento_id ? esc(String(concept.tratamiento_id)) : ''}" />
         </div>
       </label>
-      <label class="text-xs md:col-span-4">Descripción *
+      <label class="text-xs md:col-span-3">Descripción *
         <input class="concepto-descripcion mt-1 w-full rounded-lg border border-border px-2 py-2 text-sm" maxlength="300" value="${esc(concept.descripcion || '')}" />
       </label>
       <label class="text-xs md:col-span-2">Cantidad
@@ -172,6 +202,10 @@ const CobranzaForm = (() => {
       </label>
       <label class="text-xs md:col-span-2">Precio
         <input class="concepto-precio mt-1 w-full rounded-lg border border-border px-2 py-2 text-sm" type="number" min="0" step="0.01" value="${concept.precio_unitario ?? 0}" />
+      </label>
+      <label class="concepto-cupon-wrap text-xs md:col-span-2 hidden">Cupón
+        <input class="concepto-cupon mt-1 w-full rounded-lg border border-border px-2 py-2 text-sm uppercase" type="text" value="${esc(state.cuponesPorId[concept.cupon_id] || '')}" ${state.cuponBloqueado ? 'disabled' : ''} />
+        <p class="concepto-cupon-msg text-xs mt-1 hidden"></p>
       </label>
       <button type="button" class="concepto-remove md:col-span-1 rounded-lg p-2 text-danger-600 hover:bg-danger-50 cursor-pointer" aria-label="Quitar concepto">
         <i data-lucide="trash-2" class="h-4 w-4 mx-auto"></i>
@@ -190,7 +224,21 @@ const CobranzaForm = (() => {
         tratSearch.value = t.nombre;
         row.querySelector('.concepto-descripcion').value = t.nombre;
         row.querySelector('.concepto-precio').value = t.precio_paciente || 0;
-        updateTotal();
+        // El tratamiento cambió: cualquier precio de lista guardado
+        // (dataset.precioLista) era del tratamiento VIEJO y queda inválido.
+        // Se descarta -- el precio correcto de lista ahora es el que se
+        // acaba de escribir arriba (el del tratamiento NUEVO), no el de
+        // lista del viejo. Si el renglón trae un código de cupón capturado,
+        // se revalida contra el tratamiento nuevo: el cupón está atado a un
+        // tratamiento concreto, así que lo más probable es que ya no
+        // aplique y haya que mostrar el error (ver hallazgo I5).
+        delete row.dataset.precioLista;
+        const cuponInput = row.querySelector('.concepto-cupon');
+        if (cuponInput && cuponInput.value.trim()) {
+          validarCuponConcepto(row);
+        } else {
+          updateTotal();
+        }
       },
       clearOnSelect: false,
       emptyText: 'Sin tratamientos',
@@ -204,24 +252,62 @@ const CobranzaForm = (() => {
       updateTotal();
     });
     row.querySelectorAll('input').forEach(input => input.addEventListener('input', updateTotal));
+    // El listener de arriba ya engancha el input de cupón a updateTotal:
+    // teclear el código no cambia el total, sólo lo hace el blur de abajo
+    // cuando la validación contra el servidor baja (o no) el precio mostrado.
+    const cuponWrap = row.querySelector('.concepto-cupon-wrap');
+    cuponWrap.classList.toggle('hidden', state.modoDescuento !== 'cupon');
+    row.querySelector('.concepto-cupon')
+      .addEventListener('blur', () => validarCuponConcepto(row));
+    // Si el concepto viene de una cotización guardada con cupón, precargar el
+    // precio de LISTA: precio_unitario ya llegó neto (services.py lo guarda
+    // así) y descuento_monto es el total de la línea (unitario x cantidad),
+    // así que hay que devolverlo a unitario para reconstruir el precio de
+    // lista antes del cupón.
+    if (concept.cupon_id && concept.descuento_monto && concept.cantidad) {
+      const descUnitario = concept.descuento_monto / concept.cantidad;
+      row.dataset.precioLista = String(
+        Number(concept.precio_unitario || 0) + descUnitario,
+      );
+    }
     $('conceptos-list').appendChild(row);
     if (window.lucide) lucide.createIcons();
     updateTotal();
   }
 
   function concepts() {
-    return Array.from(document.querySelectorAll('.concepto-row')).map(row => ({
-      tratamiento_id: Number(row.querySelector('.concepto-tratamiento').value) || null,
-      descripcion: row.querySelector('.concepto-descripcion').value.trim(),
-      cantidad: Number(row.querySelector('.concepto-cantidad').value) || 0,
-      precio_unitario: Number(row.querySelector('.concepto-precio').value) || 0,
-    }));
+    return Array.from(document.querySelectorAll('.concepto-row')).map(row => {
+      const codigo = state.modoDescuento === 'cupon'
+        ? row.querySelector('.concepto-cupon').value.trim() : '';
+      const mostrado = Number(row.querySelector('.concepto-precio').value) || 0;
+      return {
+        tratamiento_id: Number(row.querySelector('.concepto-tratamiento').value) || null,
+        descripcion: row.querySelector('.concepto-descripcion').value.trim(),
+        cantidad: Number(row.querySelector('.concepto-cantidad').value) || 0,
+        // Con cupón viaja el precio de LISTA (guardado en el dataset cuando el
+        // cupón se validó); el servidor es quien baja el unitario y guarda
+        // descuento_monto. Mandar el neto que ya se ve en pantalla haría que
+        // el backend lo descontara una segunda vez.
+        precio_unitario: codigo && row.dataset.precioLista
+          ? Number(row.dataset.precioLista)
+          : mostrado,
+        cupon_codigo: codigo || null,
+      };
+    });
   }
 
   function total() {
-    const subtotal = concepts().reduce(
-      (sum, item) => sum + item.cantidad * item.precio_unitario, 0,
-    );
+    // Se recorre el DOM directo (no concepts()) porque el precio del input ya
+    // trae el cupón aplicado: sumar cantidad x precio mostrado cuadra con lo
+    // que el servidor va a guardar. concepts() en cambio manda el precio de
+    // LISTA cuando hay cupón, y usar eso aquí duplicaría el descuento en la
+    // vista previa.
+    const subtotal = Array.from(document.querySelectorAll('.concepto-row'))
+      .reduce((sum, row) => {
+        const cantidad = Number(row.querySelector('.concepto-cantidad').value) || 0;
+        const precio = Number(row.querySelector('.concepto-precio').value) || 0;
+        return sum + cantidad * precio;
+      }, 0);
     const type = $('cot-descuento-tipo').value;
     const value = Number($('cot-descuento-valor').value) || 0;
     const discount = type === 'porcentaje' ? subtotal * value / 100
@@ -231,6 +317,127 @@ const CobranzaForm = (() => {
 
   function updateTotal() {
     $('cot-total-preview').textContent = fmt(total());
+  }
+
+  // Devuelve el input .concepto-precio de un renglón al precio de LISTA
+  // guardado en su dataset (si lo hay) antes de borrar el dataset. Sin esto,
+  // el input se queda mostrando un neto ya descontado sin ningún cupón
+  // asociado, y ese "descuento fantasma" se manda al backend como si fuera
+  // el precio normal del concepto (ver hallazgo Critical de la Tarea 10).
+  // Si el renglón nunca tuvo cupón (no hay dataset.precioLista), no toca el
+  // input: no hay nada que restaurar.
+  function restaurarPrecioLista(row) {
+    const lista = row.dataset.precioLista;
+    if (lista !== undefined) {
+      row.querySelector('.concepto-precio').value = Number(lista).toFixed(2);
+    }
+    delete row.dataset.precioLista;
+  }
+
+  // Cambia entre "Descuento" (sobre el total) y "Cupón" (por renglón). Son
+  // excluyentes: el servidor rechaza una cotización que traiga cupones por
+  // renglón y además descuento_tipo sobre el documento (_resolver_cupon_concepto
+  // en cobranza/services.py).
+  //
+  // El wrapper #cot-descuento-doc usa class="contents" para no romper la
+  // rejilla del <section> (dos <label> como columnas propias), así que la
+  // visibilidad se alterna sobre esos dos <label> hijos directamente y no
+  // sobre el wrapper: si "hidden" y "contents" compitieran en el mismo
+  // elemento, cuál gana depende del orden en que Tailwind (CDN/JIT) genere
+  // esas utilidades, y no vale la pena apostarle a eso.
+  function aplicarModo(modo) {
+    state.modoDescuento = modo;
+    document.querySelectorAll('.cot-modo').forEach(b => {
+      const activo = b.dataset.modo === modo;
+      b.className = 'cot-modo flex-1 px-3 py-2 text-sm cursor-pointer '
+        + 'disabled:opacity-50 disabled:cursor-not-allowed '
+        + (activo ? 'bg-primary-50 text-primary-700 font-medium'
+                  : 'bg-surface text-text-secondary hover:bg-surface-hover');
+    });
+    const esCupon = modo === 'cupon';
+    document.querySelectorAll('#cot-descuento-doc > label')
+      .forEach(el => el.classList.toggle('hidden', esCupon));
+    if (esCupon) {
+      $('cot-descuento-tipo').value = '';
+      $('cot-descuento-valor').value = 0;
+    }
+    document.querySelectorAll('.concepto-cupon-wrap')
+      .forEach(w => w.classList.toggle('hidden', !esCupon));
+    if (!esCupon) {
+      // Se sale de modo Cupón: cualquier renglón que traiga un precio ya
+      // descontado por un cupón (dataset.precioLista) debe volver a su
+      // precio de lista antes de perder el código y el rastro del cupón —
+      // si no, el neto descontado se queda en el input como si fuera el
+      // precio normal del concepto.
+      document.querySelectorAll('.concepto-row').forEach(restaurarPrecioLista);
+      document.querySelectorAll('.concepto-cupon').forEach(i => { i.value = ''; });
+      document.querySelectorAll('.concepto-cupon-msg')
+        .forEach(p => p.classList.add('hidden'));
+    }
+    updateTotal();
+  }
+
+  // Valida el código contra el servidor al perder el foco. NO es la autoridad
+  // (el servidor revalida y recalcula todo al guardar); esto sólo le da
+  // retroalimentación inmediata a quien captura, igual que en /edr/ingresos.
+  async function validarCuponConcepto(row) {
+    const msg = row.querySelector('.concepto-cupon-msg');
+    const codigo = row.querySelector('.concepto-cupon').value.trim();
+    const tratId = Number(row.querySelector('.concepto-tratamiento').value) || null;
+    const precioInput = row.querySelector('.concepto-precio');
+    msg.classList.add('hidden');
+    if (!codigo) {
+      // Se borró el código: el renglón vuelve a su precio de lista (si tenía
+      // uno guardado de un cupón anterior) antes de perder el rastro del
+      // cupón. Dejar el neto ya descontado en el input lo convertiría en el
+      // precio "normal" del concepto sin ningún cupón asociado.
+      restaurarPrecioLista(row);
+      updateTotal();
+      return;
+    }
+    // Todo cupón está atado a un tratamiento (validar_cupon en
+    // ajustes/services.py rechaza sin tratamiento_id), así que un concepto
+    // libre nunca puede canjear uno. Se avisa aquí en vez de llamar al
+    // endpoint, que además requiere tratamiento_id (ValidarCuponSchema).
+    if (!tratId) {
+      restaurarPrecioLista(row);
+      msg.textContent = 'Elige un tratamiento del catálogo para usar un cupón';
+      msg.className = 'concepto-cupon-msg text-xs mt-1 text-danger-600';
+      msg.classList.remove('hidden');
+      updateTotal();
+      return;
+    }
+
+    // Guardamos el precio de LISTA en el dataset: el input muestra el neto,
+    // pero el payload tiene que mandar el de lista (el servidor aplica el
+    // cupón). Sin esto, revalidar dos veces descontaría dos veces.
+    const lista = Number(row.dataset.precioLista || precioInput.value) || 0;
+    try {
+      const r = await API.post('/ajustes/cupones/validar', {
+        codigo, tratamiento_id: tratId,
+        // Contra la fecha de LA COTIZACIÓN, no la de hoy (regla del diseño;
+        // el servidor valida contra `cot.fecha`). Una nueva sin fecha
+        // asignada todavía cae en hoy como fallback razonable.
+        fecha: state.fecha || new Date().toISOString().slice(0, 10),
+        precio: lista,
+      });
+      row.dataset.precioLista = String(lista);
+      precioInput.value = Number(r.monto).toFixed(2);
+      msg.textContent = `−${fmt(r.descuento_monto)} por unidad`;
+      msg.className = 'concepto-cupon-msg text-xs mt-1 text-accent-700';
+      msg.classList.remove('hidden');
+    } catch (err) {
+      // Cupón inválido: la línea no puede quedarse con el neto de un cupón
+      // que ya no aplica (o de uno anterior). El dataset todavía trae el
+      // precio de lista de antes de este intento (no se toca hasta que la
+      // validación es exitosa), así que restaurarPrecioLista basta; el
+      // mensaje de error ya explica por qué.
+      restaurarPrecioLista(row);
+      msg.textContent = (err && err.message) || 'Cupón inválido';
+      msg.className = 'concepto-cupon-msg text-xs mt-1 text-danger-600';
+      msg.classList.remove('hidden');
+    }
+    updateTotal();
   }
 
   function planMode() {
@@ -328,6 +535,7 @@ const CobranzaForm = (() => {
 
   function reset() {
     state.id = null;
+    state.fecha = null;
     state.calendario = [];
     $('form-cotizacion').reset();
     $('cot-paciente-search').value = '';
@@ -344,6 +552,11 @@ const CobranzaForm = (() => {
     $('calendario-list').replaceChildren();
     toggleManual();
     updateMode();
+    // Una cotización nueva siempre arranca en modo Descuento y sin candado:
+    // el candado sólo se activa al reabrir una ya no editable (ver open()).
+    state.cuponBloqueado = false;
+    document.querySelectorAll('.cot-modo').forEach(b => { b.disabled = false; });
+    aplicarModo('descuento');
     addConcept();
   }
 
@@ -352,6 +565,7 @@ const CobranzaForm = (() => {
       await loadCatalogs();
       reset();
       state.id = quote && quote.id;
+      state.fecha = quote ? quote.fecha : null;
       $('cot-form-title').textContent = state.id ? `Editar ${quote.folio}` : 'Nueva cotización';
       if (quote) {
         renderCatalogs(quote);
@@ -371,6 +585,17 @@ const CobranzaForm = (() => {
         $('cot-anticipo').value = quote.anticipo || 0;
         $('cot-primer-pago').value = quote.fecha_primer_pago || '';
         $('cot-notas').value = quote.notas || '';
+        // Sólo se puede editar una cotización en borrador o enviada
+        // (actualizar_cotizacion en cobranza/services.py rechaza el resto); el
+        // botón "Editar" de cotizaciones.js ya filtra por esos estatus, pero
+        // se deshabilita aquí también por si open() se llama directo.
+        state.cuponBloqueado = !['borrador', 'enviada'].includes(quote.estatus);
+        document.querySelectorAll('.cot-modo').forEach(b => { b.disabled = state.cuponBloqueado; });
+        // El modo se deduce de los datos: si algún concepto trae cupón, la
+        // cotización se armó en modo cupón. Se hace antes de crear los
+        // renglones para que addConcept los pinte ya con la visibilidad correcta.
+        const conCupon = (quote.conceptos || []).some(c => c.cupon_id);
+        aplicarModo(conCupon ? 'cupon' : 'descuento');
         $('conceptos-list').replaceChildren();
         (quote.conceptos || []).forEach(addConcept);
         if (quote.monto_parcialidad != null) {
@@ -589,6 +814,9 @@ const CobranzaForm = (() => {
     $('btn-nuevo-paciente').addEventListener('click', () => Modal.open('modal-paciente-rapido'));
     document.querySelectorAll('input[name="modo-plan"]').forEach(
       radio => radio.addEventListener('change', updateMode),
+    );
+    document.querySelectorAll('.cot-modo').forEach(
+      b => b.addEventListener('click', () => aplicarModo(b.dataset.modo)),
     );
     ['cot-descuento-tipo', 'cot-descuento-valor', 'cot-anticipo'].forEach(
       id => $(id).addEventListener('input', updateTotal),

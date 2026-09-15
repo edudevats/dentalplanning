@@ -121,7 +121,74 @@ def _sucursal_activa_default(tenant_id):
     ).order_by(Sucursal.id).first()
 
 
-def _construir_conceptos(tenant_id, cotizacion, conceptos_data):
+def _resolver_cupon_concepto(tenant_id, item, fecha, descuento_tipo):
+    """(cupon_id, precio_unitario_neto, descuento_monto) para un concepto.
+
+    El cupón baja el PRECIO UNITARIO. Con cantidad > 1 el monto fijo descuenta
+    por unidad: cada unidad es un tratamiento y el cupón es por tratamiento.
+    Aplicarlo una sola vez a la línea obligaría a dividir y metería centavos de
+    deriva en un plan de pagos.
+    """
+    from app.ajustes.services import (
+        DescuentosError, aplicar_cupon, normalizar_codigo, validar_cupon,
+    )
+
+    codigo = (item.get("cupon_codigo") or "").strip()
+    precio = float(item.get("precio_unitario") or 0)
+    cantidad = item.get("cantidad") or 1
+    if not codigo:
+        return None, precio, 0.0
+
+    if descuento_tipo:
+        raise CobranzaError(
+            "Una cotización con cupones no puede llevar además un descuento "
+            "sobre el total"
+        )
+    # Con cantidad > 1 el cupón (uno por tratamiento) descontaría por unidad
+    # pero `usos_de()` solo vería UN renglón, es decir un uso -- un cupón de
+    # "un solo uso" regalaría N tratamientos. Se rechaza en vez de contar N
+    # usos (rompería la lectura "un cupón, un uso" en la tabla de Ajustes) o
+    # de aplicarlo una sola vez a la línea (obligaría a prorratear y metería
+    # centavos de deriva en el calendario de pagos).
+    if cantidad > 1:
+        raise CobranzaError(
+            f"El cupón {normalizar_codigo(codigo)} es por tratamiento; "
+            "captura ese tratamiento en un renglón aparte (cantidad 1) "
+            "para aplicarle el cupón"
+        )
+    try:
+        cupon = validar_cupon(
+            tenant_id, codigo, item.get("tratamiento_id"), fecha,
+            bloquear=True,
+        )
+        neto, descuento_unitario = aplicar_cupon(precio, cupon)
+    except DescuentosError as e:
+        raise CobranzaError(str(e))
+    return cupon.id, neto, round(descuento_unitario * cantidad, 2)
+
+
+def _validar_tratamiento(tenant_id, tratamiento_id):
+    """None si el concepto es libre (sin tratamiento_id); el tratamiento si
+    existe en el tenant. Lanza si viene un tratamiento_id y no existe.
+
+    Se llama ANTES de resolver el cupón (aquí y en _aplicar_datos) a
+    propósito: validar_cupon() sólo compara `cupon.tratamiento_id` contra
+    este id crudo, sin comprobar que exista. Con un tratamiento_id
+    inexistente ese mismatch sale como "el cupón no aplica a este
+    tratamiento" cuando el problema real es que el tratamiento no existe.
+    """
+    if not tratamiento_id:
+        return None
+    tratamiento = Tratamiento.query.filter_by(
+        id=tratamiento_id, tenant_id=tenant_id,
+    ).first()
+    if not tratamiento:
+        raise CobranzaError("Tratamiento no encontrado")
+    return tratamiento
+
+
+def _construir_conceptos(tenant_id, cotizacion, conceptos_data,
+                         descuento_tipo=None):
     """Crea los renglones. Un renglón de catálogo copia precio, tipo de servicio
     y comisión como snapshot; uno libre lleva lo que capturó el doctor.
     """
@@ -131,13 +198,10 @@ def _construir_conceptos(tenant_id, cotizacion, conceptos_data):
     for orden, item in enumerate(conceptos_data):
         cantidad = item.get("cantidad") or 1
         precio = item.get("precio_unitario") or 0
-        tratamiento = None
-        if item.get("tratamiento_id"):
-            tratamiento = Tratamiento.query.filter_by(
-                id=item["tratamiento_id"], tenant_id=tenant_id,
-            ).first()
-            if not tratamiento:
-                raise CobranzaError("Tratamiento no encontrado")
+        tratamiento = _validar_tratamiento(tenant_id, item.get("tratamiento_id"))
+        cupon_id, precio, descuento_monto = _resolver_cupon_concepto(
+            tenant_id, item, cotizacion.fecha, descuento_tipo,
+        )
 
         descripcion = (item.get("descripcion") or "").strip()
         if not descripcion:
@@ -153,6 +217,8 @@ def _construir_conceptos(tenant_id, cotizacion, conceptos_data):
             cantidad=cantidad,
             precio_unitario=precio,
             importe=round(cantidad * precio, 2),
+            cupon_id=cupon_id,
+            descuento_monto=descuento_monto,
             tipo_servicio=(
                 tratamiento.tipo_servicio if tratamiento
                 else (item.get("tipo_servicio") or "clinico")
@@ -175,8 +241,26 @@ def _aplicar_datos(tenant_id, cot, data):
     _validar_especialista(tenant_id, data.get("especialista_id"))
     _validar_sucursal(tenant_id, data.get("sucursal_id"))
 
+    # calcular_totales necesita el precio YA neto de cupón: se calcula aquí,
+    # antes de que _construir_conceptos cree los renglones, así que no puede
+    # leer el descuento de las filas (todavía no existen). Se resuelve el
+    # mismo cupón dos veces (aquí y en _construir_conceptos) a propósito:
+    # validar_cupon es de sólo lectura y así cot.subtotal/cot.total quedan
+    # consistentes con el precio_unitario que persiste cada concepto.
+    # Se valida el tratamiento antes de resolver el cupón por la misma razón
+    # que en _construir_conceptos: si no, un tratamiento_id inexistente sale
+    # disfrazado de "el cupón no aplica".
+    conceptos_netos = []
+    for item in (data.get("conceptos") or []):
+        _validar_tratamiento(tenant_id, item.get("tratamiento_id"))
+        conceptos_netos.append({
+            **item,
+            "precio_unitario": _resolver_cupon_concepto(
+                tenant_id, item, cot.fecha, data.get("descuento_tipo"),
+            )[1],
+        })
     subtotal, total = calcular_totales(
-        data.get("conceptos") or [],
+        conceptos_netos,
         data.get("descuento_tipo"),
         data.get("descuento_valor") or 0,
     )
@@ -335,7 +419,9 @@ def _crear_cotizacion_intento(tenant_id, user_id, data):
     _aplicar_datos(tenant_id, cot, data)
     db.session.add(cot)
     db.session.flush()
-    _construir_conceptos(tenant_id, cot, data.get("conceptos") or [])
+    _construir_conceptos(
+        tenant_id, cot, data.get("conceptos") or [], data.get("descuento_tipo"),
+    )
     db.session.flush()
     if data.get("calendario") is not None:
         reemplazar_calendario(cot, data["calendario"])
@@ -366,11 +452,28 @@ def actualizar_cotizacion(tenant_id, cotizacion_id, data):
             "Sólo se puede editar una cotización en borrador o enviada"
         )
     try:
-        _aplicar_datos(tenant_id, cot, data)
+        # El borrado de los conceptos viejos va ANTES de _aplicar_datos, y no
+        # después (que sería el orden "natural" de leer/validar y luego
+        # mutar): _aplicar_datos y _construir_conceptos resuelven el mismo
+        # cupón dos veces, y usos_de() cuenta los CotizacionConcepto vivos.
+        # Si el borrado quedara después, la resolución de _aplicar_datos
+        # todavía contaría el renglón viejo que está a punto de desaparecer,
+        # mientras que la de _construir_conceptos ya no lo vería — con un
+        # cupón de max_usos=1, volver a guardar la MISMA cotización sin
+        # cambiar nada quema el único uso disponible contra sí misma y falla
+        # con "ya está agotado". Borrando primero, las dos resoluciones ven
+        # exactamente el mismo estado. Es seguro: _aplicar_datos calcula los
+        # totales desde data["conceptos"] (el payload), nunca desde
+        # cot.conceptos, así que no necesita los renglones viejos vivos; y
+        # todo este bloque ya vive dentro de un try/except con rollback, así
+        # que un fallo posterior al borrado no deja nada a medias.
         for concepto in list(cot.conceptos):
             db.session.delete(concepto)
         db.session.flush()
-        _construir_conceptos(tenant_id, cot, data.get("conceptos") or [])
+        _aplicar_datos(tenant_id, cot, data)
+        _construir_conceptos(
+            tenant_id, cot, data.get("conceptos") or [], data.get("descuento_tipo"),
+        )
         db.session.flush()
         if data.get("calendario") is not None:
             reemplazar_calendario(cot, data["calendario"])
@@ -693,15 +796,16 @@ def agregar_concepto(tenant_id, user_id, cotizacion_id, data):
             )
 
         # Snapshot del concepto (reutiliza el criterio de _construir_conceptos).
+        # El tratamiento se valida ANTES de resolver el cupón, igual que en
+        # _construir_conceptos y _aplicar_datos: si no, un tratamiento_id
+        # inexistente sale disfrazado de "el cupón no aplica a este
+        # tratamiento" en vez de "Tratamiento no encontrado".
         cantidad = data.get("cantidad") or 1
         precio = data.get("precio_unitario") or 0
-        tratamiento = None
-        if data.get("tratamiento_id"):
-            tratamiento = Tratamiento.query.filter_by(
-                id=data["tratamiento_id"], tenant_id=tenant_id,
-            ).first()
-            if not tratamiento:
-                raise CobranzaError("Tratamiento no encontrado")
+        tratamiento = _validar_tratamiento(tenant_id, data.get("tratamiento_id"))
+        cupon_id, precio, descuento_monto = _resolver_cupon_concepto(
+            tenant_id, data, cot.fecha, cot.descuento_tipo,
+        )
         descripcion = (data.get("descripcion") or "").strip()
         if not descripcion:
             descripcion = tratamiento.nombre if tratamiento else ""
@@ -721,6 +825,8 @@ def agregar_concepto(tenant_id, user_id, cotizacion_id, data):
             cantidad=cantidad,
             precio_unitario=precio,
             importe=round(cantidad * precio, 2),
+            cupon_id=cupon_id,
+            descuento_monto=descuento_monto,
             tipo_servicio=(
                 tratamiento.tipo_servicio if tratamiento
                 else (data.get("tipo_servicio") or "clinico")

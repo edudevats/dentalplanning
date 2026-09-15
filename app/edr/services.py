@@ -86,6 +86,47 @@ def _validar_especialistas(tenant_id, ids):
         raise EdrError("Especialista no encontrado en este consultorio")
 
 
+def _resolver_cupon(tenant_id, linea, fecha, descuento_pct, usos_en_lote):
+    """(cupon_id, monto, descuento_monto) para una línea que quizá trae cupón.
+
+    Sin cupón devuelve el monto tal cual y cero descuento, que es el camino de
+    toda la captura de siempre.
+
+    `usos_en_lote` lleva la cuenta, POR CÓDIGO normalizado, de cuántas veces
+    ya se resolvió ese mismo cupón dentro de esta misma visita. Se necesita
+    porque las líneas se resuelven todas ANTES del primer `db.session.add`:
+    sin este contador, dos líneas con el mismo código leen `usos_de() == 0`
+    las dos y un cupón de un solo uso se quema dos veces en la misma
+    transacción.
+    """
+    from app.ajustes.services import (
+        DescuentosError, aplicar_cupon, normalizar_codigo, validar_cupon,
+    )
+
+    codigo = (linea.get("cupon_codigo") or "").strip()
+    monto = float(linea.get("monto") or 0.0)
+    if not codigo:
+        return None, monto, 0.0
+
+    # Los dos lados del selector de captura son excluyentes: dejar pasar ambos
+    # descontaría dos veces sobre la misma línea.
+    if descuento_pct:
+        raise EdrError(
+            "Una línea con cupón no puede llevar además un descuento de visita"
+        )
+    codigo_norm = normalizar_codigo(codigo)
+    try:
+        cupon = validar_cupon(
+            tenant_id, codigo, linea.get("tratamiento_id"), fecha,
+            bloquear=True, usos_extra=usos_en_lote.get(codigo_norm, 0),
+        )
+        neto, descuento = aplicar_cupon(monto, cupon)
+    except DescuentosError as e:
+        raise EdrError(str(e))
+    usos_en_lote[codigo_norm] = usos_en_lote.get(codigo_norm, 0) + 1
+    return cupon.id, neto, descuento
+
+
 def _tipo_servicio(tenant_id, tratamiento_id):
     """El tipo de servicio sale del tratamiento: de ahí depende el IVA.
 
@@ -160,12 +201,23 @@ def crear_ingresos_visita(tenant_id, usuario, comun, lineas, ticket_folio=None):
     # queda igual que todo el histórico, sin nada que la distinga.
     visita_uid = secrets.token_hex(16) if len(lineas) > 1 else None
 
-    montos = [float(l.get("monto") or 0.0) for l in lineas]
+    # El cupón se resuelve ANTES de repartir la comisión bancaria: esa comisión
+    # se prorratea sobre lo que el paciente realmente paga, no sobre el precio
+    # de lista.
+    descuento_pct = comun.get("descuento_pct") or 0
+    usos_en_lote = {}
+    canjes = [
+        _resolver_cupon(tenant_id, l, fecha, descuento_pct, usos_en_lote)
+        for l in lineas
+    ]
+    montos = [monto for _, monto, _ in canjes]
     comisiones = repartir_proporcional(comun.get("comision_bancaria") or 0.0, montos)
 
     ingresos = []
     esp_visita = comun.get("especialista_id")
-    for linea, monto, com_ban in zip(lineas, montos, comisiones):
+    for (cupon_id, _, descuento_monto), linea, monto, com_ban in zip(
+        canjes, lineas, montos, comisiones
+    ):
         datos = {k: comun[k] for k in CAMPOS_COMUNES if k in comun}
         ingreso = Ingreso(
             tenant_id=tenant_id,
@@ -174,6 +226,8 @@ def crear_ingresos_visita(tenant_id, usuario, comun, lineas, ticket_folio=None):
             tratamiento_id=linea.get("tratamiento_id"),
             nombre_tratamiento=linea.get("nombre_tratamiento"),
             monto=monto,
+            cupon_id=cupon_id,
+            descuento_monto=descuento_monto,
             comision_doctor=linea.get("comision_doctor") or 0.0,
             comision_bancaria=com_ban,
             # El doctor es POR LÍNEA, no de la visita: el de la visita sólo

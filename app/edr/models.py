@@ -27,6 +27,11 @@ class Ingreso(db.Model):
     comision_bancaria = db.Column(db.Float, default=0)
     comision_doctor = db.Column(db.Float, default=0)
     descuento_pct = db.Column(db.Float, default=0.0)
+    # Canje del cupón en ESTA línea. `descuento_pct` sigue siendo el porcentaje
+    # de la visita entera: son los dos lados del selector y nunca conviven.
+    cupon_id = db.Column(db.Integer, db.ForeignKey("cupones.id"), nullable=True)
+    descuento_monto = db.Column(db.Float, nullable=False, default=0,
+                                server_default="0")
     factura = db.Column(db.Boolean, default=False)
     tipo_servicio = db.Column(db.String(20), default="clinico")  # snapshot: clinico | estetico
     ticket_id = db.Column(db.Integer, db.ForeignKey("tickets.id"), nullable=True)
@@ -46,6 +51,7 @@ class Ingreso(db.Model):
     especialista = db.relationship("Especialista", backref="ingresos")
     metodo_pago = db.relationship("MetodoPago", backref="ingresos")
     estrategia = db.relationship("EstrategiaMarketing", backref="ingresos")
+    cupon = db.relationship("Cupon")
 
     # Toda consulta del dashboard/EDR filtra por (tenant_id, fecha-en-un-mes).
     __table_args__ = (

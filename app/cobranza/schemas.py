@@ -32,6 +32,16 @@ class ConceptoSchema(Schema):
         load_default=0, validate=validate.Range(min=0),
     )
     importe = fields.Float(dump_only=True)
+    # Con cupón, `precio_unitario` es el precio de lista: el servidor lo baja y
+    # guarda lo descontado en `descuento_monto`. Baja el unitario y no el
+    # importe a propósito: calcular_totales y agregar_concepto reconstruyen el
+    # subtotal desde cantidad x precio_unitario, así que tocar sólo el importe
+    # borraría el descuento en el primer recálculo.
+    # load_only: el modelo guarda `cupon_id`, no el código. Quien lea la
+    # cotización identifica el cupón por el id; el código sólo viaja de entrada.
+    cupon_codigo = fields.Str(allow_none=True, load_default=None, load_only=True)
+    cupon_id = fields.Int(dump_only=True, allow_none=True)
+    descuento_monto = fields.Float(dump_only=True)
     tipo_servicio = fields.Str(
         allow_none=True,
         validate=validate.OneOf(["clinico", "estetico"]),

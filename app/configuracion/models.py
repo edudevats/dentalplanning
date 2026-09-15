@@ -20,6 +20,12 @@ class ConfigConsultorio(db.Model):
     horas_domingo = db.Column(db.Float, default=0)
     numero_unidades = db.Column(db.Integer, default=1)
     dias_alerta_caducidad = db.Column(db.Integer, default=30, nullable=False)
+    # Enciende la sección de descuentos y cupones. Apagado, el formulario de
+    # captura no muestra ningún campo de descuento. Vive aquí y no en una tabla
+    # nueva porque es una preferencia del consultorio, igual que
+    # `folio_manual_activo`.
+    descuentos_activo = db.Column(db.Boolean, nullable=False, default=False,
+                                  server_default="0")
     # Tasa de impuesto SOLO informativa (estimación de impuestos a pagar).
     # No se resta de la utilidad ni se usa en ningún otro cálculo de la app.
     tasa_impuesto_pct = db.Column(db.Float, default=0, nullable=False)

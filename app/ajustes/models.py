@@ -153,3 +153,72 @@ def ensure_impuesto_concepto(session, tenant_id):
     )
     session.add(concepto)
     return concepto
+
+
+CUPON_PORCENTAJE = "porcentaje"
+CUPON_MONTO = "monto"
+CUPON_TIPOS = (CUPON_PORCENTAJE, CUPON_MONTO)
+
+# Los porcentajes que la app trajo hardcodeados desde siempre. Se siembran al
+# encender la sección para que nadie estrene una lista vacía.
+DESCUENTOS_DEFAULT = (10, 20, 30, 50)
+
+
+class Descuento(db.Model):
+    """Un porcentaje con nombre que la clínica aplica a la visita entera.
+
+    Solo porcentaje: el descuento cubre todas las líneas de la visita, y un
+    monto fijo ahí obligaría a prorratear. El monto fijo vive en `Cupon`, que
+    apunta a un solo tratamiento y no tiene esa ambigüedad.
+    """
+    __tablename__ = "descuentos"
+
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey("tenants.id"),
+                          nullable=False, index=True)
+    nombre = db.Column(db.String(100), nullable=False)
+    porcentaje = db.Column(db.Float, nullable=False, default=0)
+    is_active = db.Column(db.Boolean, nullable=False, default=True,
+                          server_default="1")
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+
+    __table_args__ = (
+        db.UniqueConstraint("tenant_id", "nombre", name="uq_tenant_descuento"),
+    )
+
+
+class Cupon(db.Model):
+    """Código canjeable contra UN tratamiento del catálogo.
+
+    No hay tabla de canjes: el uso queda en la fila que lo consumió
+    (`ingresos.cupon_id`, `cotizacion_conceptos.cupon_id`) y se cuenta con un
+    COUNT. Así no hay contador que pueda desincronizarse, y borrar el ingreso o
+    la cotización libera el uso — que es lo correcto: una cotización en
+    borrador que se cancela no debe quemar un cupón.
+    """
+    __tablename__ = "cupones"
+
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey("tenants.id"),
+                          nullable=False, index=True)
+    codigo = db.Column(db.String(40), nullable=False)
+    tratamiento_id = db.Column(db.Integer, db.ForeignKey("tratamientos.id"),
+                               nullable=False)
+    tipo = db.Column(db.String(20), nullable=False, default=CUPON_PORCENTAJE)
+    valor = db.Column(db.Float, nullable=False, default=0)
+    # Vacías = sin límite. Se comparan contra la fecha del ingreso o de la
+    # cotización, nunca contra hoy: la captura es retroactiva.
+    vigencia_desde = db.Column(db.Date, nullable=True)
+    vigencia_hasta = db.Column(db.Date, nullable=True)
+    # NULL = usos ilimitados.
+    max_usos = db.Column(db.Integer, nullable=True)
+    is_active = db.Column(db.Boolean, nullable=False, default=True,
+                          server_default="1")
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+
+    tratamiento = db.relationship("Tratamiento")
+
+    __table_args__ = (
+        db.UniqueConstraint("tenant_id", "codigo", name="uq_tenant_cupon"),
+        db.Index("ix_cupones_tenant_tratamiento", "tenant_id", "tratamiento_id"),
+    )

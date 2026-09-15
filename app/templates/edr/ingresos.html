@@ -160,14 +160,22 @@
           <datalist id="dl-especialistas"></datalist>
           <div><label class="block text-sm font-medium text-text-secondary mb-1 font-body">Metodo de Pago</label>
             <select id="f-metodo" class="block w-full rounded-lg border border-border px-3 py-2.5 text-sm font-body min-h-[44px] bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-500"></select></div>
-          <div><label class="block text-sm font-medium text-text-secondary mb-1 font-body">Descuento</label>
+          <!-- Sólo si el consultorio encendió la sección en Ajustes >
+               Descuentos y Cupones. Apagado, el formulario queda como si esto
+               no existiera. Descuento y cupón son excluyentes: el backend
+               rechaza una línea que traiga los dos. -->
+          <div id="wrap-descuento" class="hidden">
+            <label class="block text-sm font-medium text-text-secondary mb-1 font-body">Descuento</label>
+            <div class="flex rounded-lg border border-border overflow-hidden mb-2">
+              <button type="button" data-modo="descuento"
+                      class="modo-desc flex-1 px-3 py-2 text-sm font-body cursor-pointer">Descuento</button>
+              <button type="button" data-modo="cupon"
+                      class="modo-desc flex-1 px-3 py-2 text-sm font-body cursor-pointer">Cupón</button>
+            </div>
             <select id="f-descuento" class="block w-full rounded-lg border border-border px-3 py-2.5 text-sm font-body min-h-[44px] bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-500">
               <option value="0">Sin descuento</option>
-              <option value="10">10%</option>
-              <option value="20">20%</option>
-              <option value="30">30%</option>
-              <option value="50">50%</option>
-            </select></div>
+            </select>
+          </div>
           <div><label class="block text-sm font-medium text-text-secondary mb-1 font-body">Comision Bancaria</label>
             <input id="f-com-ban" type="number" placeholder="0.00" class="block w-full rounded-lg border border-border px-3 py-2.5 text-sm font-body min-h-[44px] bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-500" /></div>
           <div><label class="block text-sm font-medium text-text-secondary mb-1 font-body">Estrategia</label>
@@ -204,7 +212,7 @@
 </div>
 
 <template id="tpl-linea">
-  <div class="linea grid grid-cols-1 sm:grid-cols-[2fr_1.5fr_1fr_1fr_auto] gap-2 items-start">
+  <div class="linea grid grid-cols-1 sm:grid-cols-[2fr_1.5fr_1fr_1fr_1fr_auto] gap-2 items-start">
     <input list="dl-tratamientos" autocomplete="off" placeholder="Tratamiento..."
            class="l-tratamiento block w-full rounded-lg border border-border px-3 py-2.5 text-sm font-body min-h-[44px] bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300" />
     <!-- El doctor de ESTE tratamiento. Nace con el de la visita y sólo se
@@ -215,6 +223,15 @@
            class="l-monto block w-full rounded-lg border border-border px-3 py-2.5 text-sm font-body min-h-[44px] bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300" />
     <input type="number" placeholder="Com. doctor"
            class="l-com-doc block w-full rounded-lg border border-border px-3 py-2.5 text-sm font-body min-h-[44px] bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300" />
+    <!-- Cupón de ESTA línea (modo Cupón). Nace oculto; aplicarModoDescuento y
+         agregarLinea lo muestran u ocultan según el modo vigente. Cada línea
+         valida su propio código porque el cupón está atado a un tratamiento
+         concreto (ver validarCuponLinea). -->
+    <div class="l-cupon-wrap hidden">
+      <input type="text" placeholder="Cupón..."
+             class="l-cupon block w-full rounded-lg border border-border px-3 py-2.5 text-sm font-body min-h-[44px] bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300 uppercase" />
+      <p class="l-cupon-msg text-xs mt-1 hidden"></p>
+    </div>
     <button type="button" title="Quitar"
             class="l-quitar p-2.5 rounded-lg text-text-muted hover:bg-surface-hover cursor-pointer">
       <i data-lucide="x" class="h-4 w-4"></i>
@@ -350,6 +367,18 @@ let facturacionActiva = true; // se resuelve en init() vía /facturacion/configu
 // configuración no carga, la pantalla se queda limpia y el cobro abre su
 // propio ticket — que es lo que hace el backend cuando no le mandan folio.
 let folioManualActivo = false;
+// Descuentos y cupones (Ajustes > Descuentos y Cupones). Todo apagado por
+// defecto: si /descuentos/config no carga, la sección se queda oculta y el
+// formulario se comporta como si esto no existiera (el backend es la fuente
+// de verdad y de todas formas rechazaría el canje).
+let descuentosActivos = false;
+let descuentos = [];
+let modoDescuento = 'descuento';
+// Código de cupón (normalizado) que YA traía el ingreso que se está editando,
+// o null si no editaba ninguno o el ingreso no tenía cupón. Sirve para saber,
+// al armar el payload del PUT, si el código cambió o no (ver lineasConPosicion):
+// el backend solo revalida y reconstruye el monto cuando cambió.
+let cuponOriginalEdit = null;
 
 // Fecha de hoy en hora local (YYYY-MM-DD), sin toISOString para no desfasar a medianoche.
 function todayLocalISO() {
@@ -561,6 +590,7 @@ function openCreate() {
   // si lo olvida, el ingreso cae en "sin_clasificar" y el corte bloquea el
   // cierre hasta que se corrija (en vez de perderse en silencio).
   document.getElementById('f-metodo').value = '';
+  cuponOriginalEdit = null;
   reiniciarLineas();
   document.getElementById('btn-agregar-linea').style.display = '';
   aplicarTurnoAlFormulario();
@@ -579,6 +609,12 @@ function openEdit(row) {
   document.getElementById('f-com-ban').value = row.comision_bancaria ?? '';
   document.getElementById('f-factura').checked = !!row.factura;
   document.getElementById('f-descuento').value = row.descuento_pct ? String(row.descuento_pct) : '0';
+  // El modo tiene que aplicarse ANTES de prellenar el campo de cupón: cambiar
+  // de modo limpia .l-cupon (ver aplicarModoDescuento), así que si esto fuera
+  // al revés el valor que se acaba de poner se borraría solo.
+  cuponOriginalEdit = row.cupon_codigo
+    ? row.cupon_codigo.trim().toUpperCase() : null;
+  aplicarModoDescuento(cuponOriginalEdit ? 'cupon' : 'descuento');
   document.getElementById('f-metodo').value = row.metodo_pago_id ? String(row.metodo_pago_id) : '';
   document.getElementById('f-estrategia').value = row.estrategia_id ? String(row.estrategia_id) : '';
   document.getElementById('f-sucursal').value = row.sucursal_id ? String(row.sucursal_id) : '';
@@ -598,6 +634,7 @@ function openEdit(row) {
     monto: row.monto ?? '',
     comisionDoctor: row.comision_doctor ?? '',
     especialista: especialistas.find(e => String(e.id) === String(row.especialista_id))?.nombre || '',
+    cuponCodigo: row.cupon_codigo || '',
   }], { preservarComisionBancaria: true });
   document.getElementById('btn-agregar-linea').style.display = 'none';
   Modal.open('modal-form');
@@ -633,14 +670,31 @@ function agregarLinea(datos) {
     nodo.querySelector('.l-com-doc').value = datos.comisionDoctor ?? '';
     // Editar es de un renglón: su doctor es el que ya tenía guardado.
     if (datos.especialista !== undefined) esp.value = datos.especialista || '';
+    // Prellena el código de cupón al editar (openEdit ya puso el modo en
+    // 'cupon' antes de llegar aquí si el ingreso traía uno).
+    if (datos.cuponCodigo !== undefined) {
+      nodo.querySelector('.l-cupon').value = datos.cuponCodigo || '';
+    }
   }
-  nodo.querySelector('.l-tratamiento').addEventListener('change', () => recalcularLinea(nodo));
+  nodo.querySelector('.l-tratamiento').addEventListener('change', () => {
+    recalcularLinea(nodo);
+    // El cupón está atado a un tratamiento concreto: cambiar de tratamiento
+    // invalida el código que ya se había escrito.
+    if (modoDescuento === 'cupon') validarCuponLinea(nodo);
+  });
   // soloPorcentaje: true — al tocar el monto a mano solo se re-deriva la
   // comisión cuando depende de ese monto (porcentaje). Una comisión fija se
   // autocompleta al elegir el tratamiento (ver recalcularLinea) y de ahí en
   // adelante es editable a mano sin que cada tecleo en Monto la borre.
   nodo.querySelector('.l-monto').addEventListener('input', () => { recalcularComisionDoctor(nodo, { soloPorcentaje: true }); actualizarTotales(); });
   nodo.querySelector('.l-com-doc').addEventListener('input', actualizarTotales);
+  // Las líneas se crean dinámicamente (clonando #tpl-linea): el listener del
+  // cupón se engancha aquí, sobre el nodo recién creado, porque un listener
+  // enganchado en la carga inicial no existiría para las líneas agregadas
+  // después. Visibilidad según el modo vigente (aplicarModoDescuento la
+  // actualiza para las líneas que ya existían al cambiar de modo).
+  nodo.querySelector('.l-cupon-wrap').classList.toggle('hidden', modoDescuento !== 'cupon');
+  nodo.querySelector('.l-cupon').addEventListener('blur', () => validarCuponLinea(nodo));
   nodo.querySelector('.l-quitar').addEventListener('click', () => { nodo.remove(); sincronizarBotonesQuitar(); actualizarTotales(); });
   lineasEl().appendChild(nodo);
   sincronizarBotonesQuitar();
@@ -665,12 +719,79 @@ function recalcularLinea(nodo) {
   // El precio de catálogo menos el descuento de la visita.
   const tx = findByName(tratamientos, nodo.querySelector('.l-tratamiento').value);
   if (!tx) return;
-  const desc = Number(document.getElementById('f-descuento').value) || 0;
+  // En modo cupón el descuento de visita no existe: lo que baja el precio es
+  // el cupón de la línea, que resuelve validarCuponLinea.
+  const desc = modoDescuento === 'cupon'
+    ? 0
+    : (Number(document.getElementById('f-descuento').value) || 0);
   const precio = (Number(tx.precio_paciente) || 0) * (1 - desc / 100);
   nodo.querySelector('.l-monto').value = precio.toFixed(2);
   recalcularComisionDoctor(nodo);
   actualizarTotales();
 }
+
+// Valida el cupón de ESTA línea contra el backend y, si es válido, baja el
+// monto de la línea al neto para que la recepcionista lo vea en pantalla.
+// NO es la autoridad: crear_ingresos_visita vuelve a validar y a recalcular
+// todo al guardar (ver validar_cupon_endpoint en app/ajustes/routes.py).
+async function validarCuponLinea(nodo) {
+  const msg = nodo.querySelector('.l-cupon-msg');
+  const codigo = nodo.querySelector('.l-cupon').value.trim();
+  const tx = findByName(tratamientos, nodo.querySelector('.l-tratamiento').value);
+  msg.classList.add('hidden');
+  // Sin código o sin tratamiento no hay nada que validar todavía: el precio
+  // vuelve al de catálogo y el backend decidirá al guardar.
+  if (!codigo || !tx) { recalcularLinea(nodo); return; }
+
+  try {
+    const r = await API.post('/ajustes/cupones/validar', {
+      codigo,
+      tratamiento_id: tx.id,
+      fecha: document.getElementById('f-fecha').value,
+      precio: Number(tx.precio_paciente) || 0,
+    });
+    // En pantalla se muestra el neto; el payload manda el precio de lista
+    // (ver lineasConPosicion) para que el backend no lo descuente dos veces.
+    nodo.querySelector('.l-monto').value = Number(r.monto).toFixed(2);
+    msg.textContent = `−$${Number(r.descuento_monto).toFixed(2)}`;
+    msg.className = 'l-cupon-msg text-xs mt-1 text-accent-700';
+    recalcularComisionDoctor(nodo);
+    actualizarTotales();
+  } catch (err) {
+    msg.textContent = (err && err.message) || 'Cupón inválido';
+    msg.className = 'l-cupon-msg text-xs mt-1 text-danger-600';
+    recalcularLinea(nodo);
+  }
+}
+
+// Alterna entre "Descuento" (un % sobre toda la visita) y "Cupón" (un código
+// por línea, atado a un tratamiento). Excluyentes: el backend rechaza una
+// línea que traiga los dos.
+function aplicarModoDescuento(modo) {
+  modoDescuento = modo;
+  document.querySelectorAll('.modo-desc').forEach(b => {
+    const activo = b.dataset.modo === modo;
+    b.className = 'modo-desc flex-1 px-3 py-2 text-sm font-body cursor-pointer '
+      + (activo ? 'bg-primary-50 text-primary-700 font-medium'
+                : 'bg-surface text-text-secondary hover:bg-surface-hover');
+  });
+  const esCupon = modo === 'cupon';
+  document.getElementById('f-descuento').classList.toggle('hidden', esCupon);
+  if (esCupon) document.getElementById('f-descuento').value = '0';
+  // Las líneas que ya existen también se actualizan: no solo las nuevas.
+  document.querySelectorAll('.l-cupon-wrap')
+    .forEach(w => w.classList.toggle('hidden', !esCupon));
+  if (!esCupon) {
+    document.querySelectorAll('.l-cupon').forEach(i => { i.value = ''; });
+    document.querySelectorAll('.l-cupon-msg')
+      .forEach(p => p.classList.add('hidden'));
+  }
+  todasLasLineas().forEach(recalcularLinea);
+}
+
+document.querySelectorAll('.modo-desc').forEach(b => {
+  b.addEventListener('click', () => aplicarModoDescuento(b.dataset.modo));
+});
 
 function recalcularComisionDoctor(nodo, opts) {
   const tx = findByName(tratamientos, nodo.querySelector('.l-tratamiento').value);
@@ -717,17 +838,35 @@ function lineasConPosicion() {
   return todasLasLineas().map((l, i) => {
     const tx = findByName(tratamientos, l.querySelector('.l-tratamiento').value);
     const esp = findByName(especialistas, l.querySelector('.l-especialista').value);
+    const codigo = modoDescuento === 'cupon'
+      ? (l.querySelector('.l-cupon').value.trim() || null) : null;
+    // Al EDITAR (editingId set), si el código es el mismo que el ingreso ya
+    // tenía guardado, el backend NO lo revalida ni recalcula nada (ver
+    // actualizar_ingreso en app/edr/routes.py: el bloque de cupón sólo entra
+    // si `codigo != actual`) -- guarda el `monto` que se le mande tal cual.
+    // Por eso en ese caso hay que mandar el NETO que ya está en pantalla
+    // (.l-monto), no el precio de lista: mandar la lista se guardaría como
+    // monto final sin que nadie vuelva a aplicar el descuento, inflando el
+    // ingreso en silencio. Si el código cambió (se agregó, se quitó o es
+    // distinto), el backend SÍ revalida y reconstruye la base -- ahí aplica
+    // el mismo contrato que en el alta: mandar el precio de LISTA.
+    const codigoSinCambiar = Boolean(
+      editingId && codigo && codigo.toUpperCase() === cuponOriginalEdit,
+    );
     return {
       pos: i + 1,
       datos: {
         tratamiento_id: tx ? tx.id : null,
         nombre_tratamiento: tx ? tx.nombre : (l.querySelector('.l-tratamiento').value.trim() || null),
-        monto: Number(l.querySelector('.l-monto').value) || 0,
+        monto: (codigo && tx && !codigoSinCambiar)
+          ? (Number(tx.precio_paciente) || 0)
+          : (Number(l.querySelector('.l-monto').value) || 0),
         comision_doctor: Number(l.querySelector('.l-com-doc').value) || 0,
         // Un doctor que no resuelve se omite, no se manda null: en el alta el
         // backend caería a su default, y al editar un renglón un null borraría
         // el doctor que ya tenía. Que esté puesto lo exige handleSave.
         ...(esp ? { especialista_id: esp.id } : {}),
+        cupon_codigo: codigo,
       },
     };
   }).filter(x => x.datos.monto > 0 || x.datos.nombre_tratamiento);
@@ -895,11 +1034,12 @@ async function init() {
   // allSettled y no all: un catálogo que falle no debe dejar sin autocompletado
   // al resto del formulario (antes, un 500 en /facturacion/configuracion vaciaba
   // especialistas, tratamientos y métodos de pago, en silencio).
-  const [esp, mp, trat, est, sucs, me, fcfg] = await Promise.allSettled([
+  const [esp, mp, trat, est, sucs, me, fcfg, dcfg, descs] = await Promise.allSettled([
     API.get('/ajustes/especialistas'), API.get('/ajustes/metodos-pago'),
     API.get('/tratamientos'), API.get('/ajustes/estrategias'),
     API.get('/facturacion/sucursales'), API.get('/auth/me'),
     API.get('/facturacion/configuracion'),
+    API.get('/ajustes/descuentos/config'), API.get('/ajustes/descuentos'),
   ]);
   const ok = (r, fallback) => (r.status === 'fulfilled' && r.value != null) ? r.value : fallback;
 
@@ -919,6 +1059,19 @@ async function init() {
   // display propio que la clase pudiera pisar.
   document.getElementById('wrap-ticket-folio')
     .classList.toggle('hidden', !folioManualActivo);
+  // Si la config falla, la sección queda oculta: el backend es la fuente de
+  // verdad y rechazaría el canje de todos modos.
+  descuentosActivos = dcfg.status === 'fulfilled'
+    && Boolean(dcfg.value && dcfg.value.activo);
+  descuentos = ok(descs, []).filter(d => d.is_active);
+  document.getElementById('wrap-descuento')
+    .classList.toggle('hidden', !descuentosActivos);
+  populateSelect(
+    document.getElementById('f-descuento'),
+    descuentos.map(d => ({ value: String(d.porcentaje), label: d.nombre })),
+    '0', 'Sin descuento',
+  );
+  aplicarModoDescuento('descuento');
   userRole = ((ok(me, {}).user || ok(me, {})) || {}).role || null;
 
   applyStatsRole();
@@ -929,7 +1082,7 @@ async function init() {
   populateSelect(document.getElementById('f-sucursal'), sucursales.map(s => ({ value: String(s.id), label: s.nombre })), '', 'Seleccionar sucursal');
 
   // Fallar en voz alta: sin catálogos el autocompletado no puede funcionar.
-  const fallidos = [esp, mp, trat, est, sucs, me, fcfg].filter(r => r.status === 'rejected');
+  const fallidos = [esp, mp, trat, est, sucs, me, fcfg, dcfg, descs].filter(r => r.status === 'rejected');
   if (fallidos.length) {
     console.error('Ingresos: catálogos que no cargaron', fallidos.map(r => r.reason));
     if (!especialistas.length || !tratamientos.length) {

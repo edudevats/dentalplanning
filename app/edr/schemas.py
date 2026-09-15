@@ -17,6 +17,12 @@ class IngresoSchema(Schema):
     comision_bancaria = fields.Float(load_default=0)
     comision_doctor = fields.Float(load_default=0)
     descuento_pct = fields.Float(load_default=0)
+    # Cuando viaja `cupon_codigo`, `monto` es el precio ANTES del cupón: el
+    # servidor aplica el descuento y guarda el neto. Si el cliente mandara el
+    # monto ya descontado, se descontaría dos veces.
+    cupon_codigo = fields.Str(allow_none=True, load_default=None, load_only=True)
+    cupon_id = fields.Int(dump_only=True, allow_none=True)
+    descuento_monto = fields.Float(dump_only=True)
     factura = fields.Bool(load_default=False)
     sucursal_id = fields.Int(allow_none=True)
     tipo_servicio = fields.Str(dump_only=True)
@@ -48,6 +54,8 @@ class LineaVisitaSchema(Schema):
     # tratamientos que hizo otro especialista, y la comisión se paga a quien
     # trabajó, no a quien recibió al paciente.
     especialista_id = fields.Int(allow_none=True, load_default=None)
+    # Ver IngresoSchema.cupon_codigo: con cupón, `monto` es el precio de lista.
+    cupon_codigo = fields.Str(allow_none=True, load_default=None)
 
 
 class VisitaSchema(Schema):

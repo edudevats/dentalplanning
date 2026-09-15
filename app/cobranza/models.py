@@ -108,6 +108,13 @@ class CotizacionConcepto(db.Model):
     comision_especialista_tipo = db.Column(db.String(20), default="porcentaje")  # snapshot
     comision_especialista_valor = db.Column(db.Float, nullable=False, default=0)
     orden = db.Column(db.Integer, nullable=False, default=0)
+    # El cupón baja `precio_unitario` (ver app/ajustes/services.aplicar_cupon),
+    # así que `calcular_totales`, el prorrateo de comisión y la liquidación no
+    # necesitan saber nada de esto. `descuento_monto` guarda lo descontado para
+    # poder reconstruir el precio de lista.
+    cupon_id = db.Column(db.Integer, db.ForeignKey("cupones.id"), nullable=True)
+    descuento_monto = db.Column(db.Float, nullable=False, default=0,
+                                server_default="0")
 
     cotizacion = db.relationship(
         "Cotizacion",
