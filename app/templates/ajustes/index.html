@@ -124,15 +124,19 @@
 
     <!-- DESCUENTOS Y CUPONES -->
     <div id="panel-descuentos-cupones" class="hidden space-y-6">
+      <!-- Dos interruptores independientes: son dos funciones distintas y hay
+           consultorios que solo usan una. Cada uno manda sobre su propia tabla
+           y sobre su campo en las pantallas de captura. -->
       <div class="bg-surface rounded-xl border border-border shadow-sm">
         <div class="p-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div class="max-w-2xl">
-            <h3 class="text-sm font-semibold font-heading text-text-primary">Descuentos y cupones</h3>
+            <h3 class="text-sm font-semibold font-heading text-text-primary">Descuentos</h3>
             <p class="mt-1 text-sm text-text-muted font-body">
-              Enciéndelo si tu consultorio da descuentos. Apagado, el formulario
-              de ingresos y el de cotizaciones no muestran ningún campo de
-              descuento. Al encenderlo por primera vez se crean los porcentajes
-              de siempre (10%, 20%, 30% y 50%), que puedes editar o borrar.
+              Porcentajes que se aplican a toda la visita. Enciéndelo si tu
+              consultorio da descuentos; apagado, el campo no aparece al
+              registrar un ingreso ni al armar una cotización. Al encenderlo por
+              primera vez se crean los porcentajes de siempre (10%, 20%, 30% y
+              50%), que puedes editar o borrar.
             </p>
           </div>
           <label class="inline-flex items-center gap-3 cursor-pointer select-none shrink-0">
@@ -143,14 +147,35 @@
         </div>
       </div>
 
-      <div id="desc-cont" class="hidden space-y-6">
+      <div id="desc-cont" class="hidden">
         <div class="bg-surface rounded-xl border border-border shadow-sm">
           <div class="px-5 py-4 border-b border-border">
             <h3 class="text-sm font-semibold font-heading text-text-primary">Descuentos</h3>
           </div>
           <div id="panel-descuentos" class="p-5 space-y-4"></div>
         </div>
+      </div>
 
+      <div class="bg-surface rounded-xl border border-border shadow-sm">
+        <div class="p-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div class="max-w-2xl">
+            <h3 class="text-sm font-semibold font-heading text-text-primary">Cupones</h3>
+            <p class="mt-1 text-sm text-text-muted font-body">
+              Códigos canjeables para un tratamiento concreto, de porcentaje o
+              de cantidad fija, con vigencia y máximo de usos. Apagado, no se
+              puede canjear ninguno. No se crea ninguno de fábrica: los capturas
+              tú abajo.
+            </p>
+          </div>
+          <label class="inline-flex items-center gap-3 cursor-pointer select-none shrink-0">
+            <span class="text-sm font-semibold text-text-secondary font-body">Activar cupones</span>
+            <input id="tg-cupones" type="checkbox" class="peer sr-only" />
+            <span class="relative w-12 h-7 rounded-full bg-gray-300 peer-checked:bg-primary-600 transition-colors after:content-[''] after:absolute after:top-1 after:left-1 after:w-5 after:h-5 after:rounded-full after:bg-white after:shadow after:transition-transform peer-checked:after:translate-x-5"></span>
+          </label>
+        </div>
+      </div>
+
+      <div id="cup-cont" class="hidden">
         <div class="bg-surface rounded-xl border border-border shadow-sm">
           <div class="px-5 py-4 border-b border-border flex items-center justify-between">
             <h3 class="text-sm font-semibold font-heading text-text-primary">Cupones</h3>
@@ -2423,11 +2448,17 @@
       Toast.error(mensajeError(e, 'Error al cargar la configuración de descuentos'));
       return;
     }
-    const activo = Boolean(cfg && cfg.activo);
-    document.getElementById('tg-descuentos').checked = activo;
-    document.getElementById('desc-cont').classList.toggle('hidden', !activo);
-    if (!activo) return;
+    const descuentos = Boolean(cfg && cfg.descuentos);
+    const cupones = Boolean(cfg && cfg.cupones);
+    document.getElementById('tg-descuentos').checked = descuentos;
+    document.getElementById('tg-cupones').checked = cupones;
+    document.getElementById('desc-cont').classList.toggle('hidden', !descuentos);
+    document.getElementById('cup-cont').classList.toggle('hidden', !cupones);
 
+    if (descuentos) await loadCrud('descuentos');
+    if (!cupones) return;
+
+    // El catálogo de tratamientos sólo lo necesita el modal de cupones.
     if (!tratamientosCache.length) {
       try {
         tratamientosCache = await API.get('/tratamientos') || [];
@@ -2435,22 +2466,27 @@
         Toast.error(mensajeError(e, 'Error al cargar tratamientos'));
       }
     }
-    await loadCrud('descuentos');
     await cargarCupones();
   }
 
-  document.getElementById('tg-descuentos').addEventListener('change', async (e) => {
-    const activo = e.target.checked;
-    try {
-      await API.put('/ajustes/descuentos/config', { activo });
-      Toast.success(activo ? 'Descuentos activados' : 'Descuentos desactivados');
-      await cargarDescuentosCupones();
-    } catch (err) {
-      // Devolver el switch a su sitio: el backend mandó y dijo que no.
-      e.target.checked = !activo;
-      Toast.error(mensajeError(err, 'No se pudo cambiar el ajuste'));
-    }
-  });
+  // Cada interruptor manda SOLO su llave: así mover uno no apaga el otro.
+  function engancharToggle(id, llave, etiqueta) {
+    document.getElementById(id).addEventListener('change', async (e) => {
+      const activo = e.target.checked;
+      try {
+        await API.put('/ajustes/descuentos/config', { [llave]: activo });
+        Toast.success(`${etiqueta} ${activo ? 'activados' : 'desactivados'}`);
+        await cargarDescuentosCupones();
+      } catch (err) {
+        // Devolver el switch a su sitio: el backend mandó y dijo que no.
+        e.target.checked = !activo;
+        Toast.error(mensajeError(err, 'No se pudo cambiar el ajuste'));
+      }
+    });
+  }
+
+  engancharToggle('tg-descuentos', 'descuentos', 'Descuentos');
+  engancharToggle('tg-cupones', 'cupones', 'Cupones');
 
   async function cargarCupones() {
     try {

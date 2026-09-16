@@ -16,9 +16,19 @@ class DescuentosError(Exception):
 
 
 def descuentos_activos(tenant_id):
-    """True si el consultorio encendió la sección."""
+    """True si el consultorio encendió los descuentos de visita."""
     cfg = ConfigConsultorio.query.filter_by(tenant_id=tenant_id).first()
     return bool(cfg and cfg.descuentos_activo)
+
+
+def cupones_activos(tenant_id):
+    """True si el consultorio encendió los cupones.
+
+    Es un interruptor aparte del de descuentos: son dos funciones distintas y
+    hay clínicas que solo usan una. El canje depende de ÉSTE, no del otro.
+    """
+    cfg = ConfigConsultorio.query.filter_by(tenant_id=tenant_id).first()
+    return bool(cfg and cfg.cupones_activo)
 
 
 def sembrar_descuentos(tenant_id):
@@ -38,20 +48,39 @@ def sembrar_descuentos(tenant_id):
     return len(DESCUENTOS_DEFAULT)
 
 
-def activar_descuentos(tenant_id, activo):
-    """Mueve el toggle. Al encender siembra; al apagar no borra nada.
-
-    Apagar conserva los catálogos a propósito: es un interruptor de visibilidad,
-    no un botón de borrado. Quien lo apague por error vuelve a encenderlo y
-    encuentra sus descuentos y cupones intactos.
-    """
+def _config_o_error(tenant_id):
     cfg = ConfigConsultorio.query.filter_by(tenant_id=tenant_id).first()
     if not cfg:
         raise DescuentosError("El consultorio no tiene configuración todavía")
+    return cfg
+
+
+def activar_descuentos(tenant_id, activo):
+    """Mueve el toggle de descuentos. Al encender siembra; al apagar no borra.
+
+    Apagar conserva el catálogo a propósito: es un interruptor de visibilidad,
+    no un botón de borrado. Quien lo apague por error vuelve a encenderlo y
+    encuentra sus descuentos intactos.
+
+    No toca el toggle de cupones: son independientes.
+    """
+    cfg = _config_o_error(tenant_id)
     cfg.descuentos_activo = bool(activo)
     if cfg.descuentos_activo:
         sembrar_descuentos(tenant_id)
     return cfg.descuentos_activo
+
+
+def activar_cupones(tenant_id, activo):
+    """Mueve el toggle de cupones. No siembra nada y no borra nada.
+
+    No hay cupones de fábrica que sembrar: los captura la clínica uno por uno,
+    con su código y su tratamiento. Apagar conserva los que ya existen, igual
+    que con los descuentos.
+    """
+    cfg = _config_o_error(tenant_id)
+    cfg.cupones_activo = bool(activo)
+    return cfg.cupones_activo
 
 
 # ── Cupones ──
@@ -136,9 +165,12 @@ def validar_cupon(tenant_id, codigo, tratamiento_id, fecha, *, bloquear=False,
     todos como cero y dos líneas iguales queman dos usos de un cupón de uno
     solo.
     """
-    if not descuentos_activos(tenant_id):
+    # El canje depende del toggle de CUPONES, no del de descuentos: son dos
+    # funciones independientes y una clínica que solo da descuentos de visita
+    # no debe poder canjear.
+    if not cupones_activos(tenant_id):
         raise DescuentosError(
-            "La sección de descuentos y cupones no está activada en Ajustes"
+            "La sección de cupones no está activada en Ajustes"
         )
 
     codigo = normalizar_codigo(codigo)

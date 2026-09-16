@@ -122,7 +122,11 @@ class DescuentosConfigSchema(Schema):
     class Meta:
         unknown = EXCLUDE
 
-    activo = fields.Bool(required=True)
+    # Los dos son opcionales a propósito: cada interruptor de la pantalla manda
+    # solo lo suyo, y mover uno no debe pisar el otro. Un PUT sin ninguna de las
+    # dos llaves no cambia nada.
+    descuentos = fields.Bool()
+    cupones = fields.Bool()
 
 
 class CuponSchema(Schema):

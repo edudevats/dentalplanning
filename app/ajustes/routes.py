@@ -27,7 +27,8 @@ from app.ajustes.schemas import (
     ValidarCuponSchema,
 )
 from app.ajustes.services import (
-    DescuentosError, activar_descuentos, descuentos_activos,
+    DescuentosError, activar_cupones, activar_descuentos,
+    cupones_activos, descuentos_activos,
     aplicar_cupon, usos_de, tiene_referencias, validar_cupon, normalizar_codigo,
 )
 
@@ -171,10 +172,17 @@ ajustes_bp.add_url_rule(
 
 # ── Descuentos ──
 
+def _config_descuentos_dump():
+    return {
+        "descuentos": descuentos_activos(g.tenant_id),
+        "cupones": cupones_activos(g.tenant_id),
+    }
+
+
 @ajustes_bp.route("/descuentos/config", methods=["GET"])
 @require_auth
 def obtener_config_descuentos():
-    return jsonify({"activo": descuentos_activos(g.tenant_id)})
+    return jsonify(_config_descuentos_dump())
 
 
 @ajustes_bp.route("/descuentos/config", methods=["PUT"])
@@ -183,12 +191,17 @@ def obtener_config_descuentos():
 def actualizar_config_descuentos():
     data = DescuentosConfigSchema().load(request.get_json() or {})
     try:
-        activo = activar_descuentos(g.tenant_id, data["activo"])
+        # Solo se mueve el toggle que venga en el payload: cada interruptor de
+        # la pantalla manda el suyo, y mover uno no puede apagar el otro.
+        if "descuentos" in data:
+            activar_descuentos(g.tenant_id, data["descuentos"])
+        if "cupones" in data:
+            activar_cupones(g.tenant_id, data["cupones"])
     except DescuentosError as e:
         db.session.rollback()
         return jsonify({"error": str(e)}), 400
     db.session.commit()
-    return jsonify({"activo": activo})
+    return jsonify(_config_descuentos_dump())
 
 
 _desc_list, _desc_create, _desc_update, _desc_delete = _crud_routes(

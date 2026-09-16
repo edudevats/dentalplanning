@@ -913,6 +913,167 @@ def saldar_comision(ingreso_id):
     return jsonify({"message": "Comisión marcada como saldada"})
 
 
+# ── COMISIONES YA PAGADAS ──
+
+def _concepto_automatico(concepto):
+    """¿El concepto es el que genera /comisiones/pagar, o lo escribió alguien?"""
+    concepto = (concepto or "").strip()
+    return concepto.startswith("Pago de ") and concepto.endswith("comisión(es)")
+
+
+def _reajustar_pago(pago):
+    """Recalcula el PagoDoctor con las comisiones que le quedan ligadas.
+
+    Devuelve True si se quedó sin ninguna y se eliminó. Así el gasto del mes
+    siempre vale lo que el doctor realmente cobró, sin cuadres a mano.
+    """
+    restantes = PagoComisionIngreso.query.filter_by(
+        pago_id=pago.id, tenant_id=g.tenant_id
+    ).all()
+    if not restantes:
+        db.session.delete(pago)
+        return True
+
+    total = round(sum(liq.monto for liq in restantes), 2)
+    # El descuento de saldo negativo no puede pasarse del total que queda.
+    descuento = round(min(pago.descuento_saldo or 0.0, total), 2)
+    pago.descuento_saldo = descuento
+    pago.monto = round(total - descuento, 2)
+    if _concepto_automatico(pago.concepto):
+        pago.concepto = f"Pago de {len(restantes)} comisión(es)"
+    return False
+
+
+def _despagar_reversiones(ingreso_id):
+    """La comisión deja de estar pagada: sus reversiones tampoco lo están.
+
+    Si una devolución revirtió una comisión YA pagada, el doctor arrastra un
+    saldo negativo. Al deshacer ese pago nunca cobró, así que el saldo sobra.
+    """
+    from app.cobranza.models import ComisionReversion
+    reversiones = ComisionReversion.query.filter_by(
+        tenant_id=g.tenant_id, ingreso_id=ingreso_id, pagada_al_revertir=True,
+    ).all()
+    for rev in reversiones:
+        rev.pagada_al_revertir = False
+
+
+@edr_bp.route("/comisiones/pagadas", methods=["GET"])
+@require_auth
+def comisiones_pagadas():
+    """Comisiones liquidadas por un PagoDoctor con fecha en el mes pedido.
+
+    Agrupadas por doctor, una fila por comisión: es el detalle de la tarjeta
+    "Comisiones Pagadas". Las saldadas a mano (sin PagoDoctor) no entran: no
+    fueron un pago y no hay gasto que deshacer.
+    """
+    year, month = _parse_mes(request.args.get("mes"))
+
+    filas = PagoComisionIngreso.query.options(
+        joinedload(PagoComisionIngreso.pago).joinedload(PagoDoctor.especialista),
+        joinedload(PagoComisionIngreso.ingreso).selectinload(Ingreso.tratamiento),
+    ).join(
+        PagoDoctor, PagoComisionIngreso.pago_id == PagoDoctor.id
+    ).filter(
+        PagoComisionIngreso.tenant_id == g.tenant_id,
+        *filtro_mes(PagoDoctor.fecha, year, month),
+    ).order_by(PagoDoctor.fecha, PagoComisionIngreso.id).all()
+
+    por_doctor = {}
+    total_pagado = 0.0
+    for liq in filas:
+        pago, ingreso = liq.pago, liq.ingreso
+        esp_id = pago.especialista_id
+        grupo = por_doctor.setdefault(esp_id, {
+            "especialista_id": esp_id,
+            "especialista_nombre": pago.especialista.nombre if pago.especialista else "—",
+            "total_pagado": 0.0,
+            "comisiones": [],
+        })
+        monto = round(liq.monto, 2)
+        grupo["comisiones"].append({
+            "id": liq.id,
+            "ingreso_id": liq.ingreso_id,
+            "pago_id": pago.id,
+            "fecha_pago": pago.fecha.isoformat(),
+            "fecha_ingreso": ingreso.fecha.isoformat() if ingreso else None,
+            "paciente": (ingreso.paciente if ingreso else None) or "Paciente",
+            "nombre_tratamiento": (
+                (ingreso.nombre_tratamiento if ingreso else None)
+                or (ingreso.tratamiento.nombre if ingreso and ingreso.tratamiento else None)
+                or "Tratamiento"
+            ),
+            "monto": monto,
+            "concepto": pago.concepto,
+        })
+        grupo["total_pagado"] += monto
+        total_pagado += monto
+
+    doctores = sorted(por_doctor.values(), key=lambda d: d["especialista_nombre"])
+    for d in doctores:
+        d["total_pagado"] = round(d["total_pagado"], 2)
+
+    return jsonify({
+        "mes": f"{year}-{month:02d}",
+        "total_pagado": round(total_pagado, 2),
+        "doctores": doctores,
+    })
+
+
+@edr_bp.route("/comisiones/pagadas/<int:liquidacion_id>", methods=["DELETE"])
+@require_auth
+@require_role("admin")
+def borrar_comision_pagada(liquidacion_id):
+    """Deshace el pago de UNA comisión. `modo` decide a dónde va después:
+
+    - `pendiente`: se borra la liga y la comisión regresa al recuadro de
+      pendientes, lista para volver a pagarse.
+    - `permanente`: la liga se queda sin PagoDoctor (como las saldadas a
+      mano), así que sale del gasto y tampoco vuelve a pendientes.
+
+    En los dos casos el PagoDoctor se reajusta —o se borra si era su única
+    comisión— para que el gasto del mes no cuente dinero que nadie cobró.
+    `Ingreso.comision_doctor` no se toca: la ganancia del tratamiento es otra
+    cosa.
+    """
+    modo = (request.args.get("modo") or "").strip().lower()
+    if modo not in ("pendiente", "permanente"):
+        return jsonify({"error": "modo debe ser pendiente o permanente"}), 400
+
+    liq = PagoComisionIngreso.query.filter_by(
+        id=liquidacion_id, tenant_id=g.tenant_id
+    ).first_or_404()
+    if liq.pago_id is None:
+        return jsonify({
+            "error": "Esa comisión se saldó a mano, sin pago: no hay nada que "
+                     "deshacer aquí."
+        }), 400
+
+    pago = liq.pago
+    nota = ((request.get_json(silent=True) or {}).get("nota") or "").strip()
+
+    _despagar_reversiones(liq.ingreso_id)
+    if modo == "pendiente":
+        db.session.delete(liq)
+    else:
+        liq.pago_id = None
+        liq.nota = (nota or "Pago borrado desde comisiones pagadas")[:200]
+    db.session.flush()
+
+    pago_id = pago.id
+    eliminado = _reajustar_pago(pago)
+    db.session.commit()
+
+    return jsonify({
+        "message": (
+            "La comisión regresó a pendientes"
+            if modo == "pendiente" else "Comisión borrada"
+        ),
+        "pago_eliminado": eliminado,
+        "pago_id": None if eliminado else pago_id,
+    })
+
+
 @edr_bp.route("/pagos-doctores/resumen", methods=["GET"])
 @require_auth
 def resumen_pagos_doctores():

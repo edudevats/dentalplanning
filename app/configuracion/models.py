@@ -24,8 +24,15 @@ class ConfigConsultorio(db.Model):
     # captura no muestra ningún campo de descuento. Vive aquí y no en una tabla
     # nueva porque es una preferencia del consultorio, igual que
     # `folio_manual_activo`.
+    #
+    # Son DOS interruptores independientes porque son dos funciones distintas:
+    # hay clínicas que dan descuentos de visita y nunca reparten cupones, y al
+    # revés. Con los dos encendidos, la captura ofrece el selector para elegir
+    # cuál aplicar; con uno solo, esa función se muestra directa.
     descuentos_activo = db.Column(db.Boolean, nullable=False, default=False,
                                   server_default="0")
+    cupones_activo = db.Column(db.Boolean, nullable=False, default=False,
+                               server_default="0")
     # Tasa de impuesto SOLO informativa (estimación de impuestos a pagar).
     # No se resta de la utilidad ni se usa en ningún otro cálculo de la app.
     tasa_impuesto_pct = db.Column(db.Float, default=0, nullable=False)

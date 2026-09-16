@@ -39,9 +39,10 @@
       <p class="mt-3 text-2xl font-bold font-heading tabular-nums text-accent-700" id="stat-salarios">$0.00</p>
       <p class="mt-1 text-xs text-text-muted font-body" id="stat-salarios-pct">0% del total</p>
     </div>
-    <!-- Comisiones pagadas -->
-    <div class="bg-surface rounded-xl border border-border p-5 shadow-sm">
-      <div class="flex items-center justify-between">
+    <!-- Comisiones pagadas (clickeable -> detalle comisión por comisión) -->
+    <button type="button" onclick="openPagadas()"
+      class="flex flex-col text-left bg-surface rounded-xl border border-border p-5 shadow-sm cursor-pointer hover:bg-surface-hover hover:border-secondary-500 hover:shadow-md transition-all focus:outline-none focus:ring-2 focus:ring-secondary-500 focus:ring-offset-2">
+      <div class="flex items-center justify-between w-full">
         <p class="text-sm font-medium text-text-secondary font-body">Comisiones Pagadas</p>
         <div class="h-9 w-9 rounded-lg bg-secondary-50 flex items-center justify-center">
           <i data-lucide="percent" class="h-4 w-4 text-secondary-600"></i>
@@ -49,20 +50,25 @@
       </div>
       <p class="mt-3 text-2xl font-bold font-heading tabular-nums text-secondary-700" id="stat-comisiones">$0.00</p>
       <p class="mt-1 text-xs text-text-muted font-body" id="stat-comisiones-gen">De $0.00 generado</p>
-    </div>
+      <span class="mt-2 inline-flex items-center gap-1 text-xs font-medium text-secondary-700 font-body">
+        <i data-lucide="list" class="h-3.5 w-3.5"></i> Ver detalle
+      </span>
+    </button>
     <!-- Comisiones pendientes (clickeable -> abre modal de pago) -->
     <button type="button" onclick="openPendientes()"
-      class="text-left bg-surface rounded-xl border border-border p-5 shadow-sm cursor-pointer hover:border-warning-300 hover:shadow-md transition-all focus:outline-none focus:ring-2 focus:ring-warning-300">
+      class="group flex flex-col text-left bg-warning-50 rounded-xl border-2 border-warning-500 p-5 shadow-sm cursor-pointer hover:bg-warning-100 hover:border-warning-600 hover:shadow-md transition-all focus:outline-none focus:ring-2 focus:ring-warning-600 focus:ring-offset-2">
       <div class="flex items-center justify-between">
-        <p class="text-sm font-medium text-text-secondary font-body">Comisiones Pendientes</p>
-        <div class="h-9 w-9 rounded-lg bg-warning-50 flex items-center justify-center">
-          <i data-lucide="clock" class="h-4 w-4 text-warning-600"></i>
+        <p class="text-sm font-semibold text-warning-700 font-body">Comisiones Pendientes</p>
+        <div class="h-9 w-9 rounded-lg bg-warning-500 flex items-center justify-center">
+          <i data-lucide="clock" class="h-4 w-4 text-white"></i>
         </div>
       </div>
       <p class="mt-3 text-2xl font-bold font-heading tabular-nums text-warning-700" id="stat-pendiente">$0.00</p>
-      <p class="mt-1 text-xs text-warning-700 font-body inline-flex items-center gap-1">
-        <i data-lucide="hand-coins" class="h-3.5 w-3.5"></i> Click para pagar
-      </p>
+      <span class="mt-auto pt-4 block">
+        <span class="w-full inline-flex items-center justify-center gap-2 rounded-lg bg-warning-600 group-hover:bg-warning-700 text-white px-4 py-2.5 text-sm font-semibold font-body shadow-sm transition-colors min-h-[42px]">
+          <i data-lucide="hand-coins" class="h-4 w-4"></i> Click para pagar
+        </span>
+      </span>
     </button>
   </div>
 
@@ -152,6 +158,54 @@
       </div>
       <div class="flex justify-end gap-3 px-6 py-4 border-t border-border bg-surface-alt rounded-b-2xl">
         <button type="button" onclick="Modal.close('modal-detalle-doctor')" class="inline-flex items-center justify-center gap-2 rounded-lg font-medium font-body cursor-pointer border border-border bg-surface hover:bg-surface-hover text-text-secondary px-4 py-2 text-sm min-h-[38px]">Cerrar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Comisiones Pagadas (detalle + deshacer) -->
+<div id="modal-pagadas" class="hidden fixed inset-0 z-50 overflow-y-auto">
+  <div class="flex min-h-full items-end sm:items-center justify-center p-4">
+    <div class="fixed inset-0 bg-black/40" onclick="Modal.close('modal-pagadas')"></div>
+    <div class="relative bg-surface rounded-2xl shadow-xl w-full max-w-3xl">
+      <div class="flex items-center justify-between px-6 py-4 border-b border-border">
+        <div>
+          <h2 class="text-base font-semibold font-heading text-text-primary">Comisiones Pagadas</h2>
+          <p id="pagadas-subtitle" class="text-xs text-text-muted font-body mt-0.5"></p>
+        </div>
+        <button type="button" onclick="Modal.close('modal-pagadas')" class="p-2 rounded-lg text-text-muted hover:bg-surface-hover transition-colors cursor-pointer">
+          <i data-lucide="x" class="h-4 w-4"></i>
+        </button>
+      </div>
+      <div id="pagadas-body" class="px-6 py-5 max-h-[65vh] overflow-y-auto space-y-6"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: deshacer una comisión pagada (regresar a pendientes / borrar) -->
+<div id="modal-pagada-del" class="hidden fixed inset-0 z-50 overflow-y-auto">
+  <div class="flex min-h-full items-end sm:items-center justify-center p-4">
+    <div class="fixed inset-0 bg-black/40" onclick="Modal.close('modal-pagada-del')"></div>
+    <div class="relative bg-surface rounded-2xl shadow-xl w-full max-w-md">
+      <div class="flex items-center justify-between px-6 py-4 border-b border-border">
+        <h2 id="pagada-del-title" class="text-base font-semibold font-heading text-text-primary">Deshacer el pago</h2>
+        <button type="button" onclick="Modal.close('modal-pagada-del')" class="p-2 rounded-lg text-text-muted hover:bg-surface-hover transition-colors cursor-pointer">
+          <i data-lucide="x" class="h-4 w-4"></i>
+        </button>
+      </div>
+      <div class="px-6 py-5 space-y-4">
+        <p id="pagada-del-detalle" class="text-sm text-text-secondary font-body"></p>
+        <p id="pagada-del-aviso" class="text-sm text-text-secondary font-body"></p>
+        <div id="pagada-del-nota-wrap">
+          <label class="block text-sm font-medium text-text-secondary mb-1 font-body">Nota (opcional)</label>
+          <input id="pagada-del-nota" type="text" maxlength="200" placeholder="Ej. se capturó por error" class="block w-full rounded-lg border border-border px-3 py-2.5 text-sm font-body text-text-primary placeholder:text-text-muted min-h-[44px] bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-500" />
+        </div>
+        <div class="flex justify-end gap-3 pt-2 border-t border-border">
+          <button type="button" onclick="Modal.close('modal-pagada-del')" class="inline-flex items-center justify-center gap-2 rounded-lg font-medium font-body cursor-pointer border border-border bg-surface hover:bg-surface-hover text-text-secondary px-4 py-2 text-sm min-h-[38px]">Cancelar</button>
+          <button type="button" id="pagada-del-btn" onclick="confirmarBorrarPagada()" class="inline-flex items-center justify-center gap-2 rounded-lg font-medium font-body cursor-pointer text-white px-4 py-2 text-sm min-h-[38px]">
+            <span id="pagada-del-text">Confirmar</span>
+          </button>
+        </div>
       </div>
     </div>
   </div>
@@ -804,6 +858,159 @@ async function handleDelete() {
     fetchData();
   } catch { Toast.error('Error al eliminar'); }
   finally { btn.disabled = false; txt.textContent = 'Eliminar'; }
+}
+
+// ── Comisiones pagadas (detalle del mes y deshacer un pago) ──
+let pagadasData = { total_pagado: 0, doctores: [] };
+// Comisión pagada + modo sobre los que actúa el modal de confirmación.
+let pagadaEnFoco = null;
+
+async function fetchPagadas() {
+  const mes = selYear + '-' + String(selMonth).padStart(2, '0');
+  try {
+    pagadasData = await API.get('/edr/comisiones/pagadas?mes=' + mes)
+      ?? { total_pagado: 0, doctores: [] };
+  } catch { pagadasData = { total_pagado: 0, doctores: [] }; }
+}
+
+async function openPagadas() {
+  await fetchPagadas();
+  renderPagadas();
+  Modal.open('modal-pagadas');
+}
+
+function renderPagadas() {
+  const selMonthEl = document.getElementById('sel-month');
+  const mesLabel = selMonthEl.options[selMonthEl.selectedIndex].text;
+  document.getElementById('pagadas-subtitle').textContent =
+    'Pagos de ' + mesLabel + ' ' + document.getElementById('sel-year').value +
+    ' · ' + fmt(pagadasData.total_pagado || 0) + ' en comisiones';
+
+  const body = document.getElementById('pagadas-body');
+  body.innerHTML = '';
+
+  if (!pagadasData.doctores || pagadasData.doctores.length === 0) {
+    const empty = domEl('div', 'text-center py-12');
+    empty.appendChild(domEl('p', 'text-sm text-text-muted font-body', 'No hay comisiones pagadas en este mes.'));
+    body.appendChild(empty);
+    lucide.createIcons();
+    return;
+  }
+
+  pagadasData.doctores.forEach(doc => {
+    const card = domEl('div', 'rounded-xl border border-border overflow-hidden');
+
+    const head = domEl('div', 'px-4 py-3 bg-surface-alt border-b border-border');
+    head.appendChild(domEl('p', 'text-sm font-semibold text-text-primary', doc.especialista_nombre));
+    head.appendChild(domEl('p', 'text-xs text-text-muted', doc.comisiones.length + ' comisión(es) · pagado ' + fmt(doc.total_pagado)));
+    card.appendChild(head);
+
+    const tbl = document.createElement('table');
+    tbl.className = 'w-full text-sm';
+    const thead = document.createElement('thead');
+    thead.className = 'text-xs text-text-muted';
+    thead.innerHTML = '<tr class="border-b border-border">' +
+      '<th class="py-2 px-3 text-left font-medium">Pagada el</th>' +
+      '<th class="py-2 px-3 text-left font-medium">Paciente</th>' +
+      '<th class="py-2 px-3 text-left font-medium">Tratamiento</th>' +
+      '<th class="py-2 px-3 text-right font-medium">Comisión</th>' +
+      '<th class="py-2 px-3 w-20"></th></tr>';
+    tbl.appendChild(thead);
+
+    const tbody = document.createElement('tbody');
+    doc.comisiones.forEach(c => {
+      const tr = document.createElement('tr');
+      tr.className = 'border-b border-border last:border-0';
+      tr.appendChild(tdText('py-2 px-3 text-left', formatDate(c.fecha_pago)));
+      tr.appendChild(tdText('py-2 px-3 text-left', c.paciente));
+      tr.appendChild(tdText('py-2 px-3 text-left font-medium text-text-primary', c.nombre_tratamiento));
+      tr.appendChild(tdText('py-2 px-3 text-right tabular-nums text-secondary-700', fmt(c.monto)));
+      tr.appendChild(accionesComisionPagada(c, doc));
+      tbody.appendChild(tr);
+    });
+    tbl.appendChild(tbody);
+    card.appendChild(tbl);
+    body.appendChild(card);
+  });
+  lucide.createIcons();
+}
+
+function accionesComisionPagada(c, doc) {
+  const td = document.createElement('td');
+  td.className = 'py-2 px-3';
+  const wrap = domEl('div', 'flex items-center justify-end gap-1');
+
+  const volver = domEl('button', 'p-1.5 rounded-lg text-text-muted hover:bg-surface-hover hover:text-primary-600 transition-colors cursor-pointer');
+  volver.type = 'button';
+  volver.title = 'Regresarla a comisiones pendientes';
+  volver.setAttribute('aria-label', 'Regresar a pendientes la comisión de ' + c.nombre_tratamiento);
+  volver.appendChild(domIcon('undo-2', 'h-3.5 w-3.5'));
+  volver.addEventListener('click', () => openBorrarPagada(c, doc, 'pendiente'));
+
+  const borrar = domEl('button', 'p-1.5 rounded-lg text-text-muted hover:bg-surface-hover hover:text-danger-600 transition-colors cursor-pointer');
+  borrar.type = 'button';
+  borrar.title = 'Borrarla (no vuelve a pendientes)';
+  borrar.setAttribute('aria-label', 'Borrar la comisión pagada de ' + c.nombre_tratamiento);
+  borrar.appendChild(domIcon('trash-2', 'h-3.5 w-3.5'));
+  borrar.addEventListener('click', () => openBorrarPagada(c, doc, 'permanente'));
+
+  wrap.appendChild(volver);
+  wrap.appendChild(borrar);
+  td.appendChild(wrap);
+  return td;
+}
+
+function openBorrarPagada(c, doc, modo) {
+  pagadaEnFoco = { comision: c, modo };
+  const esPendiente = modo === 'pendiente';
+
+  document.getElementById('pagada-del-title').textContent =
+    esPendiente ? 'Regresar a comisiones pendientes' : 'Borrar la comisión pagada';
+  document.getElementById('pagada-del-detalle').textContent =
+    doc.especialista_nombre + ' · ' + c.paciente + ' · ' + c.nombre_tratamiento +
+    '. Comisión de ' + fmt(c.monto) + ' pagada el ' + formatDate(c.fecha_pago) + '.';
+  document.getElementById('pagada-del-aviso').textContent =
+    'El gasto del mes baja ' + fmt(c.monto) + ' y, si era la única comisión de ese pago, el pago se elimina. ' +
+    (esPendiente
+      ? 'La comisión vuelve al recuadro de pendientes, lista para pagarse otra vez.'
+      : 'La comisión NO vuelve a pendientes: queda saldada para siempre.');
+  document.getElementById('pagada-del-nota-wrap').classList.toggle('hidden', esPendiente);
+  document.getElementById('pagada-del-nota').value = '';
+
+  document.getElementById('pagada-del-btn').className =
+    'inline-flex items-center justify-center gap-2 rounded-lg font-medium font-body cursor-pointer text-white px-4 py-2 text-sm min-h-[38px] ' +
+    (esPendiente ? 'bg-primary-500 hover:bg-primary-600' : 'bg-danger-500 hover:bg-danger-600');
+  document.getElementById('pagada-del-text').textContent =
+    esPendiente ? 'Regresar a pendientes' : 'Borrar';
+  Modal.open('modal-pagada-del');
+}
+
+async function confirmarBorrarPagada() {
+  if (!pagadaEnFoco) return;
+  const comision = pagadaEnFoco.comision;
+  const modo = pagadaEnFoco.modo;
+  const btn = document.getElementById('pagada-del-btn');
+  const txt = document.getElementById('pagada-del-text');
+  const prev = txt.textContent;
+  btn.disabled = true;
+  txt.textContent = modo === 'pendiente' ? 'Regresando...' : 'Borrando...';
+  try {
+    await API.delete('/edr/comisiones/pagadas/' + comision.id + '?modo=' + modo, {
+      nota: document.getElementById('pagada-del-nota').value.trim(),
+    });
+    Toast.success(modo === 'pendiente' ? 'La comisión regresó a pendientes' : 'Comisión borrada');
+    Modal.close('modal-pagada-del');
+    pagadaEnFoco = null;
+    await fetchPagadas();
+    renderPagadas();
+    fetchData();  // los KPIs, el historial y las gráficas también cambian
+    if (!pagadasData.doctores || pagadasData.doctores.length === 0) Modal.close('modal-pagadas');
+  } catch (e) {
+    Toast.error(e?.message || 'No se pudo deshacer el pago');
+  } finally {
+    btn.disabled = false;
+    txt.textContent = prev;
+  }
 }
 
 // ── Comisiones pendientes ──

@@ -9,6 +9,9 @@ const CobranzaForm = (() => {
     calendario: [],
     loaded: false,
     descuentosActivos: false,
+    cuponesActivos: false,
+    // La cotizacion abierta YA trae cupones en sus conceptos.
+    tieneCupones: false,
     modoDescuento: 'descuento',
     cuponesPorId: {},
     // Fecha de la cotización, para validar cupones contra ELLA y no contra
@@ -161,8 +164,12 @@ const CobranzaForm = (() => {
     // Si la config falla queda apagado: el backend rechazaría el canje de
     // todos modos, así que ocultar es la respuesta conservadora.
     const dcfg = value(3, null);
-    state.descuentosActivos = Boolean(dcfg && dcfg.activo);
-    $('cot-modo-wrap').classList.toggle('hidden', !state.descuentosActivos);
+    state.descuentosActivos = Boolean(dcfg && dcfg.descuentos);
+    state.cuponesActivos = Boolean(dcfg && dcfg.cupones);
+    // El selector solo tiene sentido con las DOS funciones encendidas: con una
+    // sola no hay entre que elegir, y esa funcion se muestra directa.
+    $('cot-modo-wrap').classList.toggle(
+      'hidden', !(state.descuentosActivos && state.cuponesActivos));
     // Mapa id → código para rehidratar los cupones de una cotización guardada:
     // los conceptos sólo devuelven cupon_id (cupon_codigo es load_only en
     // ConceptoSchema). Se pide aquí en vez de meterle a cobranza/routes.py una
@@ -346,6 +353,16 @@ const CobranzaForm = (() => {
   // elemento, cuál gana depende del orden en que Tailwind (CDN/JIT) genere
   // esas utilidades, y no vale la pena apostarle a eso.
   function aplicarModo(modo) {
+    // Con una sola funcion encendida el modo no se elige: es la que haya.
+    // Excepcion: si la cotizacion abierta YA trae cupones, no se la saca de
+    // modo cupon aunque el toggle este apagado. Los conceptos se reconstruyen
+    // enteros en cada guardado, asi que forzar modo descuento les borraria el
+    // cupon y les subiria el precio en silencio. Dejandola en modo cupon, el
+    // servidor rechaza el guardado con un mensaje que dice que la seccion esta
+    // apagada: falla fuerte en vez de corromper.
+    if (!state.descuentosActivos && state.cuponesActivos) modo = 'cupon';
+    else if (state.descuentosActivos && !state.cuponesActivos
+             && !state.tieneCupones) modo = 'descuento';
     state.modoDescuento = modo;
     document.querySelectorAll('.cot-modo').forEach(b => {
       const activo = b.dataset.modo === modo;
@@ -536,6 +553,7 @@ const CobranzaForm = (() => {
   function reset() {
     state.id = null;
     state.fecha = null;
+    state.tieneCupones = false;
     state.calendario = [];
     $('form-cotizacion').reset();
     $('cot-paciente-search').value = '';
@@ -566,6 +584,7 @@ const CobranzaForm = (() => {
       reset();
       state.id = quote && quote.id;
       state.fecha = quote ? quote.fecha : null;
+      state.tieneCupones = false;
       $('cot-form-title').textContent = state.id ? `Editar ${quote.folio}` : 'Nueva cotización';
       if (quote) {
         renderCatalogs(quote);
@@ -595,6 +614,7 @@ const CobranzaForm = (() => {
         // cotización se armó en modo cupón. Se hace antes de crear los
         // renglones para que addConcept los pinte ya con la visibilidad correcta.
         const conCupon = (quote.conceptos || []).some(c => c.cupon_id);
+        state.tieneCupones = conCupon;
         aplicarModo(conCupon ? 'cupon' : 'descuento');
         $('conceptos-list').replaceChildren();
         (quote.conceptos || []).forEach(addConcept);
