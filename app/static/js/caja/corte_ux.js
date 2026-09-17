@@ -101,6 +101,53 @@
       || !!(resumen || {}).puede_corregir_dia;
   }
 
+  function montoConFormato(n) {
+    return "$" + Number(n || 0).toLocaleString("en-US", {
+      minimumFractionDigits: 2, maximumFractionDigits: 2,
+    });
+  }
+
+  /* Espejo de app/edr/comisiones.py::liquidar para pintar el resumen del
+     modal mientras se marcan casillas. El servidor recalcula y manda. */
+  function resumenPagoComisiones(comisiones, seleccion, saldo) {
+    var elegidas = {};
+    (seleccion || []).forEach(function (id) { elegidas[String(id)] = true; });
+    var suma = 0;
+    var cantidad = 0;
+    (comisiones || []).forEach(function (c) {
+      if (elegidas[String(c.ingreso_id)]) {
+        suma += Number(c.comision_doctor || 0);
+        cantidad += 1;
+      }
+    });
+    suma = redondear(suma);
+    var descuento = redondear(Math.min(Math.max(Number(saldo || 0), 0), suma));
+    return {
+      cantidad: cantidad, suma: suma, descuento: descuento,
+      neto: redondear(suma - descuento),
+    };
+  }
+
+  /* Aviso, no candado: a veces el efectivo se completa con dinero de otro
+     lado. Un cajón que ya va en negativo no avisa por un pago de $0. */
+  function excedeEfectivo(resumen, monto) {
+    var disponible = Number((resumen || {}).esperado_efectivo || 0);
+    var n = Number(monto || 0);
+    return n > 0 && n > disponible;
+  }
+
+  function textoBotonPago(neto) {
+    if (neto === null || neto === undefined) return "Pagar";
+    if (Number(neto) === 0) return "Registrar pago ($0.00)";
+    return "Pagar " + montoConFormato(neto);
+  }
+
+  /* La tabla de ingresos es la más larga y es de solo lectura: con muchos
+     empuja el cierre fuera de la vista. */
+  function ingresosAbiertosPorDefecto(cantidad) {
+    return Number(cantidad || 0) <= 5;
+  }
+
   var CorteUX = {
     normalizarMonto: normalizarMonto,
     diferencia: diferencia,
@@ -108,6 +155,10 @@
     puedeCerrar: puedeCerrar,
     etiquetaDiferencia: etiquetaDiferencia,
     muestraLeyendaFondo: muestraLeyendaFondo,
+    resumenPagoComisiones: resumenPagoComisiones,
+    excedeEfectivo: excedeEfectivo,
+    textoBotonPago: textoBotonPago,
+    ingresosAbiertosPorDefecto: ingresosAbiertosPorDefecto,
   };
 
   if (typeof module !== "undefined" && module.exports) module.exports = CorteUX;

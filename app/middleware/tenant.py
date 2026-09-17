@@ -76,6 +76,16 @@ _RECEP_RULES = [
     ("GET", r"/api/v1/caja/salidas"),
     ("POST", r"/api/v1/caja/salidas"),
     ("DELETE", r"/api/v1/caja/salidas/\d+"),
+    # Pagos a doctores desde el cajón: registra, consulta, borra los suyos
+    # (el servicio lo limita) e imprime el comprobante. Las rutas de admin
+    # (/edr/pagos-doctores, /edr/comisiones) siguen FUERA.
+    ("GET", r"/api/v1/caja/doctores"),
+    ("GET", r"/api/v1/caja/pagos-doctores"),
+    ("POST", r"/api/v1/caja/pagos-doctores"),
+    ("POST", r"/api/v1/caja/pagos-doctores/comisiones"),
+    ("DELETE", r"/api/v1/caja/pagos-doctores/\d+"),
+    ("GET", r"/api/v1/caja/pagos-doctores/\d+/comprobante"),
+    ("GET", r"/api/v1/caja/comisiones-pendientes"),
 ]
 RECEPCIONISTA_ALLOWLIST = [(m, re.compile("^" + p + "/?$")) for m, p in _RECEP_RULES]
 

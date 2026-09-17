@@ -52,3 +52,26 @@ class SalidaSchema(Schema):
     concepto_nombre = fields.Str(required=True, validate=validate.Length(min=1, max=200))
     monto = fields.Float(required=True, validate=validate.Range(min=0.01))
     sucursal_id = fields.Int(allow_none=True, load_default=None)
+
+
+class PagoDoctorLibreSchema(Schema):
+    class Meta:
+        unknown = EXCLUDE
+
+    fecha = fields.Date(required=True)
+    sucursal_id = fields.Int(allow_none=True, load_default=None)
+    especialista_id = fields.Int(required=True)
+    tipo = fields.Str(required=True, validate=validate.OneOf(["salario", "comision"]))
+    concepto = fields.Str(required=True, validate=validate.Length(min=1, max=200))
+    monto = fields.Float(required=True, validate=validate.Range(min=0.01))
+
+
+class PagoComisionesCajaSchema(Schema):
+    class Meta:
+        unknown = EXCLUDE
+
+    fecha = fields.Date(required=True)
+    sucursal_id = fields.Int(allow_none=True, load_default=None)
+    especialista_id = fields.Int(required=True)
+    ingreso_ids = fields.List(fields.Int(), required=True,
+                              validate=validate.Length(min=1))
