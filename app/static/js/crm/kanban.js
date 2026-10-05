@@ -149,6 +149,9 @@ const Kanban = (() => {
     document.getElementById('kb-solo-inactivos').addEventListener('change', cargar);
     cargarDoctores();
     cargar();
+    // /crm?ficha=<id> abre la ficha del paciente (p. ej. desde el odontograma).
+    const fichaId = Number(new URLSearchParams(location.search).get('ficha'));
+    if (Number.isInteger(fichaId) && fichaId > 0 && typeof abrirFicha === 'function') abrirFicha(fichaId);
   }
 
   return { init, recargar: cargar, nuevoPaciente };

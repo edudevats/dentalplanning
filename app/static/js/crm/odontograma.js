@@ -22,6 +22,7 @@ const Odonto = (() => {
   let emerger = null;       // número que debe animarse al aparecer
 
   const esAdmin = () => ['admin', 'editor'].includes(window.__userRole);
+  const puedeCapturar = () => window.__userRole && window.__userRole !== 'viewer';
   const el = (tag, attrs = {}) => {
     const e = document.createElementNS(NS, tag);
     Object.entries(attrs).forEach(([k, v]) => e.setAttribute(k, v));
@@ -155,7 +156,7 @@ const Odonto = (() => {
         </button>`;
     }).join('');
     cont.querySelectorAll('button[data-i]').forEach(b =>
-      b.addEventListener('click', () => iniciarAsignacion(data.pendientes[Number(b.dataset.i)])));
+      b.addEventListener('click', () => { if (puedeCapturar()) iniciarAsignacion(data.pendientes[Number(b.dataset.i)]); }));
   }
 
   function chipsCaras(n, activas, accion) {
@@ -233,7 +234,7 @@ const Odonto = (() => {
         </div>
         <p class="text-[10px] text-text-muted">${t.fecha_realizado ? esc(t.fecha_realizado) + ' · ' : ''}${esc(t.especialista_nombre || 'Sin doctor')} · ${esc(t.origen || 'origen eliminado')}${t.origen_eliminado ? ' (eliminado)' : ''}</p>
         <div class="flex gap-3 mt-1">
-          ${t.estatus === 'planeado' ? `<button type="button" data-accion="realizar" data-id="${t.id}" class="text-[10px] font-bold text-emerald-600 hover:underline cursor-pointer">Marcar realizado</button>` : ''}
+          ${t.estatus === 'planeado' && puedeCapturar() ? `<button type="button" data-accion="realizar" data-id="${t.id}" class="text-[10px] font-bold text-emerald-600 hover:underline cursor-pointer">Marcar realizado</button>` : ''}
           ${esAdmin() ? `<button type="button" data-accion="editar" data-id="${t.id}" class="text-[10px] font-bold text-primary-600 hover:underline cursor-pointer">Editar</button>
           <button type="button" data-accion="desasignar" data-id="${t.id}" class="text-[10px] font-bold text-red-600 hover:underline cursor-pointer">Desasignar</button>` : ''}
         </div>

@@ -57,8 +57,7 @@ def upgrade():
 
 
 def downgrade():
-    op.drop_index("ix_dientes_trat_tenant_paciente", table_name="dientes_tratamientos")
-    op.drop_index("ix_dientes_tratamientos_tenant_id", table_name="dientes_tratamientos")
+    # No se borran los indices uno a uno: en MySQL el indice de tenant_id respalda la FK
+    # (error 1553); al soltar la tabla caen sus indices y FKs.
     op.drop_table("dientes_tratamientos")
-    op.drop_index("ix_dientes_estado_tenant_id", table_name="dientes_estado")
     op.drop_table("dientes_estado")
