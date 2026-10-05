@@ -107,27 +107,12 @@ class PagoDoctor(db.Model):
     # Saldo negativo del doctor aplicado en este pago (por reversiones de
     # comisión ya pagadas). El `monto` de arriba ya es el neto (comisiones − esto).
     descuento_saldo = db.Column(db.Float, nullable=False, default=0)
-    # Mismo significado que en GastoOperativo: True solo cuando el efectivo
-    # salió del cajón de recepción (pago registrado desde /corte-caja). El
-    # corte de caja resta estos pagos del efectivo esperado; los demás pagos
-    # (transferencias que hace el admin) no tocan ningún cajón.
-    sale_de_caja = db.Column(db.Boolean, nullable=False, default=False,
-                             server_default=db.text("0"))
-    # La caja que entregó el dinero y quién lo registró. Nulos en los pagos
-    # del admin desde /pagos-doctores.
-    sucursal_id = db.Column(db.Integer, db.ForeignKey("sucursales.id"), nullable=True)
-    created_by = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
 
     especialista = db.relationship("Especialista", backref="pagos")
-    sucursal = db.relationship("Sucursal")
-    autor = db.relationship("User", foreign_keys=[created_by])
 
     __table_args__ = (
         db.Index("ix_pagos_doctores_tenant_fecha", "tenant_id", "fecha"),
-        # resumen_dia e historico filtran por (tenant, fecha, sale_de_caja).
-        db.Index("ix_pagos_doctores_tenant_fecha_caja",
-                 "tenant_id", "fecha", "sale_de_caja"),
     )
 
 

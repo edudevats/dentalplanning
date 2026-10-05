@@ -2,8 +2,6 @@
 {% block page_title %}Pagos a Doctores{% endblock %}
 
 {% block content %}
-{# Clases que solo pone el JS (badge de pagos desde caja). #}
-<span aria-hidden="true" style="display:none" class="inline-flex items-center gap-2 flex-wrap px-2 py-0.5 rounded-full text-xs font-semibold bg-warning-50 text-warning-700"></span>
 <div class="space-y-6">
   <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
     <h1 class="text-2xl font-bold font-heading text-text-primary">Pagos a Doctores</h1>
@@ -413,22 +411,7 @@ function renderTable_() {
       render: v => especialistas.find(e => String(e.id) === String(v))?.nombre ?? '-'
     },
     { key: 'tipo', label: 'Tipo', render: v => tipoBadge(v) },
-    {
-      key: 'concepto',
-      label: 'Concepto',
-      // Los pagos hechos desde /corte-caja salieron de un cajón: se marcan
-      // para que el admin no los confunda con una transferencia.
-      render: (v, row) => {
-        const wrap = domEl('span', 'inline-flex items-center gap-2 flex-wrap');
-        wrap.appendChild(domEl('span', '', v || ''));
-        if (row.sale_de_caja) {
-          wrap.appendChild(domEl('span',
-            'inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-warning-50 text-warning-700',
-            'Caja' + (row.sucursal_nombre ? ' · ' + row.sucursal_nombre : '')));
-        }
-        return wrap;
-      }
-    },
+    { key: 'concepto', label: 'Concepto' },
     {
       key: 'monto',
       label: 'Monto',

@@ -8,7 +8,7 @@ from datetime import date, datetime, timezone
 
 from sqlalchemy import func, true
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import joinedload, selectinload
+from sqlalchemy.orm import joinedload
 
 from app.ajustes.models import (
     MetodoPago, TIPO_EFECTIVO, TIPO_TARJETA, TIPOS_METODO,
@@ -18,7 +18,7 @@ from app.caja.models import (
     EVENTO_CIERRE, EVENTO_RECIERRE, EVENTO_REAPERTURA,
 )
 from app.configuracion.models import ConfigConsultorio
-from app.edr.models import GastoOperativo, Ingreso, PagoComisionIngreso, PagoDoctor
+from app.edr.models import GastoOperativo, Ingreso
 from app.extensions import db
 
 
@@ -434,11 +434,7 @@ def _mover_caja(tenant_id, origen_id, destino_id, fecha):
     problema que se vino a arreglar. "El día entero" incluye TODOS los
     `GastoOperativo` de esa fecha y sucursal, no solo los que salen de caja
     (`sale_de_caja=True`): el gasto pertenece a la sucursal igual que el
-    ingreso, así que corregir la sucursal tiene que alcanzarlo también. Los
-    `PagoDoctor` con `sale_de_caja=True` también: un pago que salió del
-    cajón pertenece a esa caja igual que una salida. Los `PagoDoctor` que NO
-    salieron de caja (transferencias que registra el admin) no son dinero de
-    esta caja y se quedan donde estaban.
+    ingreso, así que corregir la sucursal tiene que alcanzarlo también.
     """
     from app.facturacion.models import Sucursal
     from app.facturacion.services import siguiente_folio
@@ -465,16 +461,6 @@ def _mover_caja(tenant_id, origen_id, destino_id, fecha):
             modelo.fecha == fecha,
             modelo.sucursal_id == origen_id,
         ).update({"sucursal_id": destino_id}, synchronize_session=False)
-
-    # PagoDoctor aparte y con el filtro extra `sale_de_caja=True`: un pago
-    # libre del admin (transferencia, SPEI...) no salió de ningún cajón, así
-    # que no es dinero de esta caja y no debe mudarse con el día.
-    PagoDoctor.query.filter(
-        PagoDoctor.tenant_id == tenant_id,
-        PagoDoctor.fecha == fecha,
-        PagoDoctor.sucursal_id == origen_id,
-        PagoDoctor.sale_de_caja.is_(True),
-    ).update({"sucursal_id": destino_id}, synchronize_session=False)
 
     # Los tickets al final y de uno en uno: cada folio nuevo se calcula contra
     # el máximo del destino, así que el flush entre uno y otro es lo que evita
@@ -804,12 +790,6 @@ def resumen_dia(tenant_id, sucursal_id, fecha):
         "created_by": s.created_by,
     } for s in salidas]
 
-    # Pagos a doctores entregados desde este cajón. Van aparte de las salidas
-    # porque son otra tabla (PagoDoctor) y la contabilidad los cuenta aparte;
-    # para el cajón son lo mismo: efectivo que ya no está.
-    detalle_pagos = listar_pagos_doctores(tenant_id, sucursal_id, fecha)
-    pagos_doctores_efectivo = round(sum(p["monto"] for p in detalle_pagos), 2)
-
     totales = {k: round(v, 2) for k, v in totales.items()}
     total_dia = round(sum(totales.values()), 2)
     salidas_efectivo = round(salidas_efectivo, 2)
@@ -819,8 +799,7 @@ def resumen_dia(tenant_id, sucursal_id, fecha):
     # incluido: es lo natural, cuenta lo que ve. Restarlo del conteo la obligaría
     # a hacer aritmética antes de teclear, que es justo donde se cometen errores.
     fondo = fondo_del_dia(tenant_id, sucursal_id, fecha)
-    esperado = round(fondo + totales[TIPO_EFECTIVO] - salidas_efectivo
-                     - pagos_doctores_efectivo, 2)
+    esperado = round(fondo + totales[TIPO_EFECTIVO] - salidas_efectivo, 2)
 
     return {
         "totales": totales,
@@ -828,7 +807,6 @@ def resumen_dia(tenant_id, sucursal_id, fecha):
         "neto_tarjeta": round(totales[TIPO_TARJETA] - comision_tarjeta, 2),
         "total_dia": total_dia,
         "salidas_efectivo": salidas_efectivo,
-        "pagos_doctores_efectivo": pagos_doctores_efectivo,
         "fondo_inicial": fondo,
         "esperado_efectivo": esperado,
         # Lo que sale del cajón al terminar: el fondo se queda para mañana.
@@ -836,7 +814,6 @@ def resumen_dia(tenant_id, sucursal_id, fecha):
         "sin_clasificar": sin_clasificar,
         "ingresos": detalle_ingresos,
         "salidas": detalle_salidas,
-        "pagos_doctores": detalle_pagos,
     }
 
 
@@ -871,7 +848,6 @@ def _snapshot(corte):
         "total_otro": corte.total_otro,
         "comision_tarjeta": corte.comision_tarjeta,
         "salidas_efectivo": corte.salidas_efectivo,
-        "pagos_doctores_efectivo": corte.pagos_doctores_efectivo,
         "efectivo_contado": corte.efectivo_contado,
         "esperado_efectivo": corte.esperado_efectivo,
         "diferencia": corte.diferencia,
@@ -884,8 +860,7 @@ def _snapshot(corte):
 # cierre mueve el dinero que la foto dice que debía haber.
 TOTALES_CONGELADOS = (
     "total_efectivo", "total_tarjeta", "total_transferencia", "total_otro",
-    "comision_tarjeta", "salidas_efectivo", "pagos_doctores_efectivo",
-    "fondo_inicial",
+    "comision_tarjeta", "salidas_efectivo", "fondo_inicial",
 )
 
 
@@ -901,7 +876,6 @@ def totales_desde_resumen(resumen):
         "total_otro": resumen["totales"]["otro"],
         "comision_tarjeta": resumen["comision_tarjeta"],
         "salidas_efectivo": resumen["salidas_efectivo"],
-        "pagos_doctores_efectivo": resumen["pagos_doctores_efectivo"],
         "fondo_inicial": resumen["fondo_inicial"],
     }
 
@@ -996,7 +970,6 @@ def cerrar_corte(tenant_id, usuario_id, *, fecha, sucursal_id,
     corte.total_otro = resumen["totales"]["otro"]
     corte.comision_tarjeta = resumen["comision_tarjeta"]
     corte.salidas_efectivo = resumen["salidas_efectivo"]
-    corte.pagos_doctores_efectivo = resumen["pagos_doctores_efectivo"]
     # Parte de la foto firmada, igual que los seis totales.
     corte.fondo_inicial = resumen["fondo_inicial"]
     corte.efectivo_contado = contado
@@ -1138,245 +1111,6 @@ def eliminar_salida(tenant_id, gasto_id, *, solo_de_usuario=None):
     db.session.commit()
 
 
-# ── Pagos a doctores desde la caja ──────────────────────────────────────────
-# Un pago a doctor que sale del cajón es un PagoDoctor normal con
-# `sale_de_caja=True`: una sola fila, contada una sola vez por la contabilidad,
-# que además el corte resta del efectivo esperado.
-
-TIPOS_PAGO_LIBRE = ("salario", "comision")
-
-# Mismo criterio que CONCEPTO_ENMASCARADO de las salidas: recepción ve el
-# doctor y el monto (sin ellos el corte no le cuadra) pero no el motivo de un
-# pago libre que registró alguien más.
-CONCEPTO_ENMASCARADO_PAGO = "Pago autorizado por administración"
-
-
-def doctores_activos(tenant_id):
-    """Doctores a los que se les puede pagar desde la caja."""
-    from app.ajustes.models import Especialista
-    return [
-        {"id": e.id, "nombre": e.nombre}
-        for e in Especialista.query.filter_by(
-            tenant_id=tenant_id, is_active=True,
-        ).order_by(Especialista.nombre).all()
-    ]
-
-
-def _especialista_del_tenant(tenant_id, especialista_id):
-    from app.ajustes.models import Especialista
-    esp = None
-    if especialista_id:
-        esp = Especialista.query.filter_by(
-            id=especialista_id, tenant_id=tenant_id).first()
-    if esp is None:
-        raise CajaError("Elige un doctor de la lista", codigo="doctor_invalido")
-    return esp
-
-
-def registrar_pago_doctor_libre(tenant_id, usuario_id, *, fecha, sucursal_id,
-                                especialista_id, tipo, concepto, monto):
-    """Pago a doctor que no liquida comisiones (adelanto, salario del día)."""
-    _especialista_del_tenant(tenant_id, especialista_id)
-    if tipo not in TIPOS_PAGO_LIBRE:
-        raise CajaError("Tipo de pago inválido", codigo="tipo_invalido")
-    concepto = (concepto or "").strip()
-    if not concepto:
-        raise CajaError("Escribe de qué fue el pago", codigo="concepto_requerido")
-    try:
-        importe = round(float(monto), 2)
-    except (TypeError, ValueError):
-        raise CajaError("El monto no es un número válido", codigo="monto_invalido")
-    if importe <= 0:
-        raise CajaError("El monto debe ser mayor a cero", codigo="monto_invalido")
-
-    pago = PagoDoctor(
-        tenant_id=tenant_id, fecha=fecha, especialista_id=especialista_id,
-        concepto=concepto[:200], tipo=tipo, monto=importe,
-        sale_de_caja=True, sucursal_id=sucursal_id, created_by=usuario_id,
-    )
-    db.session.add(pago)
-    db.session.commit()
-    return pago
-
-
-def pagar_comisiones_desde_caja(tenant_id, usuario_id, *, fecha, sucursal_id,
-                                especialista_id, ingreso_ids):
-    """Liquida comisiones pendientes con efectivo del cajón.
-
-    Las reglas son las mismas del admin (`app.edr.comisiones.liquidar`).
-    """
-    from app.edr import comisiones
-    try:
-        pago = comisiones.liquidar(
-            tenant_id, especialista_id=especialista_id, fecha=fecha,
-            ingreso_ids=ingreso_ids, sale_de_caja=True,
-            sucursal_id=sucursal_id, created_by=usuario_id,
-        )
-    except comisiones.ComisionError as exc:
-        db.session.rollback()
-        raise CajaError(exc.mensaje, codigo=exc.codigo)
-    db.session.commit()
-    return pago
-
-
-def _filas_comisiones(pago):
-    filas = []
-    for liq in sorted(pago.comisiones_liquidadas, key=lambda l: l.id):
-        ing = liq.ingreso
-        filas.append({
-            "ingreso_id": liq.ingreso_id,
-            "fecha": ing.fecha.isoformat() if ing else None,
-            "paciente": (ing.paciente if ing else None) or "Paciente",
-            "nombre_tratamiento": (ing.nombre_tratamiento if ing else None)
-                or "Tratamiento",
-            "monto": round(float(liq.monto or 0), 2),
-        })
-    return filas
-
-
-def serializar_pago_doctor(pago, *, propia=True):
-    """Una fila de la lista de pagos del día."""
-    comisiones = _filas_comisiones(pago)
-    concepto = pago.concepto
-    if not propia and not comisiones:
-        concepto = CONCEPTO_ENMASCARADO_PAGO
-    return {
-        "id": pago.id,
-        "especialista_id": pago.especialista_id,
-        "especialista_nombre": pago.especialista.nombre if pago.especialista else "—",
-        "tipo": pago.tipo,
-        "concepto": concepto,
-        "monto": round(float(pago.monto or 0), 2),
-        "descuento_saldo": round(float(pago.descuento_saldo or 0), 2),
-        "propia": propia,
-        "comisiones": comisiones,
-    }
-
-
-def _pagos_doctores_del_dia(tenant_id, sucursal_id, fecha):
-    return PagoDoctor.query.options(
-        joinedload(PagoDoctor.especialista),
-        selectinload(PagoDoctor.comisiones_liquidadas).joinedload(
-            PagoComisionIngreso.ingreso),
-    ).filter(
-        PagoDoctor.tenant_id == tenant_id,
-        PagoDoctor.fecha == fecha,
-        PagoDoctor.sale_de_caja.is_(True),
-        _filtro_sucursal(PagoDoctor.sucursal_id, sucursal_id,
-                         separa=sucursal_separa_cajas(tenant_id)),
-    ).order_by(PagoDoctor.id).all()
-
-
-def listar_pagos_doctores(tenant_id, sucursal_id, fecha, *, enmascarar_para=None):
-    """Pagos a doctores que salieron de esta caja este día.
-
-    `enmascarar_para` es el id de quien no es admin: ve TODOS los pagos —si no,
-    su corte no cuadraría— pero el concepto de los pagos libres ajenos se
-    sustituye. El detalle de comisiones sí se ve: son pacientes que ella misma
-    cobró.
-    """
-    return [
-        serializar_pago_doctor(
-            p, propia=enmascarar_para is None or p.created_by == enmascarar_para)
-        for p in _pagos_doctores_del_dia(tenant_id, sucursal_id, fecha)
-    ]
-
-
-def eliminar_pago_doctor(tenant_id, pago_id, *, solo_de_usuario=None):
-    """Borra un pago hecho desde la caja. Sus comisiones vuelven a pendientes."""
-    from app.edr import comisiones
-    pago = PagoDoctor.query.filter_by(
-        id=pago_id, tenant_id=tenant_id, sale_de_caja=True,
-    ).first()
-    if pago is None:
-        raise CajaError("Pago no encontrado", codigo="no_encontrado")
-    if solo_de_usuario is not None and pago.created_by != solo_de_usuario:
-        raise CajaError("Ese pago no es tuyo", codigo="ajena")
-    ligas = PagoComisionIngreso.query.filter_by(
-        pago_id=pago.id, tenant_id=tenant_id).all()
-    for liq in ligas:
-        comisiones.despagar_reversiones(tenant_id, liq.ingreso_id)
-        db.session.delete(liq)
-    db.session.delete(pago)
-    db.session.commit()
-
-
-def comisiones_pendientes_de_doctor(tenant_id, especialista_id):
-    """Pendientes de UN doctor, de todas las sucursales, con lo mínimo para
-    elegir qué pagar: al doctor se le debe sin importar dónde atendió."""
-    from app.edr import comisiones
-    esp = _especialista_del_tenant(tenant_id, especialista_id)
-    datos = comisiones.pendientes(tenant_id, especialista_id=esp.id)
-    doc = next((d for d in datos["doctores"]
-                if d["especialista_id"] == esp.id), None)
-    campos = ("ingreso_id", "fecha", "paciente", "nombre_tratamiento",
-              "comision_doctor")
-    return {
-        "especialista_id": esp.id,
-        "especialista_nombre": esp.nombre,
-        "saldo_negativo": doc["saldo_negativo"] if doc else 0.0,
-        "total_pendiente": doc["total_pendiente"] if doc else 0.0,
-        "comisiones": [{k: c[k] for k in campos}
-                       for c in (doc["comisiones"] if doc else [])],
-    }
-
-
-def comprobante_pago_doctor(tenant_id, pago_id, *, enmascarar_para=None):
-    """Payload para el agente de impresión (contrato de ticket-simple).
-
-    El agente solo pinta filas nombre→monto y recorta montos negativos a cero,
-    así que: nada en $0.00, el doctor va como prefijo de la primera línea, y el
-    saldo aplicado se explica en `pie`. `titulo`, `firma` y `pie` los ignora
-    el agente actual (ver print-agent/CAMBIOS_COMPROBANTE_PAGO_DOCTOR.txt).
-
-    `enmascarar_para`: mismo criterio que `serializar_pago_doctor` — solo un
-    pago libre (sin comisiones ligadas) ajeno a quien pregunta se enmascara.
-    """
-    from app.auth.models import Tenant
-    from app.configuracion.logo import logo_b64
-    from app.facturacion.models import ConfiguracionFiscal
-
-    pago = PagoDoctor.query.filter_by(
-        id=pago_id, tenant_id=tenant_id, sale_de_caja=True,
-    ).first()
-    if pago is None:
-        raise CajaError("Pago no encontrado", codigo="no_encontrado")
-
-    doctor = pago.especialista.nombre if pago.especialista else "Doctor"
-    filas = _filas_comisiones(pago)
-    if filas:
-        conceptos = [{"nombre": f"{f['paciente']} · {f['nombre_tratamiento']}",
-                      "monto": f["monto"]} for f in filas]
-    else:
-        concepto = pago.concepto or "Pago"
-        if enmascarar_para is not None and pago.created_by != enmascarar_para:
-            concepto = CONCEPTO_ENMASCARADO_PAGO
-        conceptos = [{"nombre": concepto,
-                      "monto": round(float(pago.monto or 0), 2)}]
-    conceptos[0]["nombre"] = f"{doctor} · {conceptos[0]['nombre']}"
-
-    pie = f"Registró: {pago.autor.name}" if pago.autor else ""
-    if pago.descuento_saldo:
-        extra = f"Saldo aplicado: ${pago.descuento_saldo:,.2f}"
-        pie = f"{pie} · {extra}" if pie else extra
-
-    cfg = ConfiguracionFiscal.query.filter_by(tenant_id=tenant_id).first()
-    tenant = db.session.get(Tenant, tenant_id)
-    return {
-        "facturable": False,
-        "logo": logo_b64(tenant_id),
-        "empresa": (cfg.razon_social if cfg and cfg.razon_social
-                    else (tenant.name if tenant else "")),
-        "sucursal": pago.sucursal.nombre if pago.sucursal else None,
-        "fecha": pago.fecha.isoformat(),
-        "conceptos": conceptos,
-        "total": round(float(pago.monto or 0), 2),
-        "titulo": "PAGO A DOCTOR",
-        "firma": f"Recibí conforme: {doctor}",
-        "pie": pie,
-    }
-
-
 def historico(tenant_id, desde, hasta, solo_sucursal=None):
     """Una fila por (fecha, sucursal) con movimientos en el rango.
 
@@ -1423,20 +1157,6 @@ def historico(tenant_id, desde, hasta, solo_sucursal=None):
         *filtro_suc_gas,
     ).group_by(GastoOperativo.fecha, GastoOperativo.sucursal_id).all()
 
-    filtro_suc_pag = (
-        [] if solo_sucursal is None
-        else [PagoDoctor.sucursal_id == solo_sucursal]
-    )
-    pagos_doc = db.session.query(
-        PagoDoctor.fecha, PagoDoctor.sucursal_id,
-        func.sum(PagoDoctor.monto),
-    ).filter(
-        PagoDoctor.tenant_id == tenant_id,
-        PagoDoctor.fecha >= desde, PagoDoctor.fecha <= hasta,
-        PagoDoctor.sale_de_caja.is_(True),
-        *filtro_suc_pag,
-    ).group_by(PagoDoctor.fecha, PagoDoctor.sucursal_id).all()
-
     dias = {}
 
     def _dia(fecha, suc_id):
@@ -1452,7 +1172,6 @@ def historico(tenant_id, desde, hasta, solo_sucursal=None):
                 "total_efectivo": 0.0, "total_tarjeta": 0.0,
                 "total_transferencia": 0.0, "total_otro": 0.0,
                 "comision_tarjeta": 0.0, "salidas_efectivo": 0.0,
-                "pagos_doctores_efectivo": 0.0,
                 "sin_clasificar_monto": 0.0,
             }
         return dias[clave]
@@ -1469,9 +1188,6 @@ def historico(tenant_id, desde, hasta, solo_sucursal=None):
 
     for fecha, suc_id, monto in salidas:
         _dia(fecha, suc_id)["salidas_efectivo"] += float(monto or 0)
-
-    for fecha, suc_id, monto in pagos_doc:
-        _dia(fecha, suc_id)["pagos_doctores_efectivo"] += float(monto or 0)
 
     # Una sola consulta para todo el rango, no una por día: es la misma razón
     # por la que este reporte no llama a resumen_dia. `setdefault` conserva el
@@ -1519,7 +1235,7 @@ def historico(tenant_id, desde, hasta, solo_sucursal=None):
     for clave, d in dias.items():
         for k in ("total_efectivo", "total_tarjeta", "total_transferencia",
                   "total_otro", "comision_tarjeta", "salidas_efectivo",
-                  "pagos_doctores_efectivo", "sin_clasificar_monto"):
+                  "sin_clasificar_monto"):
             d[k] = round(d[k], 2)
 
         # El fondo entra en el esperado también aquí. Sin esto, el delta contra
@@ -1529,8 +1245,7 @@ def historico(tenant_id, desde, hasta, solo_sucursal=None):
         # misma clave contra la congelada.
         d["fondo_inicial"] = fondos.get(clave, 0.0)
         vivo_esperado = round(d["fondo_inicial"] + d["total_efectivo"]
-                              - d["salidas_efectivo"]
-                              - d["pagos_doctores_efectivo"], 2)
+                              - d["salidas_efectivo"], 2)
         corte = cortes.get(clave)
 
         if corte is None or not corte.cerrado:
@@ -1564,7 +1279,6 @@ def historico(tenant_id, desde, hasta, solo_sucursal=None):
                 "total_otro": corte.total_otro,
                 "comision_tarjeta": corte.comision_tarjeta,
                 "salidas_efectivo": corte.salidas_efectivo,
-                "pagos_doctores_efectivo": corte.pagos_doctores_efectivo,
                 "fondo_inicial": corte.fondo_inicial,
                 "total_dia": corte.total_dia,
                 "esperado_efectivo": corte.esperado_efectivo,

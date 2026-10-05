@@ -51,6 +51,11 @@ _RECEP_RULES = [
     ("POST", r"/api/v1/crm/sugerencias-edr/vincular"),
     ("GET", r"/api/v1/crm/resumen"),
     ("GET", r"/api/v1/crm/config"),
+    # Odontograma: recepción ve, asigna y marca realizado lo que dicta el
+    # doctor. Corregir, desasignar y cambiar estado de un diente son del admin.
+    ("GET", r"/api/v1/crm/pacientes/\d+/odontograma"),
+    ("POST", r"/api/v1/crm/pacientes/\d+/odontograma/asignaciones"),
+    ("POST", r"/api/v1/crm/pacientes/\d+/odontograma/asignaciones/\d+/realizar"),
     # Cobranza: recepcion puede consultar, capturar/enviar cotizaciones y
     # registrar cobros. Aprobar, cancelar, borrar y reintentar facturacion
     # permanecen fuera de la allowlist.
@@ -76,16 +81,6 @@ _RECEP_RULES = [
     ("GET", r"/api/v1/caja/salidas"),
     ("POST", r"/api/v1/caja/salidas"),
     ("DELETE", r"/api/v1/caja/salidas/\d+"),
-    # Pagos a doctores desde el cajón: registra, consulta, borra los suyos
-    # (el servicio lo limita) e imprime el comprobante. Las rutas de admin
-    # (/edr/pagos-doctores, /edr/comisiones) siguen FUERA.
-    ("GET", r"/api/v1/caja/doctores"),
-    ("GET", r"/api/v1/caja/pagos-doctores"),
-    ("POST", r"/api/v1/caja/pagos-doctores"),
-    ("POST", r"/api/v1/caja/pagos-doctores/comisiones"),
-    ("DELETE", r"/api/v1/caja/pagos-doctores/\d+"),
-    ("GET", r"/api/v1/caja/pagos-doctores/\d+/comprobante"),
-    ("GET", r"/api/v1/caja/comisiones-pendientes"),
 ]
 RECEPCIONISTA_ALLOWLIST = [(m, re.compile("^" + p + "/?$")) for m, p in _RECEP_RULES]
 

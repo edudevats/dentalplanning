@@ -249,6 +249,12 @@ def crm_importar():
     return render_template("crm/importar.html", crm_screen="importar")
 
 
+@frontend_bp.route("/crm/pacientes/<int:paciente_id>/odontograma")
+def crm_odontograma(paciente_id):
+    return render_template("crm/odontograma.html", crm_screen="kanban",
+                           paciente_id=paciente_id)
+
+
 @frontend_bp.route("/cotizaciones")
 def cobranza_cotizaciones():
     return render_template(

@@ -60,3 +60,45 @@ class CrmConfigSchema(Schema):
     meses_inactividad = fields.Int(
         required=True, validate=validate.Range(min=1, max=60)
     )
+
+
+class DienteAsignarSchema(Schema):
+    class Meta:
+        unknown = EXCLUDE
+
+    numero = fields.Int(required=True)
+    caras = fields.List(fields.Str(), load_default=None, allow_none=True)
+
+
+class AsignarSchema(Schema):
+    class Meta:
+        unknown = EXCLUDE
+
+    origen_tipo = fields.Str(required=True, validate=validate.OneOf(("concepto", "ingreso")))
+    origen_id = fields.Int(required=True)
+    dientes = fields.List(fields.Nested(DienteAsignarSchema), required=True,
+                          validate=validate.Length(min=1))
+
+
+class RealizarSchema(Schema):
+    class Meta:
+        unknown = EXCLUDE
+
+    fecha = fields.Date(load_default=None, allow_none=True)
+
+
+class CorregirAsignacionSchema(Schema):
+    class Meta:
+        unknown = EXCLUDE
+
+    numero = fields.Int()
+    caras = fields.List(fields.Str(), allow_none=True)
+    fecha_realizado = fields.Date(allow_none=True)
+
+
+class EstadoDienteSchema(Schema):
+    class Meta:
+        unknown = EXCLUDE
+
+    estado = fields.Str(required=True)
+    fecha = fields.Date(load_default=None, allow_none=True)

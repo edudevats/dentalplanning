@@ -7,8 +7,7 @@ from marshmallow import ValidationError
 from app.caja import services
 from app.caja.models import CorteCaja
 from app.caja.schemas import (
-    CierreSchema, CorreccionDiaSchema, PagoComisionesCajaSchema,
-    PagoDoctorLibreSchema, ReaperturaSchema, SalidaSchema, TurnoSchema,
+    CierreSchema, CorreccionDiaSchema, ReaperturaSchema, SalidaSchema, TurnoSchema,
 )
 from app.middleware.tenant import require_auth, require_role
 
@@ -139,7 +138,6 @@ def _dump_corte(corte):
         "neto_tarjeta": corte.neto_tarjeta,
         "total_dia": corte.total_dia,
         "salidas_efectivo": corte.salidas_efectivo,
-        "pagos_doctores_efectivo": corte.pagos_doctores_efectivo,
         "esperado_efectivo": corte.esperado_efectivo,
         "efectivo_contado": corte.efectivo_contado,
         "diferencia": corte.diferencia,
@@ -164,10 +162,6 @@ def ver_corte():
 
     resumen = services.resumen_dia(g.tenant_id, sucursal_id, fecha)
     resumen["salidas"] = services.listar_salidas(
-        g.tenant_id, sucursal_id, fecha,
-        enmascarar_para=g.current_user.id if _rol_restringido() else None,
-    )
-    resumen["pagos_doctores"] = services.listar_pagos_doctores(
         g.tenant_id, sucursal_id, fecha,
         enmascarar_para=g.current_user.id if _rol_restringido() else None,
     )
@@ -387,8 +381,6 @@ def detalle_corte(corte_id):
         "ingresos": vivo["ingresos"],
         "salidas": services.listar_salidas(
             g.tenant_id, corte.sucursal_id, corte.fecha),
-        "pagos_doctores": services.listar_pagos_doctores(
-            g.tenant_id, corte.sucursal_id, corte.fecha),
         "movimientos_posteriores": movidos,
         "delta_efectivo": delta,
         "eventos": [{
@@ -483,153 +475,3 @@ def borrar_salida(gasto_id):
     except services.CajaError as exc:
         return _error(exc)
     return jsonify({"message": "Salida eliminada"})
-
-
-# ── Pagos a doctores desde la caja ──────────────────────────────────────────
-
-def _candados_de_captura(sucursal_id, fecha):
-    """Mismo orden que en salidas: el día primero, luego el turno."""
-    es_admin = g.current_user.role == "admin"
-    services.exigir_dia_abierto(g.tenant_id, sucursal_id, fecha,
-                                es_admin=es_admin)
-    services.exigir_turno_abierto(g.tenant_id, g.current_user, fecha,
-                                  sucursal_id, es_admin=es_admin)
-
-
-def _sucursal_del_pago(sucursal_id):
-    """La sucursal con la que nace el pago.
-
-    Con una sola sucursal la pantalla no manda ninguna (no muestra selector);
-    `resolver_sucursal_del_turno` la impone, igual que al abrir caja, para que
-    el comprobante diga de qué sucursal salió el dinero.
-    """
-    _validar_sucursal(sucursal_id)
-    return services.resolver_sucursal_del_turno(g.tenant_id, sucursal_id)
-
-
-@caja_bp.route("/doctores", methods=["GET"])
-@require_auth
-@require_role("admin", "recepcionista", "asistente")
-def listar_doctores():
-    # Propia de la caja y no /ajustes/especialistas: un asistente con el
-    # recurso `caja` no tiene `ajustes`, y el modal de pago lo necesita.
-    return jsonify({"doctores": services.doctores_activos(g.tenant_id)})
-
-
-@caja_bp.route("/pagos-doctores", methods=["GET"])
-@require_auth
-@require_role("admin", "recepcionista", "asistente")
-def listar_pagos_doctores():
-    fecha = _fecha_arg()
-    if fecha is None:
-        return jsonify({"error": "Fecha inválida"}), 400
-    try:
-        sucursal_id = _sucursal_arg()
-    except _SucursalInvalida:
-        return jsonify({"error": "Sucursal inválida"}), 400
-    return jsonify({"pagos": services.listar_pagos_doctores(
-        g.tenant_id, sucursal_id, fecha,
-        enmascarar_para=g.current_user.id if _rol_restringido() else None,
-    )})
-
-
-@caja_bp.route("/comisiones-pendientes", methods=["GET"])
-@require_auth
-@require_role("admin", "recepcionista", "asistente")
-def comisiones_pendientes_de_doctor():
-    especialista_id = request.args.get("especialista_id", type=int)
-    try:
-        return jsonify(services.comisiones_pendientes_de_doctor(
-            g.tenant_id, especialista_id))
-    except services.CajaError as exc:
-        return _error(exc)
-
-
-@caja_bp.route("/pagos-doctores", methods=["POST"])
-@require_auth
-@require_role("admin", "recepcionista", "asistente")
-def crear_pago_doctor_libre():
-    try:
-        data = PagoDoctorLibreSchema().load(request.get_json() or {})
-    except ValidationError as err:
-        return jsonify({"error": "Datos inválidos", "detalles": err.messages}), 400
-    try:
-        sucursal_id = _sucursal_del_pago(data["sucursal_id"])
-    except _SucursalInvalida:
-        return jsonify({"error": "Sucursal inválida"}), 400
-    except services.CajaError as exc:
-        return _error(exc)
-    try:
-        _candados_de_captura(sucursal_id, data["fecha"])
-        pago = services.registrar_pago_doctor_libre(
-            g.tenant_id, g.current_user.id, fecha=data["fecha"],
-            sucursal_id=sucursal_id, especialista_id=data["especialista_id"],
-            tipo=data["tipo"], concepto=data["concepto"], monto=data["monto"],
-        )
-    except services.CajaError as exc:
-        return _error(exc)
-    return jsonify(services.serializar_pago_doctor(pago)), 201
-
-
-@caja_bp.route("/pagos-doctores/comisiones", methods=["POST"])
-@require_auth
-@require_role("admin", "recepcionista", "asistente")
-def crear_pago_doctor_comisiones():
-    try:
-        data = PagoComisionesCajaSchema().load(request.get_json() or {})
-    except ValidationError as err:
-        return jsonify({"error": "Datos inválidos", "detalles": err.messages}), 400
-    try:
-        sucursal_id = _sucursal_del_pago(data["sucursal_id"])
-    except _SucursalInvalida:
-        return jsonify({"error": "Sucursal inválida"}), 400
-    except services.CajaError as exc:
-        return _error(exc)
-    try:
-        _candados_de_captura(sucursal_id, data["fecha"])
-        pago = services.pagar_comisiones_desde_caja(
-            g.tenant_id, g.current_user.id, fecha=data["fecha"],
-            sucursal_id=sucursal_id, especialista_id=data["especialista_id"],
-            ingreso_ids=data["ingreso_ids"],
-        )
-    except services.CajaError as exc:
-        return _error(exc)
-    return jsonify(services.serializar_pago_doctor(pago)), 201
-
-
-@caja_bp.route("/pagos-doctores/<int:pago_id>", methods=["DELETE"])
-@require_auth
-@require_role("admin", "recepcionista", "asistente")
-def borrar_pago_doctor(pago_id):
-    from app.edr.models import PagoDoctor
-    pago = PagoDoctor.query.filter_by(
-        id=pago_id, tenant_id=g.tenant_id, sale_de_caja=True).first()
-    if pago is not None:
-        try:
-            services.exigir_dia_abierto(
-                g.tenant_id, pago.sucursal_id, pago.fecha,
-                es_admin=g.current_user.role == "admin",
-            )
-        except services.CajaError as exc:
-            return _error(exc)
-    try:
-        services.eliminar_pago_doctor(
-            g.tenant_id, pago_id,
-            solo_de_usuario=g.current_user.id if _rol_restringido() else None,
-        )
-    except services.CajaError as exc:
-        return _error(exc)
-    return jsonify({"message": "Pago eliminado"})
-
-
-@caja_bp.route("/pagos-doctores/<int:pago_id>/comprobante", methods=["GET"])
-@require_auth
-@require_role("admin", "recepcionista", "asistente")
-def comprobante_pago_doctor(pago_id):
-    try:
-        return jsonify(services.comprobante_pago_doctor(
-            g.tenant_id, pago_id,
-            enmascarar_para=g.current_user.id if _rol_restringido() else None,
-        ))
-    except services.CajaError as exc:
-        return _error(exc)

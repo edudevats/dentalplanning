@@ -58,54 +58,43 @@ function render() {
     'Neto al banco: ' + fmt(resumen.neto_tarjeta);
   document.getElementById('stat-transferencia').textContent =
     fmt(resumen.totales.transferencia);
-  document.getElementById('stat-total-dia').textContent = fmt(resumen.total_dia);
-
-  // Desglose: la misma resta que services.resumen_dia, de arriba abajo.
-  document.getElementById('desglose-efectivo').textContent = fmt(resumen.totales.efectivo);
   document.getElementById('stat-salidas').textContent = fmt(resumen.salidas_efectivo);
-  document.getElementById('stat-pagos-doctores').textContent =
-    fmt(resumen.pagos_doctores_efectivo);
-  document.getElementById('stat-esperado').textContent = fmt(resumen.esperado_efectivo);
-  // `a_entregar` y NO `esperado_efectivo`: el fondo se queda en el cajón.
+  // `a_entregar` y NO `esperado_efectivo`: desde que el fondo entra en el
+  // esperado (services.resumen_dia), el esperado incluye el fondo, y el fondo
+  // se queda en el cajón para mañana. Lo que se entrega es lo otro.
   document.getElementById('stat-entregar').textContent = fmt(resumen.a_entregar);
+  // La leyenda no cambia con el fondo a propósito: la resta que describe "a
+  // entregar" es la misma (el fondo entra y sale). Lo que cambió es el dato de
+  // arriba.
+  document.getElementById('leyenda-entregar').textContent =
+    'cobrado ' + fmt(resumen.totales.efectivo) + ' − gastado ' + fmt(resumen.salidas_efectivo);
 
-  // El fondo solo se menciona cuando existe, salvo para quien puede
+  // El fondo solo se menciona cuando existe —en una caja sin fondo la línea
+  // sería ruido permanente en la pantalla más usada—, salvo para quien puede
   // corregirlo: un fondo en cero es justo el caso que vino a arreglar.
-  const muestraFondo = CorteUX.muestraLeyendaFondo(resumen);
-  document.getElementById('leyenda-fondo').style.display = muestraFondo ? '' : 'none';
-  document.getElementById('leyenda-entregar').style.display = muestraFondo ? '' : 'none';
+  document.getElementById('leyenda-fondo').style.display =
+    CorteUX.muestraLeyendaFondo(resumen) ? '' : 'none';
   document.getElementById('stat-fondo').textContent = fmt(resumen.fondo_inicial);
-  // Quién puede corregir lo decide el servidor (`puede_corregir_dia`).
+  // Quién puede corregir lo decide el servidor (`puede_corregir_dia`): repetir
+  // aquí las tres condiciones sería una copia que se desincroniza a la primera.
+  // `inline-flex` y no `''`: el botón nace con `display:none` en el marcado.
   document.getElementById('btn-corregir-dia').style.display =
     resumen.puede_corregir_dia ? 'inline-flex' : 'none';
 
+  // "Otro" solo se asoma cuando hay algo que asomar (ver #aviso-otro en la
+  // plantilla). `hidden` sí está en el marcado inicial de ese div y el div no
+  // trae ninguna utilidad de display que le compita, así que el toggle basta
+  // —medido con getComputedStyle: none → block al quitarla, none al reponerla—.
   const otro = Number(resumen.totales.otro || 0);
   document.getElementById('stat-otro').textContent = fmt(otro);
   document.getElementById('aviso-otro').classList.toggle('hidden', otro === 0);
 
   renderSinClasificar();
   renderSalidas();
-  renderPagosDoctores();
   renderIngresos();
   renderEstadoCierre();
   renderCierre();
   lucide.createIcons();
-}
-
-// Botón de solo icono para las filas: 40×40 de área táctil, etiqueta
-// accesible y foco visible. Sus clases están en el safelist de la plantilla.
-function botonIcono(icono, etiqueta, alClic, peligro) {
-  const btn = domEl('button',
-    'inline-flex items-center justify-center h-10 w-10 rounded-lg text-text-muted transition-colors cursor-pointer ' +
-    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-300 ' +
-    (peligro ? 'hover:bg-danger-50 hover:text-danger-600'
-             : 'hover:bg-surface-hover hover:text-text-primary'));
-  btn.type = 'button';
-  btn.title = etiqueta;
-  btn.setAttribute('aria-label', etiqueta);
-  btn.appendChild(domIcon(icono));
-  btn.addEventListener('click', alClic);
-  return btn;
 }
 
 // Lista de ingresos sin método de pago: son efectivo que nadie está contando
@@ -131,7 +120,13 @@ function renderSalidas() {
     { key: 'monto', label: 'Monto', align: 'right', render: v => domEl('span', 'tabular-nums font-medium', fmt(v)) },
     { key: 'id', label: '', align: 'right', render: (id, row) => {
       if (!row.propia || resumen.estado === 'cerrado') return '';
-      return botonIcono('trash-2', 'Eliminar salida', () => abrirEliminarSalida(id), true);
+      const btn = domEl('button', 'rounded-lg p-1.5 text-text-muted hover:bg-danger-50 hover:text-danger-600 transition-colors cursor-pointer');
+      btn.type = 'button';
+      btn.title = 'Eliminar salida';
+      btn.setAttribute('aria-label', 'Eliminar salida');
+      btn.appendChild(domIcon('trash-2'));
+      btn.addEventListener('click', () => abrirEliminarSalida(id));
+      return btn;
     } },
   ];
   renderTable('tabla-salidas', cols, resumen.salidas || [], 'Sin salidas registradas hoy', false);
@@ -164,414 +159,15 @@ async function confirmarEliminarSalida() {
   }
 }
 
-// ── Pagos a doctores: lista del día ─────────────────────────────────────────
-// Lista propia y no renderTable: un pago de comisiones se despliega para ver
-// qué pacientes cubrió, y renderTable no tiene filas expandibles.
-function tipoPagoBadge(p) {
-  const esSalario = p.tipo === 'salario';
-  const texto = (p.comisiones && p.comisiones.length)
-    ? 'Comisiones' : (esSalario ? 'Salario' : 'Comisión');
-  return domEl('span',
-    'inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ' +
-    (esSalario ? 'bg-accent-50 text-accent-700' : 'bg-primary-50 text-primary-700'),
-    texto);
-}
-
-function renderPagosDoctores() {
-  const cont = document.getElementById('tabla-pagos-doctores');
-  cont.replaceChildren();
-  const pagos = resumen.pagos_doctores || [];
-  if (!pagos.length) {
-    cont.appendChild(domEl('p', 'text-sm text-text-muted font-body py-6 text-center',
-      'Sin pagos a doctores hoy'));
-    return;
-  }
-  const ul = domEl('ul', 'divide-y divide-border');
-  pagos.forEach(p => {
-    const li = domEl('li', 'py-3 first:pt-0');
-    const fila = domEl('div', 'flex items-start gap-3');
-
-    const info = domEl('div', 'flex-1 min-w-0');
-    const titulo = domEl('div', 'flex items-center gap-2 flex-wrap');
-    titulo.appendChild(domEl('span', 'text-sm font-medium text-text-primary font-body',
-      p.especialista_nombre));
-    titulo.appendChild(tipoPagoBadge(p));
-    info.appendChild(titulo);
-    if (p.concepto) {
-      info.appendChild(domEl('p', 'text-xs text-text-secondary font-body truncate', p.concepto));
-    }
-    if (p.comisiones && p.comisiones.length) {
-      const det = domEl('details', 'mt-1');
-      const n = p.comisiones.length;
-      det.appendChild(domEl('summary',
-        'text-xs text-primary-600 hover:text-primary-700 cursor-pointer font-body',
-        'Ver ' + n + (n === 1 ? ' paciente' : ' pacientes')));
-      const lista = domEl('ul', 'mt-1 space-y-0.5 text-xs text-text-secondary font-body');
-      p.comisiones.forEach(c => {
-        const item = domEl('li', 'flex justify-between gap-3');
-        item.appendChild(domEl('span', 'truncate', c.paciente + ' · ' + c.nombre_tratamiento));
-        item.appendChild(domEl('span', 'tabular-nums shrink-0', fmt(c.monto)));
-        lista.appendChild(item);
-      });
-      if (p.descuento_saldo) {
-        lista.appendChild(domEl('li', 'text-warning-700',
-          'Saldo aplicado: −' + fmt(p.descuento_saldo)));
-      }
-      det.appendChild(lista);
-      info.appendChild(det);
-    }
-    fila.appendChild(info);
-
-    fila.appendChild(domEl('span',
-      'text-sm font-semibold tabular-nums text-text-primary font-body shrink-0 pt-2',
-      fmt(p.monto)));
-
-    const acciones = domEl('div', 'flex items-center shrink-0');
-    acciones.appendChild(botonIcono('printer', 'Reimprimir comprobante',
-      () => imprimirComprobantePago(p.id)));
-    // `propia` ya es true para el admin (el servidor no le enmascara nada).
-    if (p.propia && resumen.estado !== 'cerrado') {
-      acciones.appendChild(botonIcono('trash-2', 'Eliminar pago',
-        () => abrirEliminarPago(p.id), true));
-    }
-    fila.appendChild(acciones);
-    li.appendChild(fila);
-    ul.appendChild(li);
-  });
-  cont.appendChild(ul);
-}
-
-async function imprimirComprobantePago(id) {
-  // Separado en dos try: un 404/403 del servidor (pago ajeno, no encontrado)
-  // no es lo mismo que el agente de impresión apagado, y mezclarlos en un
-  // solo catch le echaba la culpa al agente por errores del servidor.
-  let payload;
-  try {
-    payload = await API.get('/caja/pagos-doctores/' + id + '/comprobante');
-  } catch (e) {
-    Toast.warning(e.message || 'No se pudo obtener el comprobante');
-    return;
-  }
-  try {
-    await PrintAgent.print(payload);
-  } catch (e) {
-    Toast.warning('No se pudo imprimir (¿agente de impresión encendido?)');
-  }
-}
-
-let pagoAEliminarId = null;
-
-function abrirEliminarPago(id) {
-  pagoAEliminarId = id;
-  Modal.open('modal-eliminar-pago');
-}
-
-async function confirmarEliminarPago() {
-  const btn = document.getElementById('btn-confirmar-eliminar-pago');
-  const txt = document.getElementById('texto-confirmar-eliminar-pago');
-  if (btn.disabled || pagoAEliminarId === null) return;
-  btn.disabled = true;
-  txt.textContent = 'Eliminando…';
-  try {
-    await API.delete('/caja/pagos-doctores/' + pagoAEliminarId);
-    Toast.success('Pago eliminado');
-    Modal.close('modal-eliminar-pago');
-    pagoAEliminarId = null;
-    await cargarResumen();
-  } catch (e) {
-    Toast.warning(e.message || 'No se pudo eliminar el pago');
-  } finally {
-    btn.disabled = false;
-    txt.textContent = 'Eliminar';
-  }
-}
-
-// ── Pagos a doctores: modal "Pagar a doctor" ────────────────────────────────
-let doctores = null;              // [{id, nombre}] de /caja/doctores; una vez por carga
-let pagoModo = 'comisiones';      // 'comisiones' | 'libre'
-let pendientes = null;            // respuesta de /caja/comisiones-pendientes
-let seleccionComisiones = new Set();
-let pagoEnviando = false;
-let pagoRegistradoId = null;
-
-async function abrirPagoDoctor() {
-  if (!resumen || resumen.estado === 'cerrado') return;
-  if (doctores === null) {
-    try {
-      doctores = (await API.get('/caja/doctores')).doctores || [];
-    } catch (e) {
-      Toast.error('No se pudo cargar la lista de doctores');
-      return;
-    }
-  }
-  pagoRegistradoId = null;
-  pendientes = null;
-  seleccionComisiones = new Set();
-  document.getElementById('f-pago-concepto').value = '';
-  document.getElementById('f-pago-monto').value = '';
-  document.getElementById('f-pago-tipo').value = 'salario';
-  document.getElementById('error-pago-doctor').style.display = 'none';
-  document.getElementById('error-pago-monto').style.display = 'none';
-  populateSelect(document.getElementById('f-pago-doctor'),
-    doctores.map(d => ({ value: String(d.id), label: d.nombre })), '', 'Elige un doctor');
-  mostrarPasoPago('captura');
-  cambiarModoPago('comisiones');
-  Modal.open('modal-pago-doctor');
-  setTimeout(() => document.getElementById('f-pago-doctor').focus(), 50);
-}
-
-function mostrarPasoPago(paso) {
-  const exito = paso === 'exito';
-  document.getElementById('pago-captura').style.display = exito ? 'none' : '';
-  document.getElementById('pago-footer-captura').style.display = exito ? 'none' : '';
-  document.getElementById('pago-exito').style.display = exito ? '' : 'none';
-  document.getElementById('pago-footer-exito').style.display = exito ? '' : 'none';
-  lucide.createIcons();
-}
-
-function cambiarModoPago(modo) {
-  pagoModo = modo;
-  document.querySelectorAll('.modo-pago').forEach(b => {
-    const activo = b.dataset.modo === modo;
-    b.classList.toggle('active', activo);
-    b.setAttribute('aria-checked', activo ? 'true' : 'false');
-  });
-  document.getElementById('panel-comisiones').style.display = modo === 'comisiones' ? '' : 'none';
-  document.getElementById('panel-libre').style.display = modo === 'libre' ? '' : 'none';
-  document.getElementById('error-pago-doctor').style.display = 'none';
-  if (modo === 'comisiones') {
-    cargarPendientes();
-  } else {
-    actualizarPago();
-  }
-}
-
-async function cargarPendientes() {
-  const selDoctor = document.getElementById('f-pago-doctor');
-  const estado = document.getElementById('comisiones-estado');
-  const pedido = selDoctor.value;
-  pendientes = null;
-  seleccionComisiones = new Set();
-  document.getElementById('comisiones-lista-wrap').style.display = 'none';
-  if (!pedido) {
-    estado.textContent = 'Elige un doctor para ver sus comisiones pendientes.';
-    actualizarPago();
-    return;
-  }
-  estado.textContent = 'Cargando comisiones…';
-  actualizarPago();
-  let data;
-  try {
-    data = await API.get('/caja/comisiones-pendientes?especialista_id=' + encodeURIComponent(pedido));
-  } catch (e) {
-    if (selDoctor.value !== pedido || pagoModo !== 'comisiones') return;
-    estado.replaceChildren(domEl('span', '', 'No se pudieron cargar las comisiones. '));
-    const reintentar = domEl('button', 'text-primary-600 hover:text-primary-700 font-medium cursor-pointer', 'Reintentar');
-    reintentar.type = 'button';
-    reintentar.addEventListener('click', cargarPendientes);
-    estado.appendChild(reintentar);
-    return;
-  }
-  // Si mientras cargaba se eligió otro doctor o se cambió de modo, esta
-  // respuesta ya no describe lo que está en pantalla.
-  if (selDoctor.value !== pedido || pagoModo !== 'comisiones') return;
-  pendientes = data;
-  seleccionComisiones = new Set((data.comisiones || []).map(c => String(c.ingreso_id)));
-  renderComisionesPendientes();
-  actualizarPago();
-}
-
-function renderComisionesPendientes() {
-  const estado = document.getElementById('comisiones-estado');
-  const wrap = document.getElementById('comisiones-lista-wrap');
-  const lista = document.getElementById('comisiones-lista');
-  lista.replaceChildren();
-  const coms = (pendientes && pendientes.comisiones) || [];
-  if (!coms.length) {
-    wrap.style.display = 'none';
-    estado.replaceChildren(domEl('span', '', 'No tiene comisiones pendientes. '));
-    const atajo = domEl('button', 'text-primary-600 hover:text-primary-700 font-medium cursor-pointer', 'Registrar un pago libre');
-    atajo.type = 'button';
-    atajo.addEventListener('click', () => cambiarModoPago('libre'));
-    estado.appendChild(atajo);
-    return;
-  }
-  estado.textContent = '';
-  wrap.style.display = '';
-  coms.forEach(c => {
-    const id = String(c.ingreso_id);
-    const li = domEl('li');
-    const label = domEl('label', 'flex items-center gap-3 px-4 py-2.5 text-sm font-body cursor-pointer hover:bg-surface-hover min-h-[44px]');
-    const cb = document.createElement('input');
-    cb.type = 'checkbox';
-    cb.className = 'h-4 w-4 accent-primary-600 shrink-0';
-    cb.checked = seleccionComisiones.has(id);
-    cb.addEventListener('change', () => {
-      if (cb.checked) seleccionComisiones.add(id); else seleccionComisiones.delete(id);
-      actualizarPago();
-    });
-    label.appendChild(cb);
-    const texto = domEl('span', 'flex-1 min-w-0');
-    texto.appendChild(domEl('span', 'block truncate text-text-primary', c.paciente));
-    texto.appendChild(domEl('span', 'block truncate text-xs text-text-secondary',
-      formatDate(c.fecha) + ' · ' + c.nombre_tratamiento));
-    label.appendChild(texto);
-    label.appendChild(domEl('span', 'tabular-nums font-medium text-text-primary shrink-0', fmt(c.comision_doctor)));
-    li.appendChild(label);
-    lista.appendChild(li);
-  });
-}
-
-// Única función que decide el estado del pie del modal: resumen, texto y
-// habilitado del botón, y aviso de efectivo.
-function actualizarPago() {
-  const btn = document.getElementById('btn-confirmar-pago');
-  const texto = document.getElementById('texto-confirmar-pago');
-  const resumenCom = document.getElementById('comisiones-resumen');
-  let ok = !!document.getElementById('f-pago-doctor').value && !pagoEnviando;
-  let neto = null;
-
-  if (pagoModo === 'comisiones') {
-    const r = pendientes
-      ? CorteUX.resumenPagoComisiones(pendientes.comisiones, Array.from(seleccionComisiones), pendientes.saldo_negativo)
-      : null;
-    resumenCom.style.display = r && r.cantidad ? '' : 'none';
-    if (r) {
-      document.getElementById('resumen-cantidad').textContent = r.cantidad;
-      document.getElementById('resumen-suma').textContent = fmt(r.suma);
-      document.getElementById('fila-descuento').style.display = r.descuento > 0 ? '' : 'none';
-      document.getElementById('resumen-descuento').textContent = '−' + fmt(r.descuento);
-      document.getElementById('resumen-neto').textContent = fmt(r.neto);
-      const total = (pendientes.comisiones || []).length;
-      const todas = document.getElementById('f-comisiones-todas');
-      todas.checked = total > 0 && r.cantidad === total;
-      todas.indeterminate = r.cantidad > 0 && r.cantidad < total;
-      if (r.cantidad) neto = r.neto;
-    }
-    ok = ok && !!r && r.cantidad > 0;
-  } else {
-    resumenCom.style.display = 'none';
-    const monto = CorteUX.normalizarMonto(document.getElementById('f-pago-monto').value);
-    const concepto = document.getElementById('f-pago-concepto').value.trim();
-    ok = ok && monto !== null && monto > 0 && !!concepto;
-    if (monto !== null && monto > 0) neto = monto;
-  }
-
-  if (!pagoEnviando) texto.textContent = CorteUX.textoBotonPago(neto);
-  btn.disabled = !ok;
-
-  const aviso = document.getElementById('aviso-pago-efectivo');
-  if (neto !== null && resumen && CorteUX.excedeEfectivo(resumen, neto)) {
-    aviso.textContent = 'En el cajón debería haber ' + fmt(resumen.esperado_efectivo) +
-      '. Verifica que alcance antes de entregar el dinero.';
-    aviso.style.display = '';
-  } else {
-    aviso.style.display = 'none';
-  }
-}
-
-// Error bajo el campo al salir de él, no mientras escribe.
-function validarMontoPago() {
-  const valor = document.getElementById('f-pago-monto').value;
-  const monto = CorteUX.normalizarMonto(valor);
-  document.getElementById('error-pago-monto').style.display =
-    valor.trim() && (monto === null || monto === 0) ? '' : 'none';
-}
-
-async function confirmarPagoDoctor(ev) {
-  if (ev) ev.preventDefault();
-  const btn = document.getElementById('btn-confirmar-pago');
-  if (pagoEnviando || btn.disabled) return;
-  const err = document.getElementById('error-pago-doctor');
-  err.style.display = 'none';
-
-  const base = {
-    fecha: todayLocalISO(),
-    sucursal_id: sucursalSel || null,
-    especialista_id: Number(document.getElementById('f-pago-doctor').value),
-  };
-  pagoEnviando = true;
-  btn.disabled = true;
-  document.getElementById('texto-confirmar-pago').textContent = 'Registrando…';
-  try {
-    let pago;
-    if (pagoModo === 'comisiones') {
-      pago = await API.post('/caja/pagos-doctores/comisiones', Object.assign({}, base, {
-        ingreso_ids: Array.from(seleccionComisiones).map(Number),
-      }));
-    } else {
-      pago = await API.post('/caja/pagos-doctores', Object.assign({}, base, {
-        tipo: document.getElementById('f-pago-tipo').value,
-        concepto: document.getElementById('f-pago-concepto').value.trim(),
-        monto: CorteUX.normalizarMonto(document.getElementById('f-pago-monto').value),
-      }));
-    }
-    pagoRegistradoId = pago.id;
-    document.getElementById('pago-exito-detalle').textContent =
-      fmt(pago.monto) + ' a ' + (pago.especialista_nombre || 'el doctor');
-    mostrarPasoPago('exito');
-    await cargarResumen();
-  } catch (e) {
-    err.textContent = e.message || 'No se pudo registrar el pago';
-    err.style.display = '';
-    // La comisión pudo haberla pagado alguien más mientras el modal estaba
-    // abierto: se recargan para que la lista diga la verdad.
-    if (pagoModo === 'comisiones') await cargarPendientes();
-  } finally {
-    pagoEnviando = false;
-    actualizarPago();
-  }
-}
-
-function engancharPagoDoctor() {
-  document.getElementById('btn-pagar-doctor').addEventListener('click', abrirPagoDoctor);
-  document.getElementById('f-pago-doctor').addEventListener('change', () => {
-    if (pagoModo === 'comisiones') cargarPendientes(); else actualizarPago();
-  });
-  document.querySelectorAll('.modo-pago').forEach(b =>
-    b.addEventListener('click', () => cambiarModoPago(b.dataset.modo)));
-  document.getElementById('f-comisiones-todas').addEventListener('change', e => {
-    if (!pendientes) return;
-    seleccionComisiones = e.target.checked
-      ? new Set((pendientes.comisiones || []).map(c => String(c.ingreso_id)))
-      : new Set();
-    renderComisionesPendientes();
-    actualizarPago();
-  });
-  ['f-pago-concepto', 'f-pago-monto', 'f-pago-tipo'].forEach(id =>
-    document.getElementById(id).addEventListener('input', actualizarPago));
-  document.getElementById('f-pago-monto').addEventListener('blur', validarMontoPago);
-  document.getElementById('form-pago-doctor').addEventListener('submit', confirmarPagoDoctor);
-  document.querySelectorAll('[data-cerrar-pago]').forEach(el =>
-    el.addEventListener('click', () => Modal.close('modal-pago-doctor')));
-  document.getElementById('btn-imprimir-pago').addEventListener('click', () => {
-    if (pagoRegistradoId) imprimirComprobantePago(pagoRegistradoId);
-  });
-}
-
-// Se decide abierto/plegado una sola vez: si ella lo abre o lo cierra, un
-// recálculo (p. ej. al registrar una salida) no se lo cambia.
-let ingresosPlegadoDecidido = false;
-
 // Ingresos del día: solo lectura aquí, se editan desde /ingresos.
 function renderIngresos() {
-  const filas = resumen.ingresos || [];
   const cols = [
     { key: 'paciente', label: 'Paciente', render: v => v || '—' },
     { key: 'concepto', label: 'Concepto', render: v => v || '—' },
     { key: 'metodo', label: 'Método', render: v => v || domEl('span', 'text-warning-600', 'Sin método') },
     { key: 'monto', label: 'Monto', align: 'right', render: v => domEl('span', 'tabular-nums font-medium', fmt(v)) },
   ];
-  renderTable('tabla-ingresos', cols, filas, 'Sin ingresos registrados hoy', false);
-
-  const total = filas.reduce((s, f) => s + Number(f.monto || 0), 0);
-  document.getElementById('ingresos-resumen').textContent =
-    filas.length + (filas.length === 1 ? ' ingreso' : ' ingresos') + ' · ' + fmt(total);
-  if (!ingresosPlegadoDecidido) {
-    document.getElementById('bloque-ingresos').open =
-      CorteUX.ingresosAbiertosPorDefecto(filas.length);
-    ingresosPlegadoDecidido = true;
-  }
+  renderTable('tabla-ingresos', cols, resumen.ingresos || [], 'Sin ingresos registrados hoy', false);
 }
 
 // El botón se habilita SOLO según CorteUX: una sola regla, probada aparte.
@@ -622,27 +218,13 @@ function renderCierre() {
   btnSalida.classList.toggle('opacity-50', cerrado);
   btnSalida.classList.toggle('cursor-not-allowed', cerrado);
 
-  // Mismo trato que "Nueva salida": con la caja cerrada no se paga a nadie.
-  const btnPago = document.getElementById('btn-pagar-doctor');
-  btnPago.style.display = cerrado ? 'none' : '';
-  btnPago.disabled = cerrado;
-
   if (cerrado && resumen.corte) {
     const c = resumen.corte;
-    const dl = document.getElementById('sello-detalle');
-    dl.replaceChildren();
-    const datos = [
-      ['Cerró', c.cerrado_por || '—'],
-      ['Fecha', c.cerrado_at ? formatDate(c.cerrado_at) : '—'],
-      ['Diferencia', fmt(c.diferencia)],
-    ];
-    if (c.comentario) datos.push(['Comentario', c.comentario]);
-    datos.forEach(([etiqueta, valor]) => {
-      const div = domEl('div', 'min-w-0');
-      div.appendChild(domEl('dt', 'text-xs text-accent-700 font-body', etiqueta));
-      div.appendChild(domEl('dd', 'text-sm font-medium text-text-primary font-body break-words', valor));
-      dl.appendChild(div);
-    });
+    document.getElementById('sello-texto').textContent =
+      'Cerró: ' + (c.cerrado_por || '—') +
+      (c.cerrado_at ? ' · ' + formatDate(c.cerrado_at) : '') +
+      ' · Diferencia: ' + fmt(c.diferencia) +
+      (c.comentario ? ' · ' + c.comentario : '');
   }
 }
 
@@ -650,25 +232,13 @@ function abrirNuevaSalida() {
   document.getElementById('f-salida-concepto').value = '';
   document.getElementById('f-salida-monto').value = '';
   Modal.open('modal-salida');
-  setTimeout(() => document.getElementById('f-salida-concepto').focus(), 50);
 }
 
-let salidaEnviando = false;
-
-async function guardarSalida(ev) {
-  if (ev) ev.preventDefault();
-  if (salidaEnviando) return;
+async function guardarSalida() {
   const concepto = document.getElementById('f-salida-concepto').value.trim();
   const monto = CorteUX.normalizarMonto(document.getElementById('f-salida-monto').value);
   if (!concepto) { Toast.warning('Escribe de qué fue la salida'); return; }
   if (monto === null || monto === 0) { Toast.warning('El monto debe ser mayor a cero'); return; }
-  // Sin este candado, un doble clic (o Enter dos veces) sobre una respuesta
-  // lenta registraba la misma salida dos veces.
-  const btn = document.getElementById('btn-guardar-salida');
-  const txt = document.getElementById('texto-guardar-salida');
-  salidaEnviando = true;
-  btn.disabled = true;
-  txt.textContent = 'Guardando…';
   try {
     await API.post('/caja/salidas', {
       fecha: todayLocalISO(), concepto_nombre: concepto, monto: monto,
@@ -678,10 +248,6 @@ async function guardarSalida(ev) {
     await cargarResumen();
   } catch (e) {
     Toast.warning(e.message || 'No se pudo registrar la salida');
-  } finally {
-    salidaEnviando = false;
-    btn.disabled = false;
-    txt.textContent = 'Guardar';
   }
 }
 
@@ -772,8 +338,6 @@ function abrirConfirmarCierre() {
   const contadoTexto = document.getElementById('f-contado').value;
   const contado = CorteUX.normalizarMonto(contadoTexto);
   const dif = CorteUX.diferencia(resumen, contadoTexto);
-  document.getElementById('confirmar-salidas').textContent = fmt(resumen.salidas_efectivo);
-  document.getElementById('confirmar-pagos-doctores').textContent = fmt(resumen.pagos_doctores_efectivo);
   document.getElementById('confirmar-esperado').textContent = fmt(resumen.esperado_efectivo);
   document.getElementById('confirmar-contado').textContent = fmt(contado);
   const el = document.getElementById('confirmar-diferencia');
@@ -849,9 +413,6 @@ function construirTicketCorte(resumen) {
       { nombre: 'Transferencia', monto: resumen.totales.transferencia },
       ...(otro ? [{ nombre: 'Otro', monto: otro }] : []),
       { nombre: 'Salidas', monto: resumen.salidas_efectivo },
-      // Solo si hubo: una línea en $0.00 en papel se lee como un bug.
-      ...(Number(resumen.pagos_doctores_efectivo || 0)
-        ? [{ nombre: 'Pagos a doctores', monto: resumen.pagos_doctores_efectivo }] : []),
       // Sin esta línea el papel firmado deja de cuadrar consigo mismo por
       // exactamente el monto del fondo: "Esperado" ya lo incluye. Va antes de
       // "Esperado" para que el ticket se pueda sumar de arriba abajo.
@@ -941,7 +502,6 @@ function renderHistorico(filas) {
         ? domEl('span', 'tabular-nums font-medium text-danger-600', fmt(v))
         : domEl('span', 'text-text-muted', '—') },
     { key: 'salidas_efectivo', label: 'Gastos', align: 'right', render: v => fmt(v) },
-    { key: 'pagos_doctores_efectivo', label: 'Pagos dr.', align: 'right', render: v => fmt(v) },
     { key: 'esperado_efectivo', label: 'Esperado', align: 'right', render: v => fmt(v) },
     { key: 'efectivo_contado', label: 'Contado', align: 'right',
       render: v => v === null ? '—' : fmt(v) },
@@ -1012,7 +572,6 @@ function renderDetalle(data) {
     ['Transferencia', c.total_transferencia], ['Otro', c.total_otro],
     ['Comisión bancaria', c.comision_tarjeta], ['Neto al banco', c.neto_tarjeta],
     ['Total del día', c.total_dia], ['Salidas', c.salidas_efectivo],
-    ['Pagos a doctores', c.pagos_doctores_efectivo],
     ['Esperado', c.esperado_efectivo], ['Contado', c.efectivo_contado],
     ['Diferencia', c.diferencia],
   ];
@@ -1045,12 +604,6 @@ function renderDetalle(data) {
     { key: 'concepto', label: 'Concepto' },
     { key: 'monto', label: 'Monto', align: 'right', render: v => fmt(v) },
   ], data.salidas || [], 'Sin salidas ese día', false);
-
-  renderTable('detalle-pagos-doctores', [
-    { key: 'especialista_nombre', label: 'Doctor' },
-    { key: 'concepto', label: 'Concepto', render: v => v || '—' },
-    { key: 'monto', label: 'Monto', align: 'right', render: v => fmt(v) },
-  ], data.pagos_doctores || [], 'Sin pagos a doctores ese día', false);
 
   // Bitácora: más reciente primero.
   const eventosEl = document.getElementById('detalle-eventos');
@@ -1228,11 +781,6 @@ async function init() {
 
     // Fail-closed: las dos vistas parten ocultas y se revela la que toca.
     document.getElementById('vista-recepcion').classList.remove('hidden');
-
-    document.getElementById('form-salida').addEventListener('submit', guardarSalida);
-    document.getElementById('btn-confirmar-eliminar-pago')
-      .addEventListener('click', confirmarEliminarPago);
-    engancharPagoDoctor();
 
     // Corrección de la caja del día. Los listeners se enganchan siempre; quien
     // no puede corregir nunca ve el botón (`puede_corregir_dia`, en render()).

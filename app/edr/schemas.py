@@ -125,8 +125,6 @@ class PagoDoctorSchema(Schema):
     )
     monto = fields.Float(required=True, validate=validate.Range(min=0))
     especialista_nombre = fields.Str(dump_only=True)
-    sale_de_caja = fields.Bool(dump_only=True)
-    sucursal_nombre = fields.Str(dump_only=True)
     created_at = fields.DateTime(dump_only=True)
 
 

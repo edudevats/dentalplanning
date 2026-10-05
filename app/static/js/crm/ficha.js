@@ -38,12 +38,27 @@ const Ficha = (() => {
     }).join('');
   }
 
+  function textoEdad(iso) {
+    if (!iso) return '';
+    const [y, m, d] = iso.split('-').map(Number);
+    const hoy = new Date();
+    let anios = hoy.getFullYear() - y;
+    if (hoy.getMonth() + 1 < m || (hoy.getMonth() + 1 === m && hoy.getDate() < d)) anios -= 1;
+    return `(${anios} años)`;
+  }
+
+  function abrirOdontograma() {
+    if (actual) window.location.href = `/crm/pacientes/${actual.id}/odontograma`;
+  }
+
   function llenar(p) {
     document.getElementById('ficha-titulo').textContent = p ? p.nombre : 'Nuevo paciente';
     document.getElementById('fp-nombre').value = p ? p.nombre : '';
     document.getElementById('fp-telefono').value = (p && p.telefono) || '';
     document.getElementById('fp-whatsapp').value = (p && p.whatsapp) || '';
     document.getElementById('fp-email').value = (p && p.email) || '';
+    document.getElementById('fp-nacimiento').value = (p && p.fecha_nacimiento) || '';
+    document.getElementById('fp-edad').textContent = textoEdad(p && p.fecha_nacimiento);
     document.getElementById('fp-estatus').value = p ? p.estatus_crm : 'prospecto';
     document.getElementById('fp-doctor').value = (p && p.especialista_id) || '';
     document.getElementById('fp-problematico').checked = !!(p && p.es_problematico);
@@ -77,6 +92,7 @@ const Ficha = (() => {
       telefono: document.getElementById('fp-telefono').value.trim() || null,
       whatsapp: document.getElementById('fp-whatsapp').value.trim() || null,
       email: document.getElementById('fp-email').value.trim() || null,
+      fecha_nacimiento: document.getElementById('fp-nacimiento').value || null,
       estatus_crm: document.getElementById('fp-estatus').value,
       especialista_id: Number(document.getElementById('fp-doctor').value) || null,
       es_problematico: document.getElementById('fp-problematico').checked,
@@ -239,7 +255,7 @@ const Ficha = (() => {
   }
 
   return {
-    abrir, abrirNueva, guardar, eliminar, registrarVisita,
+    abrir, abrirNueva, guardar, eliminar, registrarVisita, abrirOdontograma,
     programarSeguimiento, agregarNota, completarSeguimiento, cerrarAccion,
   };
 })();

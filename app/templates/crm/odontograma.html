@@ -1,0 +1,89 @@
+{% extends "crm/_layout.html" %}
+{% block title %}Odontograma — CRM de Pacientes{% endblock %}
+{% block cs_content %}
+<style>
+  /* Colores locales del dibujo: viven aquí (CSS plano para SVG) y no en el
+     @theme de Tailwind, porque un tono no declarado ahí no pinta nada. */
+  #odo-root {
+    --odo-real: #dc2626; --odo-real-suave: #fca5a5;
+    --odo-plan: #2563eb; --odo-plan-suave: #dbeafe;
+    --odo-esmalte: #fffdf7; --odo-borde: #94a3b8; --odo-sel: #f59e0b;
+  }
+  .odo-tooth { cursor: pointer; transition: transform .2s ease, filter .2s ease;
+               transform-box: fill-box; transform-origin: center; }
+  .odo-tooth:hover { transform: translateY(-3px) scale(1.08);
+                     filter: drop-shadow(0 3px 4px rgba(0,0,0,.25)); }
+  .odo-crown { fill: var(--odo-esmalte); stroke: var(--odo-borde); stroke-width: 1.2;
+               transition: fill .4s ease, stroke .4s ease; }
+  .odo-crown.real { fill: var(--odo-real-suave); stroke: var(--odo-real); }
+  .odo-crown.plan { fill: var(--odo-plan-suave); stroke: var(--odo-plan);
+                    stroke-dasharray: 3 2; stroke-width: 1.6; }
+  .odo-g.aus { opacity: .2; }
+  .odo-g.fantasma .odo-crown { fill: transparent; stroke-dasharray: 2 3; opacity: .55; }
+  .odo-g.atenuado { opacity: .25; pointer-events: none; }
+  .odo-g.elegido .odo-crown { stroke: var(--odo-sel); stroke-width: 2.4; }
+  .odo-g.sel .odo-tooth { animation: odo-pulso 1.4s ease-in-out infinite; }
+  .odo-g.cae .odo-tooth { animation: odo-cae .7s ease-in forwards; }
+  .odo-g.emerge .odo-tooth { animation: odo-emerge .8s ease-out; }
+  .odo-num { font: 10px sans-serif; fill: #64748b; text-anchor: middle; pointer-events: none; }
+  .odo-x { stroke: #64748b; stroke-width: 1.5; }
+  .odo-cara { fill: #fff; stroke: #64748b; stroke-width: 1; }
+  .odo-cara.real { fill: var(--odo-real); }
+  .odo-cara.plan { fill: var(--odo-plan-suave); stroke: var(--odo-plan); stroke-width: 1.6; }
+  @keyframes odo-pulso { 50% { filter: drop-shadow(0 0 6px var(--odo-sel)); } }
+  @keyframes odo-cae { to { transform: translateY(40px); opacity: 0; } }
+  @keyframes odo-emerge { from { transform: translateY(18px) scale(.6); opacity: 0; } }
+  @media (prefers-reduced-motion: reduce) {
+    .odo-tooth, .odo-crown { transition: none; }
+    .odo-g.sel .odo-tooth, .odo-g.cae .odo-tooth, .odo-g.emerge .odo-tooth { animation: none; }
+  }
+</style>
+
+<div id="odo-root" data-paciente-id="{{ paciente_id }}" class="space-y-4">
+  <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+    <div>
+      <a href="/crm" class="text-xs text-text-muted hover:underline">← Tablero</a>
+      <h1 id="odo-nombre" class="text-2xl font-bold font-heading text-text-primary">Odontograma</h1>
+      <p id="odo-sub" class="text-sm text-text-secondary font-body"></p>
+    </div>
+    <div class="flex items-center gap-3 text-xs font-body text-text-secondary">
+      <span class="inline-flex items-center gap-1"><span class="inline-block w-3 h-3 rounded-sm" style="background:#fca5a5;border:1px solid #dc2626"></span>Realizado</span>
+      <span class="inline-flex items-center gap-1"><span class="inline-block w-3 h-3 rounded-sm" style="background:#dbeafe;border:1px dashed #2563eb"></span>Planeado</span>
+      <span class="inline-flex items-center gap-1"><span class="inline-block w-3 h-3 rounded-sm border border-border opacity-40"></span>Ausente</span>
+    </div>
+  </div>
+
+  <div id="odo-aviso" class="hidden rounded-lg border border-amber-300 bg-amber-50 text-amber-800 px-4 py-2 text-sm font-body">
+    Falta la fecha de nacimiento: se muestra dentición de adulto. Captúrala en la ficha del paciente.
+  </div>
+
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+    <div class="lg:col-span-2 bg-surface rounded-xl border border-border shadow-sm p-4">
+      <svg id="odo-svg" viewBox="0 0 680 340" class="w-full h-auto" role="img"
+           aria-label="Odontograma del paciente"></svg>
+    </div>
+
+    <div class="space-y-4">
+      <div class="bg-surface rounded-xl border border-border shadow-sm">
+        <div class="px-4 py-3 border-b border-border">
+          <h2 class="text-sm font-semibold font-heading text-text-primary">Por asignar</h2>
+        </div>
+        <div id="odo-pendientes" class="p-3 space-y-2"></div>
+        <div id="odo-asignando" class="hidden p-3 border-t border-border space-y-2"></div>
+      </div>
+
+      <div class="bg-surface rounded-xl border border-border shadow-sm">
+        <div class="px-4 py-3 border-b border-border">
+          <h2 id="odo-diente-titulo" class="text-sm font-semibold font-heading text-text-primary">Diente</h2>
+        </div>
+        <div id="odo-diente" class="p-3 text-sm font-body text-text-secondary">
+          Haz clic en un diente para ver su historial.
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/crm/odontograma.js') }}"></script>
+{% endblock %}

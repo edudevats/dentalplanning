@@ -31,10 +31,6 @@ class CorteCaja(db.Model):
     # contra el estado de cuenta sin sacar calculadora.
     comision_tarjeta = db.Column(db.Float, nullable=False, default=0)
     salidas_efectivo = db.Column(db.Float, nullable=False, default=0)
-    # Pagos a doctores entregados en efectivo desde este cajón. Parte de la
-    # foto firmada, igual que las salidas.
-    pagos_doctores_efectivo = db.Column(db.Float, nullable=False, default=0,
-                                        server_default=db.text("0"))
     # Fondo con el que arrancó el cajón ese día. Se congela al cerrar, igual que
     # los demás totales: el corte es una foto firmada y el fondo es parte de la
     # foto. Los cortes anteriores a esta migración quedan en 0, que describe
@@ -66,10 +62,9 @@ class CorteCaja(db.Model):
 
     @property
     def esperado_efectivo(self):
-        """Lo que debería haber en el cajón: fondo + cobrado en efectivo − salidas − pagos a doctores."""
+        """Lo que debería haber en el cajón: fondo + cobrado en efectivo − salidas."""
         return round((self.fondo_inicial or 0) + (self.total_efectivo or 0)
-                     - (self.salidas_efectivo or 0)
-                     - (self.pagos_doctores_efectivo or 0), 2)
+                     - (self.salidas_efectivo or 0), 2)
 
     @property
     def diferencia(self):

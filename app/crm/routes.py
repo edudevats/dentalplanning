@@ -8,8 +8,9 @@ from app.crm.models import (
 )
 from app.crm.schemas import (
     PacienteSchema, VisitaSchema, SeguimientoSchema, NotaSchema, CrmConfigSchema,
+    AsignarSchema, CorregirAsignacionSchema, EstadoDienteSchema, RealizarSchema,
 )
-from app.crm import services
+from app.crm import services, odontograma
 from app.crm.services import CrmError, CrmNotFound
 
 crm_bp = Blueprint("crm", __name__, url_prefix="/api/v1/crm")
@@ -348,3 +349,69 @@ def vincular_sugerencia():
         g.tenant_id, nombre, usuario_id=g.current_user.id
     )
     return jsonify(resultado)
+
+
+# ── Odontograma ──────────────────────────────────────────────────────────────
+# Todas devuelven el odontograma completo: el frontend repinta con una sola
+# respuesta y no hay estado intermedio que reconciliar.
+
+def _odontograma(paciente_id, status=200):
+    return jsonify(odontograma.obtener_odontograma(g.tenant_id, paciente_id)), status
+
+
+@crm_bp.route("/pacientes/<int:paciente_id>/odontograma", methods=["GET"])
+@require_auth
+def ver_odontograma(paciente_id):
+    return _odontograma(paciente_id)
+
+
+@crm_bp.route("/pacientes/<int:paciente_id>/odontograma/asignaciones", methods=["POST"])
+@require_auth
+@require_role("admin", "editor", "recepcionista")
+def asignar_odontograma(paciente_id):
+    data = AsignarSchema().load(request.get_json() or {})
+    odontograma.asignar(g.tenant_id, g.current_user.id, paciente_id,
+                        data["origen_tipo"], data["origen_id"], data["dientes"])
+    return _odontograma(paciente_id, 201)
+
+
+@crm_bp.route("/pacientes/<int:paciente_id>/odontograma/asignaciones/<int:asignacion_id>/realizar",
+              methods=["POST"])
+@require_auth
+@require_role("admin", "editor", "recepcionista")
+def realizar_asignacion(paciente_id, asignacion_id):
+    data = RealizarSchema().load(request.get_json() or {})
+    odontograma.marcar_realizado(g.tenant_id, g.current_user.id, paciente_id,
+                                 asignacion_id, data.get("fecha"))
+    return _odontograma(paciente_id)
+
+
+@crm_bp.route("/pacientes/<int:paciente_id>/odontograma/asignaciones/<int:asignacion_id>",
+              methods=["PUT"])
+@require_auth
+@require_role("admin", "editor")
+def corregir_asignacion(paciente_id, asignacion_id):
+    data = CorregirAsignacionSchema().load(request.get_json() or {})
+    odontograma.corregir_asignacion(g.tenant_id, g.current_user.id, paciente_id,
+                                    asignacion_id, data)
+    return _odontograma(paciente_id)
+
+
+@crm_bp.route("/pacientes/<int:paciente_id>/odontograma/asignaciones/<int:asignacion_id>",
+              methods=["DELETE"])
+@require_auth
+@require_role("admin", "editor")
+def desasignar(paciente_id, asignacion_id):
+    odontograma.desasignar(g.tenant_id, g.current_user.id, paciente_id, asignacion_id)
+    return _odontograma(paciente_id)
+
+
+@crm_bp.route("/pacientes/<int:paciente_id>/odontograma/dientes/<int:numero>/estado",
+              methods=["PUT"])
+@require_auth
+@require_role("admin", "editor")
+def cambiar_estado_diente(paciente_id, numero):
+    data = EstadoDienteSchema().load(request.get_json() or {})
+    odontograma.cambiar_estado_diente(g.tenant_id, g.current_user.id, paciente_id,
+                                      numero, data["estado"], data.get("fecha"))
+    return _odontograma(paciente_id)

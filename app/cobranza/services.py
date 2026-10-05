@@ -533,6 +533,11 @@ def eliminar_cotizacion(tenant_id, user_id, cotizacion_id):
             },
         )
 
+        # El odontograma apunta a los conceptos (FK SET NULL). Hay que soltarlo
+        # antes de que la cascada del ORM borre los conceptos.
+        from app.crm.odontograma import al_eliminar_origen_cotizacion
+        al_eliminar_origen_cotizacion(tenant_id, cot)
+
         # Desliga los abonos/devoluciones de sus ingresos ANTES de borrar los
         # ingresos: las FKs cobranza_pagos.ingreso_id y
         # cobranza_devoluciones.ingreso_id apuntan a ingresos.id, y en MySQL
@@ -708,6 +713,8 @@ def cancelar_cotizacion(tenant_id, cotizacion_id):
     for prog in cot.programados:
         if prog.estatus != "pagado":
             prog.estatus = "cancelado"
+    from app.crm.odontograma import al_cancelar_cotizacion
+    al_cancelar_cotizacion(tenant_id, cot)
     cot.estatus = "cancelada"
     db.session.commit()
     return cot

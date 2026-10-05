@@ -22,6 +22,8 @@
           </div>
           <div><label class="block text-sm font-medium text-text-secondary mb-1 font-body">Email</label>
             <input id="fp-email" type="email" class="block w-full rounded-lg border border-border px-3 py-2 text-sm font-body bg-surface min-h-[40px]" /></div>
+          <div><label class="block text-sm font-medium text-text-secondary mb-1 font-body">Fecha de nacimiento <span id="fp-edad" class="text-text-muted font-normal"></span></label>
+            <input id="fp-nacimiento" type="date" class="block w-full rounded-lg border border-border px-3 py-2 text-sm font-body bg-surface min-h-[40px]" /></div>
           <div class="grid grid-cols-2 gap-3">
             <div><label class="block text-sm font-medium text-text-secondary mb-1 font-body">Estatus</label>
               <select id="fp-estatus" class="block w-full rounded-lg border border-border px-3 py-2 text-sm font-body bg-surface min-h-[40px]">
@@ -60,6 +62,9 @@
             <button type="button" id="fp-btn-nota" onclick="Ficha.agregarNota()"
                     class="flex-1 inline-flex items-center justify-center gap-1.5 rounded-lg border border-border hover:bg-surface-hover px-3 py-2 text-xs font-medium cursor-pointer transition-colors duration-200">
               <i data-lucide="sticky-note" class="h-3.5 w-3.5"></i> Nota</button>
+            <button type="button" id="fp-btn-odontograma" onclick="Ficha.abrirOdontograma()"
+                    class="flex-1 inline-flex items-center justify-center gap-1.5 rounded-lg border border-border hover:bg-surface-hover px-3 py-2 text-xs font-medium cursor-pointer transition-colors duration-200">
+              <i data-lucide="smile" class="h-3.5 w-3.5"></i> Odontograma</button>
           </div>
           <!-- Formulario inline de acción (visita / seguimiento / nota) -->
           <div id="fp-accion" class="hidden"></div>
