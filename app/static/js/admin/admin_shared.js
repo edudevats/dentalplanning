@@ -51,6 +51,7 @@
     pendiente: { label: 'Pendiente',   variant: 'warning' },
     aprobada:  { label: 'Aprobada',    variant: 'primary' },
     rechazada: { label: 'Rechazada',   variant: 'neutral' },
+    prueba_vencida: { label: 'Prueba vencida', variant: 'critical' },
   };
 
   function statusBadge(status) {
@@ -86,6 +87,21 @@
     const d = parseLocalDate(iso);
     if (isNaN(d)) return '—';
     return d.toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric' });
+  }
+
+  // Suma días a una fecha YYYY-MM-DD en hora local (sin desfase UTC).
+  function addDaysIso(iso, days) {
+    const d = parseLocalDate(iso);
+    d.setDate(d.getDate() + days);
+    const pad = n => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  }
+
+  // periodo_fin se guarda como último día cubierto; al usuario se le muestra
+  // hasta el siguiente cobro para que "del 6 al 6" se lea como tal.
+  function formatPeriodo(inicio, fin) {
+    if (!inicio || !fin) return '—';
+    return `${formatDate(inicio)} → ${formatDate(addDaysIso(fin, 1))}`;
   }
 
   function formatMonth(iso) {
@@ -339,7 +355,7 @@
   // ── Public API ────────────────────────────────────────────────────────────
   window.adminApi = adminApi;
   window.adminUI = {
-    statusBadge, currency, formatDate, formatMonth,
+    statusBadge, currency, formatDate, formatMonth, addDaysIso, formatPeriodo,
     confirmAction, openModal,
     buildField, inputEl, selectEl, textareaEl, kpiCard,
   };

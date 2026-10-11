@@ -1,8 +1,9 @@
 """Catálogo y resolución de permisos por usuario para el rol asistente dental.
 
-A diferencia de `recepcionista` —cuya allowlist de rutas está hardcodeada en
-`app/middleware/tenant.py`— el rol `asistente` guarda sus permisos en la columna
-JSON `User.permisos`, con forma {"<recurso>": "ver"|"editar"}. El administrador
+A diferencia de `recepcionista` —cuyas rutas se reparten en una base y bloques
+con nombre en `app/middleware/permisos_recepcion.py`, más extras que reutilizan
+este catálogo— el rol `asistente` guarda sus permisos en la columna JSON
+`User.permisos`, con forma {"<recurso>": "ver"|"editar"}. El administrador
 de la clínica los reparte desde Ajustes → Usuarios.
 
 La política es deny by default: una clave ausente significa 403.
@@ -35,8 +36,8 @@ BLUEPRINT_PROHIBIDO = "finanzas_personales"
 # asistente con solo `edr.gastos` leería "Abre tu caja para empezar a capturar"
 # (409) y al ir a abrirla se toparía con un 403. Un callejón sin salida
 # permanente, y la misma clínica ya lo había reconocido para el otro rol: la
-# allowlist de recepcionista mete estas dos rutas con ese mismo argumento
-# (`app/middleware/tenant.py`).
+# base de recepcionista mete estas dos rutas con ese mismo argumento
+# (`BASE_RECEPCION` en `app/middleware/permisos_recepcion.py`).
 #
 # El turno no es "el módulo de caja": es la precondición para capturar
 # cualquier cosa, tan propia del usuario como consultar su propio /auth/me. Y
@@ -208,6 +209,29 @@ def resolver_recurso(blueprint, path):
     return None
 
 
+def autorizar_por_recurso(permisos_por_recurso, blueprint, method, path,
+                          recursos_validos=None):
+    """True si la ruta cae en un recurso otorgado con nivel suficiente.
+
+    Lo comparten el asistente (todos sus permisos son recursos) y los extras de
+    la recepcionista (`recursos_validos` limita a los que se le pueden dar).
+    Finanzas Personales y las rutas críticas nunca pasan.
+    """
+    if blueprint == BLUEPRINT_PROHIBIDO or es_ruta_critica(method, path):
+        return False
+    recurso = resolver_recurso(blueprint, path)
+    if recurso is None:
+        return False
+    if recursos_validos is not None and recurso not in recursos_validos:
+        return False
+    nivel = (permisos_por_recurso or {}).get(recurso)
+    if nivel not in NIVELES:
+        return False
+    if method not in ("GET", "HEAD") and nivel != NIVEL_EDITAR:
+        return False
+    return True
+
+
 def normalizar_permisos(permisos, modulos_permitidos=None):
     """Descarta recursos y niveles inválidos, y fuerza inventario=editar.
 
@@ -269,23 +293,8 @@ def check_asistente_access():
 
     blueprint = request.blueprints[0] if request.blueprints else None
 
-    # Finanzas Personales es exclusivo del admin: se deniega explícitamente, no
-    # solo por ausencia de clave en el JSON.
-    if blueprint == BLUEPRINT_PROHIBIDO:
+    # Finanzas Personales, rutas críticas, recurso y nivel: ver
+    # autorizar_por_recurso.
+    if not autorizar_por_recurso(g.current_user.permisos, blueprint, method, path):
         return _denegado()
-
-    if es_ruta_critica(method, path):
-        return _denegado()
-
-    recurso = resolver_recurso(blueprint, path)
-    if recurso is None:
-        return _denegado()
-
-    nivel = (g.current_user.permisos or {}).get(recurso)
-    if nivel not in NIVELES:
-        return _denegado()
-    nivel_requerido = NIVEL_VER if method in ("GET", "HEAD") else NIVEL_EDITAR
-    if nivel_requerido == NIVEL_EDITAR and nivel != NIVEL_EDITAR:
-        return _denegado()
-
     return None

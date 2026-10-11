@@ -34,6 +34,10 @@ class Config:
     SMTP_USE_TLS = os.getenv("SMTP_USE_TLS", "false").lower() in ("true", "1", "yes")
     SMTP_USE_SSL = os.getenv("SMTP_USE_SSL", "true").lower() in ("true", "1", "yes")
     BILLING_GRACE_DAYS = int(os.getenv("BILLING_GRACE_DAYS", "3"))
+    # Datos para transferir, usados en recordatorios de cobro (correo/WhatsApp).
+    BILLING_BANCO = os.getenv("BILLING_BANCO", "")
+    BILLING_CLABE = os.getenv("BILLING_CLABE", "")
+    BILLING_BENEFICIARIO = os.getenv("BILLING_BENEFICIARIO", "")
     FACTURACION_MONTHLY_FEE = float(os.getenv("FACTURACION_MONTHLY_FEE", "100"))
     FACTURACION_STAMP_FEE = float(os.getenv("FACTURACION_STAMP_FEE", "2"))
     # Llave maestra (Fernet) para cifrar secretos del CSD. NUNCA en el repo ni en la BD.

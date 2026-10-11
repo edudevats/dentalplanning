@@ -1,0 +1,47 @@
+{% extends "admin/_layout_admin.html" %}
+{% block title %}Vencimientos — Panel SaaS{% endblock %}
+{% block admin_title %}Vencimientos{% endblock %}
+{% block admin_content %}
+
+<div class="space-y-6">
+
+  <div class="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-6">
+    <div>
+      <h1 class="font-cs-display text-4xl font-bold text-cs-on-surface tracking-tight">Vencimientos</h1>
+      <p class="mt-1.5 text-sm text-cs-on-surface-var max-w-xl">Clínicas que pagan por transferencia: quién está vencido y a quién se le vence pronto. Los correos automáticos salen 3 días antes y 2 días después del cobro.</p>
+    </div>
+    <button id="btn-enviar-pendientes" class="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-gradient-to-br from-cs-primary to-cs-primary-dim text-cs-on-primary text-sm font-semibold shadow-sm hover:opacity-95 transition-opacity cursor-pointer">
+      <i data-lucide="send" class="h-4 w-4"></i>
+      Enviar pendientes ahora
+    </button>
+  </div>
+
+  <div id="aviso-bancarios" class="hidden flex items-start gap-2 p-3 rounded-md bg-cs-error-container/30 text-cs-on-error-container text-xs">
+    <i data-lucide="alert-triangle" class="h-4 w-4 shrink-0 mt-0.5"></i>
+    <span>Faltan los datos bancarios (BILLING_BANCO, BILLING_CLABE, BILLING_BENEFICIARIO): los recordatorios saldrán sin ellos.</span>
+  </div>
+
+  <div id="kpis" class="grid grid-cols-1 sm:grid-cols-3 gap-4"></div>
+
+  <section class="rounded-lg bg-cs-surface-container-lowest p-4 space-y-3">
+    <h2 class="text-sm font-semibold text-cs-error flex items-center gap-2"><i data-lucide="alert-octagon" class="h-4 w-4"></i> Vencidos</h2>
+    <div id="grupo-vencidos"></div>
+  </section>
+
+  <section class="rounded-lg bg-cs-surface-container-lowest p-4 space-y-3">
+    <h2 class="text-sm font-semibold text-cs-on-surface flex items-center gap-2"><i data-lucide="calendar-clock" class="h-4 w-4"></i> Vencen en los próximos 7 días</h2>
+    <div id="grupo-semana"></div>
+  </section>
+
+  <details class="rounded-lg bg-cs-surface-container-lowest p-4">
+    <summary class="text-sm font-semibold text-cs-on-surface-var cursor-pointer">Próximos 30 días</summary>
+    <div id="grupo-mes" class="mt-3"></div>
+  </details>
+
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/admin/admin_vencimientos.js"></script>
+{% endblock %}

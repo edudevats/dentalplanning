@@ -32,6 +32,7 @@ class Tenant(db.Model):
         db.String(20), nullable=False, default=TENANT_STATUS_PENDING
     )
     contact_email = db.Column(db.String(255), nullable=True)
+    contact_phone = db.Column(db.String(30), nullable=True)
     approved_at = db.Column(db.DateTime, nullable=True)
     approved_by_id = db.Column(
         db.Integer, db.ForeignKey("users.id", use_alter=True), nullable=True

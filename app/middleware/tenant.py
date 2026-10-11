@@ -1,4 +1,3 @@
-import re
 from functools import wraps
 from flask import g, jsonify, request
 from flask_jwt_extended import get_jwt_identity, verify_jwt_in_request
@@ -8,85 +7,26 @@ from app.auth.models import (
     TENANT_STATUS_SUSPENDED, TENANT_STATUS_REJECTED,
 )
 from app.middleware.permisos import ROLE_ASISTENTE
+from app.middleware.permisos_recepcion import (
+    BASE_RECEPCION, BLOQUES, EXTRAS_RECEPCION, compilar,
+    normalizar_permisos_recepcion,
+)
 
-# (método, regex de ruta) que el rol recepcionista puede llamar. Resto → 403.
-_RECEP_RULES = [
-    ("GET", r"/api/v1/auth/me"),
-    ("PUT", r"/api/v1/auth/password"),
-    ("GET", r"/api/v1/edr/ingresos"),
-    ("POST", r"/api/v1/edr/ingresos"),
-    ("POST", r"/api/v1/edr/ingresos/visita"),
-    ("PUT", r"/api/v1/edr/ingresos/\d+"),
-    ("GET", r"/api/v1/facturacion/tickets"),
-    ("GET", r"/api/v1/facturacion/tickets/resumen-iva"),
-    ("GET", r"/api/v1/facturacion/tickets/\d+"),
-    ("GET", r"/api/v1/facturacion/tickets/\d+/impresion"),
-    ("POST", r"/api/v1/facturacion/tickets/\d+/timbrar"),
-    ("POST", r"/api/v1/facturacion/tickets/\d+/cancelar"),
-    ("GET", r"/api/v1/facturacion/ingresos/\d+/ticket-simple"),
-    ("GET", r"/api/v1/facturacion/sucursales"),
-    ("GET", r"/api/v1/facturacion/configuracion"),
-    ("GET", r"/api/v1/facturacion/print-agent/key"),
-    ("GET", r"/api/v1/ajustes/especialistas"),
-    ("GET", r"/api/v1/ajustes/metodos-pago"),
-    ("GET", r"/api/v1/ajustes/estrategias"),
-    ("GET", r"/api/v1/ajustes/descuentos"),
-    ("GET", r"/api/v1/ajustes/descuentos/config"),
-    ("GET", r"/api/v1/ajustes/cupones"),
-    ("POST", r"/api/v1/ajustes/cupones/validar"),
-    ("GET", r"/api/v1/tratamientos"),
-    # CRM (todo excepto DELETE paciente y PUT config)
-    ("GET", r"/api/v1/crm/pacientes"),
-    ("POST", r"/api/v1/crm/pacientes"),
-    ("GET", r"/api/v1/crm/pacientes/\d+"),
-    ("PUT", r"/api/v1/crm/pacientes/\d+"),
-    ("PUT", r"/api/v1/crm/pacientes/\d+/estatus"),
-    ("POST", r"/api/v1/crm/pacientes/\d+/visitas"),
-    ("POST", r"/api/v1/crm/pacientes/\d+/seguimientos"),
-    ("POST", r"/api/v1/crm/seguimientos/\d+/completar"),
-    ("POST", r"/api/v1/crm/pacientes/\d+/notas"),
-    ("POST", r"/api/v1/crm/pacientes/importar/preview"),
-    ("POST", r"/api/v1/crm/pacientes/importar/confirmar"),
-    ("GET", r"/api/v1/crm/sugerencias-edr"),
-    ("POST", r"/api/v1/crm/sugerencias-edr/vincular"),
-    ("GET", r"/api/v1/crm/resumen"),
-    ("GET", r"/api/v1/crm/config"),
-    # Odontograma: recepción ve, asigna y marca realizado lo que dicta el
-    # doctor. Corregir, desasignar y cambiar estado de un diente son del admin.
-    ("GET", r"/api/v1/crm/pacientes/\d+/odontograma"),
-    ("POST", r"/api/v1/crm/pacientes/\d+/odontograma/asignaciones"),
-    ("POST", r"/api/v1/crm/pacientes/\d+/odontograma/asignaciones/\d+/realizar"),
-    # Cobranza: recepcion puede consultar, capturar/enviar cotizaciones y
-    # registrar cobros. Aprobar, cancelar, borrar y reintentar facturacion
-    # permanecen fuera de la allowlist.
-    ("GET", r"/api/v1/cobranza/cotizaciones"),
-    ("POST", r"/api/v1/cobranza/cotizaciones"),
-    ("GET", r"/api/v1/cobranza/cotizaciones/\d+"),
-    ("PUT", r"/api/v1/cobranza/cotizaciones/\d+"),
-    ("POST", r"/api/v1/cobranza/cotizaciones/\d+/enviar"),
-    ("POST", r"/api/v1/cobranza/cotizaciones/\d+/pagos"),
-    ("GET", r"/api/v1/cobranza/cotizaciones/\d+/estado-cuenta"),
-    ("GET", r"/api/v1/cobranza/cotizaciones/\d+/estado-cuenta\.pdf"),
-    ("GET", r"/api/v1/cobranza/cotizaciones/\d+/pdf"),
-    ("GET", r"/api/v1/cobranza/resumen"),
-    # Turno de caja: es lo PRIMERO que hace la recepcionista al llegar. Sin
-    # estas dos reglas no puede abrir su caja y, como el candado exige turno
-    # abierto, no puede capturar absolutamente nada.
-    ("GET", r"/api/v1/caja/turno"),
-    ("POST", r"/api/v1/caja/turno"),
-    # Corte de caja: consulta el día, registra salidas chicas de efectivo y
-    # cierra. El histórico y la reapertura son del admin y quedan FUERA.
-    ("GET", r"/api/v1/caja/corte"),
-    ("POST", r"/api/v1/caja/corte"),
-    ("GET", r"/api/v1/caja/salidas"),
-    ("POST", r"/api/v1/caja/salidas"),
-    ("DELETE", r"/api/v1/caja/salidas/\d+"),
-]
-RECEPCIONISTA_ALLOWLIST = [(m, re.compile("^" + p + "/?$")) for m, p in _RECEP_RULES]
+# Base y bloques compilados una vez.
+_BASE_COMPILADA = compilar(BASE_RECEPCION)
+_BLOQUES_COMPILADOS = {clave: compilar(b["reglas"]) for clave, b in BLOQUES.items()}
+
+
+def _coincide(reglas, method, path):
+    return any(method == m and pattern.match(path) for m, pattern in reglas)
 
 
 def check_recepcionista_access():
-    """Si el usuario es recepcionista, solo permite método+ruta de la allowlist."""
+    """Recepcionista: base + bloques encendidos; si no, sus extras. Resto → 403.
+
+    Los permisos se normalizan al leerlos: NULL o {} es "todo encendido", la
+    recepcionista de siempre.
+    """
     if not hasattr(g, "current_user"):
         return None
     if g.current_user.is_superuser:
@@ -94,9 +34,24 @@ def check_recepcionista_access():
     if g.current_user.role != "recepcionista":
         return None
     method, path = request.method, request.path
-    for m, pattern in RECEPCIONISTA_ALLOWLIST:
-        if method == m and pattern.match(path):
+    permisos = normalizar_permisos_recepcion(g.current_user.permisos)
+
+    if _coincide(_BASE_COMPILADA, method, path):
+        return None
+    apagados = set(permisos["bloques_apagados"])
+    for clave, reglas in _BLOQUES_COMPILADOS.items():
+        if clave not in apagados and _coincide(reglas, method, path):
             return None
+
+    from app.middleware.permisos import autorizar_por_recurso
+    blueprint = request.blueprints[0] if request.blueprints else None
+    if autorizar_por_recurso(permisos["extras"], blueprint, method,
+                             path.rstrip("/") or "/",
+                             recursos_validos=EXTRAS_RECEPCION):
+        # require_role no conoce los extras: esta marca le dice que la ruta ya
+        # quedó autorizada por un permiso por usuario.
+        g.acceso_por_extra = True
+        return None
     return jsonify({"error": "No tienes acceso a esta sección"}), 403
 
 
@@ -175,6 +130,12 @@ def require_role(*roles):
             # listas de roles se escribieron antes de que el rol existiera, así
             # que no lo mencionan y lo bloquearían aunque el motor lo autorice.
             if g.current_user.role == ROLE_ASISTENTE:
+                return f(*args, **kwargs)
+            # Recepcionista que entró por un extra (recurso otorgado por el
+            # admin en Ajustes → Usuarios): la autorización ya la resolvió
+            # check_recepcionista_access. Las rutas de sus bloques no llevan
+            # esta marca y siguen sujetas a la lista de roles.
+            if getattr(g, "acceso_por_extra", False):
                 return f(*args, **kwargs)
             if g.current_user.role not in roles:
                 return jsonify({"error": "Permisos insuficientes"}), 403

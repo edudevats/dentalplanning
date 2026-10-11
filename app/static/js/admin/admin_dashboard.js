@@ -57,7 +57,7 @@
         value: data.en_mora,
         icon: 'alert-triangle',
         hint: 'Cobro vencido, sin pagar',
-        href: '/admin/tenants?sub_estado=mora',
+        href: '/admin/tenants?sub_estado=mora&tipo=paga',
       }));
     }
 
@@ -68,6 +68,16 @@
         icon: 'clock',
         hint: 'Cobro pendiente, en periodo de gracia',
         href: '/admin/tenants?sub_estado=gracia',
+      }));
+    }
+
+    if (data.por_cobrar > 0) {
+      grid.appendChild(kpiCard({
+        label: 'Por cobrar',
+        value: data.por_cobrar,
+        icon: 'bell-ring',
+        hint: `${currency(data.por_cobrar_monto)} por transferencia (vencidos + 7 días)`,
+        href: '/admin/vencimientos',
       }));
     }
 

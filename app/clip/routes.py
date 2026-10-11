@@ -5,6 +5,7 @@ from app.extensions import db
 from app.superadmin.models import (
     Payment, Subscription, Plan,
     SUBSCRIPTION_ACTIVA, SUBSCRIPTION_GRACIA, SUBSCRIPTION_VENCIDA,
+    SUB_METODO_CLIP,
 )
 from app.auth.models import Tenant, User, TENANT_STATUS_ACTIVE, TENANT_STATUS_SUSPENDED
 from app.clip.service import get_invoice, get_subscription, ClipAPIError
@@ -175,6 +176,7 @@ def _handle_subscription_event(data, status):
             sub = Subscription.query.filter_by(tenant_id=user.tenant_id).first()
             if sub:
                 sub.clip_subscription_id = clip_sub_id
+                sub.metodo_pago = SUB_METODO_CLIP
 
     if not sub:
         current_app.logger.info("Clip webhook: subscription %s with email %s not matched",

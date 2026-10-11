@@ -32,12 +32,13 @@ def require_admin_password(f):
         if user is None:
             return jsonify({"error": "No autenticado"}), 401
 
-        # El asistente no pasa este candado. require_admin_password solo verifica
+        # Ni el asistente ni la recepcionista pasan este candado (los dos pueden
+        # llegar a rutas de admin por permisos por usuario). require_admin_password solo verifica
         # la contraseña DEL PROPIO usuario en sesión —que el asistente obviamente
         # tiene—; el control de rol lo delegaba en require_role, que el rol
         # asistente ya no respeta. Sin este chequeo, el segundo factor de las
         # rutas destructivas de cobranza quedaría neutralizado.
-        if user.role == ROLE_ASISTENTE:
+        if user.role in (ROLE_ASISTENTE, "recepcionista"):
             return jsonify({
                 "error": "Esta operación está reservada al administrador"
             }), 403

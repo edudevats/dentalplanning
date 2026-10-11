@@ -5,6 +5,7 @@
 
   const VALID_STATUS = ['', 'pending', 'active', 'suspended', 'rejected'];
   const VALID_SUB = ['', 'activa', 'mora', 'gracia', 'vencida'];
+  const VALID_TIPO = ['', 'paga', 'prueba', 'prueba_vencida'];
   const VALID_SORT = ['reciente', 'proximo_cobro', '-proximo_cobro', 'plan'];
   const VALID_NUEVAS = ['', 'mes'];
 
@@ -12,6 +13,7 @@
   let currentStatus = '';
   let currentSubEstado = '';
   let currentSort = 'reciente';
+  let currentTipo = '';
   let currentNuevas = '';
   let plansCache = null;
   let currentMode = 'tenants';
@@ -24,6 +26,8 @@
     const sub = p.get('sub_estado') || '';
     const sort = p.get('sort') || 'reciente';
     const nuevas = p.get('nuevas') || '';
+    const tipo = p.get('tipo') || '';
+    currentTipo = VALID_TIPO.includes(tipo) ? tipo : '';
     currentStatus = VALID_STATUS.includes(status) ? status : '';
     currentSubEstado = VALID_SUB.includes(sub) ? sub : '';
     currentSort = VALID_SORT.includes(sort) ? sort : 'reciente';
@@ -37,6 +41,7 @@
     if (currentSearch) params.set('search', currentSearch);
     if (currentStatus) params.set('status', currentStatus);
     if (currentSubEstado) params.set('sub_estado', currentSubEstado);
+    if (currentTipo) params.set('tipo', currentTipo);
     if (currentNuevas) params.set('nuevas', currentNuevas);
     if (currentSort && currentSort !== 'reciente') params.set('sort', currentSort);
     return params;
@@ -92,7 +97,15 @@
       // Contacto
       const tdContact = document.createElement('td');
       tdContact.className = 'px-3 py-3.5 text-cs-on-surface-var';
-      tdContact.textContent = t.contact_email || '—';
+      const emailEl = document.createElement('p');
+      emailEl.textContent = t.contact_email || '—';
+      tdContact.appendChild(emailEl);
+      if (t.contact_phone) {
+        const phoneEl = document.createElement('p');
+        phoneEl.className = 'text-xs text-cs-on-surface-var';
+        phoneEl.textContent = t.contact_phone;
+        tdContact.appendChild(phoneEl);
+      }
 
       // Status
       const tdStatus = document.createElement('td');
@@ -118,6 +131,13 @@
         planName.className = 'font-semibold text-cs-on-surface text-xs';
         planName.textContent = t.subscription.plan_nombre;
         tdPlan.appendChild(planName);
+        if (t.tipo_cliente === 'paga' || t.tipo_cliente === 'prueba' || t.tipo_cliente === 'prueba_vencida') {
+          const tipoBadge = document.createElement('span');
+          const esPaga = t.tipo_cliente === 'paga';
+          tipoBadge.className = `inline-flex mt-0.5 px-1.5 py-0 rounded text-[9px] font-bold uppercase ${esPaga ? 'bg-green-100 text-green-800' : 'bg-cs-surface-container text-cs-on-surface-var'}`;
+          tipoBadge.textContent = esPaga ? 'Paga' : 'Prueba';
+          tdPlan.appendChild(tipoBadge);
+        }
         const mods = t.subscription.plan_modulos || [];
         if (mods.length > 0) {
           const modWrap = document.createElement('div');
@@ -140,7 +160,8 @@
       const tdSubEstado = document.createElement('td');
       tdSubEstado.className = 'px-3 py-3.5 whitespace-nowrap';
       if (t.subscription && t.subscription.estado) {
-        tdSubEstado.appendChild(statusBadge(t.subscription.estado));
+        const estadoVisible = t.tipo_cliente === 'prueba_vencida' ? 'prueba_vencida' : t.subscription.estado;
+        tdSubEstado.appendChild(statusBadge(estadoVisible));
       } else {
         tdSubEstado.textContent = '—';
         tdSubEstado.classList.add('text-cs-on-surface-var');
@@ -423,6 +444,16 @@
         document.querySelectorAll('.sub-chip').forEach(c => c.classList.remove('active'));
         chip.classList.add('active');
         currentSubEstado = chip.dataset.sub;
+        syncUrl();
+        refresh().catch(err => Toast.show(err.message, 'error'));
+      });
+    });
+
+    document.querySelectorAll('.tipo-chip').forEach(b => {
+      b.classList.toggle('active', b.dataset.tipo === currentTipo);
+      b.addEventListener('click', () => {
+        currentTipo = b.dataset.tipo;
+        document.querySelectorAll('.tipo-chip').forEach(x => x.classList.toggle('active', x === b));
         syncUrl();
         refresh().catch(err => Toast.show(err.message, 'error'));
       });

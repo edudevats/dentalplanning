@@ -9,7 +9,17 @@
   .tab-caja { color: var(--color-text-secondary); border-bottom: 2px solid transparent; }
   .tab-caja:hover { color: var(--color-text-primary); }
   .tab-caja.active { color: var(--color-primary-600); border-bottom-color: var(--color-primary-600); }
+  /* Selector de dos opciones del modal "Pagar a doctor". */
+  .modo-pago { color: var(--color-text-secondary); }
+  .modo-pago:hover { color: var(--color-text-primary); }
+  .modo-pago.active { background: var(--color-surface); color: var(--color-primary-700); box-shadow: 0 1px 2px rgb(0 0 0 / 0.08); }
+  #bloque-ingresos > summary::-webkit-details-marker { display: none; }
 </style>
+
+{# Clases que solo pone corte.js. El JIT de Tailwind del navegador las genera
+   con certeza solo si las ve al cargar; este span nunca se muestra. #}
+<span aria-hidden="true" style="display:none"
+  class="h-10 w-10 hover:bg-danger-50 hover:text-danger-600 hover:bg-surface-hover hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-300 bg-accent-50 text-accent-700 bg-primary-50 text-primary-700 bg-warning-50 text-warning-700 text-primary-600 hover:text-primary-700 accent-primary-600 break-words truncate min-w-0 divide-y divide-border first:pt-0 pt-2 space-y-0.5 flex-wrap max-h-64 overflow-y-auto px-2 py-0.5 rounded-full py-6"></span>
 
 <div class="space-y-6">
   <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -50,20 +60,22 @@
 
   <!-- Vista de recepción: oculta por defecto, se revela para todos los roles con acceso a la página -->
   <div id="vista-recepcion" data-panel="hoy" class="hidden space-y-6">
-    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+    <!-- Cobros del día. Las cifras nacen en "—": un $0.00 mientras carga se
+         lee como un dato real. -->
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
       <div class="bg-surface rounded-xl border border-border p-5 shadow-sm">
         <div class="flex items-center justify-between">
           <p class="text-sm font-medium text-text-secondary font-body">Efectivo</p>
           <div class="h-9 w-9 rounded-lg bg-primary-50 flex items-center justify-center"><i data-lucide="banknote" class="h-4 w-4 text-primary-600"></i></div>
         </div>
-        <p class="mt-3 text-2xl font-bold font-heading tabular-nums text-text-primary" id="stat-efectivo">$0.00</p>
+        <p class="mt-3 text-2xl font-bold font-heading tabular-nums text-text-primary" id="stat-efectivo">—</p>
       </div>
       <div class="bg-surface rounded-xl border border-border p-5 shadow-sm">
         <div class="flex items-center justify-between">
           <p class="text-sm font-medium text-text-secondary font-body">Tarjeta</p>
           <div class="h-9 w-9 rounded-lg bg-primary-50 flex items-center justify-center"><i data-lucide="credit-card" class="h-4 w-4 text-primary-600"></i></div>
         </div>
-        <p class="mt-3 text-2xl font-bold font-heading tabular-nums text-text-primary" id="stat-tarjeta">$0.00</p>
+        <p class="mt-3 text-2xl font-bold font-heading tabular-nums text-text-primary" id="stat-tarjeta">—</p>
         <p class="mt-1 text-xs text-text-muted font-body" id="stat-tarjeta-neto"></p>
       </div>
       <div class="bg-surface rounded-xl border border-border p-5 shadow-sm">
@@ -71,26 +83,23 @@
           <p class="text-sm font-medium text-text-secondary font-body">Transferencia</p>
           <div class="h-9 w-9 rounded-lg bg-primary-50 flex items-center justify-center"><i data-lucide="arrow-left-right" class="h-4 w-4 text-primary-600"></i></div>
         </div>
-        <p class="mt-3 text-2xl font-bold font-heading tabular-nums text-text-primary" id="stat-transferencia">$0.00</p>
+        <p class="mt-3 text-2xl font-bold font-heading tabular-nums text-text-primary" id="stat-transferencia">—</p>
       </div>
       <div class="bg-surface rounded-xl border border-border p-5 shadow-sm">
         <div class="flex items-center justify-between">
-          <p class="text-sm font-medium text-text-secondary font-body">Gastos del día</p>
-          <div class="h-9 w-9 rounded-lg bg-warning-50 flex items-center justify-center"><i data-lucide="trending-down" class="h-4 w-4 text-warning-600"></i></div>
+          <p class="text-sm font-medium text-text-secondary font-body">Total cobrado</p>
+          <div class="h-9 w-9 rounded-lg bg-accent-50 flex items-center justify-center"><i data-lucide="receipt" class="h-4 w-4 text-accent-700"></i></div>
         </div>
-        <p class="mt-3 text-2xl font-bold font-heading tabular-nums text-warning-600" id="stat-salidas">$0.00</p>
+        <p class="mt-3 text-2xl font-bold font-heading tabular-nums text-text-primary" id="stat-total-dia">—</p>
       </div>
     </div>
 
     <!-- Otros métodos (vales, cortesías, mixtos…): aparece SOLO si hubo.
          `otro` es el default conservador al clasificar un método, y toda su
          justificación es que "sale a la vista en el corte" en vez de inflar el
-         efectivo en silencio — si no se pinta, esa garantía no existe. No es
-         una quinta tarjeta fija porque en $0.00 sería ruido permanente en la
-         pantalla más usada del día.
+         efectivo en silencio — si no se pinta, esa garantía no existe.
          `hidden` va en el marcado inicial a propósito: el JIT de Tailwind en el
-         navegador solo genera la regla si la ve al cargar, y agregarla después
-         desde JS la deja perdiendo la cascada. -->
+         navegador solo genera la regla si la ve al cargar. -->
     <div id="aviso-otro" class="hidden bg-warning-50 border border-warning-100 rounded-xl px-4 py-3">
       <p class="text-sm font-body text-warning-600">
         <span class="font-medium">Otros métodos:</span>
@@ -99,34 +108,53 @@
       </p>
     </div>
 
-    <!-- Bloque destacado: efectivo a entregar -->
-    <div id="bloque-entregar" class="bg-primary-50 border border-primary-200 rounded-xl p-6 text-center">
-      <p class="text-sm font-medium text-primary-700 font-body">Efectivo a entregar</p>
-      <p class="mt-2 text-4xl font-bold font-heading text-primary-800" id="stat-entregar">$0.00</p>
-      <p class="mt-1 text-sm text-primary-600 font-body" id="leyenda-entregar"></p>
-      <!-- El fondo solo se menciona cuando existe: en una caja sin fondo esta
-           línea sería ruido permanente en la pantalla más usada. La excepción
-           es el admin que puede corregirlo: para él, un fondo en cero es justo
-           el caso que vino a arreglar, así que la línea se le muestra igual.
-
-           `display:none` y no `.hidden`: el JIT de Tailwind del navegador solo
-           genera esa regla si la ve al cargar. -->
-      <p id="leyenda-fondo" style="display:none" class="text-xs text-primary-600 font-body mt-1">
-        Fondo que se queda en caja: <span id="stat-fondo" class="tabular-nums">$0.00</span>
-      </p>
-      {# El botón sale del párrafo de la leyenda y se vuelve un botón de verdad.
-         Mover a quien captura de sucursal y corregir el efectivo con el que
-         arrancó son las dos reparaciones que el admin viene a hacer a esta
-         pantalla, y como enlace subrayado de 12px al final de una línea
-         condicional no se encontraban. Vive aquí, en #vista-recepcion, porque
-         ese es el panel de la pestaña "Caja de hoy" y solo el día en curso es
-         corregible. `inline-flex` sin `mx-auto`: lo centra el `text-center` del
-         bloque padre. #}
-      <button type="button" id="btn-corregir-dia" style="display:none"
-        class="mt-4 items-center justify-center gap-2 rounded-lg font-medium font-body cursor-pointer border border-primary-300 bg-surface hover:bg-primary-50 text-primary-700 px-4 py-2 text-sm min-h-[38px]">
-        <i data-lucide="pencil" class="h-4 w-4"></i> Editar turno
-      </button>
-    </div>
+    <!-- Desglose del efectivo: la misma resta que ella hace al contar el
+         cajón, de arriba abajo. Sustituye la leyenda "cobrado X − gastado Y",
+         que no mencionaba el fondo ni los pagos a doctores. -->
+    <section id="bloque-entregar" aria-labelledby="titulo-desglose"
+      class="bg-surface rounded-xl border border-border shadow-sm overflow-hidden">
+      <div class="grid grid-cols-1 md:grid-cols-5">
+        <div class="md:col-span-3 p-5">
+          <h2 id="titulo-desglose" class="text-base font-semibold font-heading text-text-primary mb-2">Efectivo en caja</h2>
+          <dl class="text-sm font-body divide-y divide-border">
+            {# `display:none` y no `.hidden`: se muestra con '' y conserva su flex.
+               Solo aparece si hay fondo, o para el admin que puede corregirlo. #}
+            <div id="leyenda-fondo" style="display:none" class="flex items-center justify-between gap-3 py-2">
+              <dt class="text-text-secondary">Fondo inicial</dt>
+              <dd id="stat-fondo" class="tabular-nums font-medium text-text-primary">—</dd>
+            </div>
+            <div class="flex items-center justify-between gap-3 py-2">
+              <dt class="text-text-secondary">+ Efectivo cobrado</dt>
+              <dd id="desglose-efectivo" class="tabular-nums font-medium text-text-primary">—</dd>
+            </div>
+            <div class="flex items-center justify-between gap-3 py-2">
+              <dt class="text-text-secondary">− Salidas de caja</dt>
+              <dd id="stat-salidas" class="tabular-nums font-medium text-warning-700">—</dd>
+            </div>
+            <div class="flex items-center justify-between gap-3 py-2">
+              <dt class="text-text-secondary">− Pagos a doctores</dt>
+              <dd id="stat-pagos-doctores" class="tabular-nums font-medium text-warning-700">—</dd>
+            </div>
+            <div class="flex items-center justify-between gap-3 pt-3">
+              <dt class="font-semibold text-text-primary">Debe haber en el cajón</dt>
+              <dd id="stat-esperado" class="tabular-nums text-base font-bold text-text-primary">—</dd>
+            </div>
+          </dl>
+        </div>
+        <div class="md:col-span-2 bg-primary-50 border-t md:border-t-0 md:border-l border-primary-200 p-5 flex flex-col items-center justify-center text-center">
+          <p class="text-sm font-medium text-primary-700 font-body">Efectivo a entregar</p>
+          <p id="stat-entregar" class="mt-2 text-4xl font-bold font-heading tabular-nums text-primary-800">—</p>
+          <p id="leyenda-entregar" style="display:none" class="mt-1 text-xs text-primary-700 font-body">Sin el fondo, que se queda en el cajón</p>
+          {# Mover a quien captura de sucursal y corregir el fondo son las dos
+             reparaciones que el admin viene a hacer aquí. Lo revela render()
+             según `puede_corregir_dia`. #}
+          <button type="button" id="btn-corregir-dia" style="display:none"
+            class="mt-4 items-center justify-center gap-2 rounded-lg font-medium font-body cursor-pointer border border-primary-300 bg-surface hover:bg-primary-50 text-primary-700 px-4 py-2 text-sm min-h-[40px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-300">
+            <i data-lucide="pencil" class="h-4 w-4"></i> Editar turno
+          </button>
+        </div>
+      </div>
+    </section>
 
     <!-- Aviso: ingresos sin método de pago (bloquean el cierre) -->
     <div id="aviso-sin-clasificar" class="hidden bg-warning-50 border border-warning-100 rounded-xl p-4">
@@ -142,57 +170,81 @@
       </div>
     </div>
 
-    <!-- Salidas de caja -->
-    <div class="bg-surface rounded-xl border border-border shadow-sm p-5">
-      <div class="flex items-center justify-between mb-4">
-        <h2 class="text-base font-semibold font-heading text-text-primary">Salidas de caja</h2>
-        <button type="button" id="btn-nueva-salida" onclick="abrirNuevaSalida()"
-          class="inline-flex items-center justify-center gap-2 rounded-lg font-medium font-body cursor-pointer bg-primary-500 hover:bg-primary-600 text-white px-4 py-2 text-sm min-h-[38px]">
-          <i data-lucide="plus" class="h-4 w-4"></i> Nueva salida
-        </button>
-      </div>
-      <div id="tabla-salidas"></div>
+    <!-- Movimientos de efectivo: todo lo que sale del cajón -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <section aria-labelledby="titulo-salidas" class="bg-surface rounded-xl border border-border shadow-sm p-5">
+        <div class="flex items-center justify-between gap-3 mb-4">
+          <h2 id="titulo-salidas" class="text-base font-semibold font-heading text-text-primary">Salidas de caja</h2>
+          <button type="button" id="btn-nueva-salida" onclick="abrirNuevaSalida()"
+            class="inline-flex items-center justify-center gap-2 rounded-lg font-medium font-body cursor-pointer bg-primary-500 hover:bg-primary-600 text-white px-4 py-2 text-sm min-h-[40px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-300">
+            <i data-lucide="plus" class="h-4 w-4"></i> Nueva salida
+          </button>
+        </div>
+        <div id="tabla-salidas"></div>
+      </section>
+
+      <section aria-labelledby="titulo-pagos-doctores" class="bg-surface rounded-xl border border-border shadow-sm p-5">
+        <div class="flex items-center justify-between gap-3 mb-4">
+          <h2 id="titulo-pagos-doctores" class="text-base font-semibold font-heading text-text-primary">Pagos a doctores</h2>
+          <button type="button" id="btn-pagar-doctor"
+            class="inline-flex items-center justify-center gap-2 rounded-lg font-medium font-body cursor-pointer bg-primary-500 hover:bg-primary-600 text-white px-4 py-2 text-sm min-h-[40px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-300">
+            <i data-lucide="wallet" class="h-4 w-4"></i> Pagar a doctor
+          </button>
+        </div>
+        <div id="tabla-pagos-doctores"></div>
+      </section>
     </div>
 
-    <!-- Ingresos de hoy (solo lectura: se editan desde /ingresos) -->
-    <div class="bg-surface rounded-xl border border-border shadow-sm p-5">
-      <h2 class="text-base font-semibold font-heading text-text-primary mb-4">Ingresos de hoy</h2>
-      <div id="tabla-ingresos"></div>
-    </div>
+    <!-- Ingresos de hoy (solo lectura: se editan desde /ingresos). Plegable:
+         es la tabla más larga y empujaba el cierre fuera de la vista. -->
+    <details id="bloque-ingresos" class="group bg-surface rounded-xl border border-border shadow-sm">
+      <summary class="flex items-center justify-between gap-3 p-5 cursor-pointer list-none min-h-[44px] rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-300">
+        <span class="text-base font-semibold font-heading text-text-primary">
+          Ingresos de hoy
+          <span id="ingresos-resumen" class="ml-2 text-sm font-normal text-text-secondary font-body"></span>
+        </span>
+        <i data-lucide="chevron-down" class="h-4 w-4 text-text-muted transition-transform group-open:rotate-180"></i>
+      </summary>
+      <div class="px-5 pb-5"><div id="tabla-ingresos"></div></div>
+    </details>
 
     <!-- Bloque de cierre -->
-    <div id="bloque-cierre" class="bg-surface rounded-xl border border-border shadow-sm p-5 space-y-4">
-      <h2 class="text-base font-semibold font-heading text-text-primary">Cerrar caja</h2>
+    <section id="bloque-cierre" aria-labelledby="titulo-cierre" class="bg-surface rounded-xl border border-border shadow-sm p-5 space-y-4">
+      <h2 id="titulo-cierre" class="text-base font-semibold font-heading text-text-primary">Cerrar caja</h2>
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
-          <label class="block text-sm font-medium text-text-secondary mb-1 font-body">Efectivo contado</label>
-          <input id="f-contado" type="text" inputmode="decimal" placeholder="0.00"
+          <label for="f-contado" class="block text-sm font-medium text-text-secondary mb-1 font-body">Efectivo contado</label>
+          <input id="f-contado" type="text" inputmode="decimal" placeholder="0.00" aria-describedby="ayuda-contado etiqueta-diferencia"
             class="block w-full rounded-lg border border-border px-3 py-2.5 text-sm font-body min-h-[44px] bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-500" />
-          <p id="etiqueta-diferencia" class="mt-1 text-sm font-medium font-body"></p>
+          <p id="ayuda-contado" class="mt-1 text-xs text-text-muted font-body">Cuenta todo el cajón, fondo incluido.</p>
+          <p id="etiqueta-diferencia" aria-live="polite" class="mt-1 text-sm font-medium font-body"></p>
         </div>
         <div class="hidden">
-          <label class="block text-sm font-medium text-text-secondary mb-1 font-body">Comentario</label>
+          <label for="f-comentario" class="block text-sm font-medium text-text-secondary mb-1 font-body">Comentario</label>
           <textarea id="f-comentario" rows="2" placeholder="La diferencia se sale de tolerancia: explica qué pasó"
             class="block w-full rounded-lg border border-border px-3 py-2.5 text-sm font-body bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-500"></textarea>
         </div>
       </div>
-      <div class="flex items-center justify-between gap-3 pt-2 border-t border-border">
+      <div class="flex flex-col-reverse sm:flex-row sm:items-center justify-between gap-3 pt-2 border-t border-border">
         <p id="motivo-bloqueo" class="text-sm text-text-muted font-body"></p>
         <button type="button" id="btn-cerrar" onclick="abrirConfirmarCierre()" disabled
-          class="inline-flex items-center justify-center gap-2 rounded-lg font-medium font-body cursor-pointer bg-primary-500 hover:bg-primary-600 text-white px-5 py-2.5 text-sm min-h-[44px] shrink-0 opacity-50 cursor-not-allowed">
+          class="inline-flex items-center justify-center gap-2 rounded-lg font-medium font-body cursor-pointer bg-primary-500 hover:bg-primary-600 text-white px-5 py-2.5 text-sm min-h-[44px] shrink-0 opacity-50 cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-300">
           <i data-lucide="lock" class="h-4 w-4"></i> Cerrar caja
         </button>
       </div>
-    </div>
+    </section>
 
     <!-- Sello de cierre: reemplaza el bloque de cierre cuando el día ya está cerrado -->
     <div id="sello-cerrado" class="hidden bg-accent-50 border border-accent-200 rounded-xl p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-      <div class="flex items-center gap-3">
+      <div class="flex items-start gap-3 min-w-0">
         <i data-lucide="check-circle-2" class="h-6 w-6 text-accent-700 shrink-0"></i>
-        <p id="sello-texto" class="text-sm font-medium text-accent-700 font-body"></p>
+        <div class="min-w-0">
+          <p class="text-sm font-semibold text-accent-700 font-body">Caja cerrada</p>
+          <dl id="sello-detalle" class="mt-2 grid grid-cols-2 sm:grid-cols-4 gap-x-6 gap-y-2"></dl>
+        </div>
       </div>
       <button type="button" id="btn-imprimir" onclick="imprimirComprobante()"
-        class="inline-flex items-center justify-center gap-2 rounded-lg font-medium font-body cursor-pointer border border-border bg-surface hover:bg-surface-hover text-text-secondary px-4 py-2 text-sm min-h-[38px] shrink-0">
+        class="inline-flex items-center justify-center gap-2 rounded-lg font-medium font-body cursor-pointer border border-border bg-surface hover:bg-surface-hover text-text-secondary px-4 py-2 text-sm min-h-[40px] shrink-0">
         <i data-lucide="printer" class="h-4 w-4"></i> Imprimir
       </button>
     </div>
@@ -216,32 +268,33 @@
   </div>
 </div>
 
-<!-- Modal: nueva salida de caja -->
-<div id="modal-salida" class="hidden fixed inset-0 z-50 overflow-y-auto">
+<!-- Modal: nueva salida de caja. Es un <form>: Enter guarda, y el botón se
+     bloquea mientras corre el POST para no registrar la salida dos veces. -->
+<div id="modal-salida" class="hidden fixed inset-0 z-50 overflow-y-auto" role="dialog" aria-modal="true" aria-labelledby="titulo-modal-salida">
   <div class="flex min-h-full items-end sm:items-center justify-center p-4">
     <div class="fixed inset-0 bg-black/40" onclick="Modal.close('modal-salida')"></div>
-    <div class="relative bg-surface rounded-2xl shadow-xl w-full max-w-md">
+    <form id="form-salida" novalidate class="relative bg-surface rounded-2xl shadow-xl w-full max-w-md">
       <div class="flex items-center justify-between px-6 py-4 border-b border-border">
-        <h2 class="text-base font-semibold font-heading text-text-primary">Nueva salida de caja</h2>
-        <button type="button" onclick="Modal.close('modal-salida')" class="p-2 rounded-lg text-text-muted hover:bg-surface-hover transition-colors cursor-pointer"><i data-lucide="x" class="h-4 w-4"></i></button>
+        <h2 id="titulo-modal-salida" class="text-base font-semibold font-heading text-text-primary">Nueva salida de caja</h2>
+        <button type="button" aria-label="Cerrar" onclick="Modal.close('modal-salida')" class="p-2 rounded-lg text-text-muted hover:bg-surface-hover transition-colors cursor-pointer"><i data-lucide="x" class="h-4 w-4"></i></button>
       </div>
       <div class="px-6 py-5 space-y-4">
         <div>
-          <label class="block text-sm font-medium text-text-secondary mb-1 font-body">Concepto</label>
-          <input id="f-salida-concepto" type="text" placeholder="¿De qué fue la salida?"
+          <label for="f-salida-concepto" class="block text-sm font-medium text-text-secondary mb-1 font-body">Concepto</label>
+          <input id="f-salida-concepto" type="text" placeholder="¿De qué fue la salida?" maxlength="200"
             class="block w-full rounded-lg border border-border px-3 py-2.5 text-sm font-body min-h-[44px] bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-500" />
         </div>
         <div>
-          <label class="block text-sm font-medium text-text-secondary mb-1 font-body">Monto</label>
+          <label for="f-salida-monto" class="block text-sm font-medium text-text-secondary mb-1 font-body">Monto</label>
           <input id="f-salida-monto" type="text" inputmode="decimal" placeholder="0.00"
             class="block w-full rounded-lg border border-border px-3 py-2.5 text-sm font-body min-h-[44px] bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-500" />
         </div>
       </div>
       <div class="flex justify-end gap-3 px-6 py-4 border-t border-border">
-        <button type="button" onclick="Modal.close('modal-salida')" class="inline-flex items-center justify-center gap-2 rounded-lg font-medium font-body cursor-pointer border border-border bg-surface hover:bg-surface-hover text-text-secondary px-4 py-2 text-sm min-h-[38px]">Cancelar</button>
-        <button type="button" onclick="guardarSalida()" class="inline-flex items-center justify-center gap-2 rounded-lg font-medium font-body cursor-pointer bg-primary-500 hover:bg-primary-600 text-white px-4 py-2 text-sm min-h-[38px]">Guardar</button>
+        <button type="button" onclick="Modal.close('modal-salida')" class="inline-flex items-center justify-center gap-2 rounded-lg font-medium font-body cursor-pointer border border-border bg-surface hover:bg-surface-hover text-text-secondary px-4 py-2 text-sm min-h-[40px]">Cancelar</button>
+        <button type="submit" id="btn-guardar-salida" class="inline-flex items-center justify-center gap-2 rounded-lg font-medium font-body cursor-pointer bg-primary-500 hover:bg-primary-600 text-white px-4 py-2 text-sm min-h-[40px] disabled:opacity-50 disabled:cursor-not-allowed"><span id="texto-guardar-salida">Guardar</span></button>
       </div>
-    </div>
+    </form>
   </div>
 </div>
 
@@ -265,6 +318,120 @@
   </div>
 </div>
 
+<!-- Modal: confirmar eliminar pago a doctor -->
+<div id="modal-eliminar-pago" class="hidden fixed inset-0 z-50 overflow-y-auto" role="dialog" aria-modal="true" aria-labelledby="titulo-eliminar-pago">
+  <div class="flex min-h-full items-end sm:items-center justify-center p-4">
+    <div class="fixed inset-0 bg-black/40" onclick="Modal.close('modal-eliminar-pago')"></div>
+    <div class="relative bg-surface rounded-2xl shadow-xl w-full max-w-md">
+      <div class="flex items-center justify-between px-6 py-4 border-b border-border">
+        <h2 id="titulo-eliminar-pago" class="text-base font-semibold font-heading text-text-primary">Eliminar pago a doctor</h2>
+        <button type="button" aria-label="Cerrar" onclick="Modal.close('modal-eliminar-pago')" class="p-2 rounded-lg text-text-muted hover:bg-surface-hover transition-colors cursor-pointer"><i data-lucide="x" class="h-4 w-4"></i></button>
+      </div>
+      <div class="px-6 py-5">
+        <p class="text-sm text-text-secondary font-body">El pago se borra y el efectivo vuelve a contarse en el cajón. Si liquidaba comisiones, esas comisiones regresan a pendientes.</p>
+        <div class="flex justify-end gap-3 mt-6 pt-4 border-t border-border">
+          <button type="button" onclick="Modal.close('modal-eliminar-pago')" class="inline-flex items-center justify-center gap-2 rounded-lg font-medium font-body cursor-pointer border border-border bg-surface hover:bg-surface-hover text-text-secondary px-4 py-2 text-sm min-h-[40px]">Cancelar</button>
+          <button type="button" id="btn-confirmar-eliminar-pago" class="inline-flex items-center justify-center gap-2 rounded-lg font-medium font-body cursor-pointer bg-danger-500 hover:bg-danger-600 text-white px-4 py-2 text-sm min-h-[40px] disabled:opacity-50 disabled:cursor-not-allowed"><span id="texto-confirmar-eliminar-pago">Eliminar</span></button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: pagar a doctor. Dos modos —liquidar comisiones pendientes o un pago
+     libre— y un paso de éxito para imprimir el comprobante. Es un <form>: Enter
+     paga, y el botón se bloquea mientras corre el POST. -->
+<div id="modal-pago-doctor" class="hidden fixed inset-0 z-50 overflow-y-auto" role="dialog" aria-modal="true" aria-labelledby="titulo-pago-doctor">
+  <div class="flex min-h-full items-end sm:items-center justify-center p-4">
+    <div class="fixed inset-0 bg-black/40" data-cerrar-pago></div>
+    <form id="form-pago-doctor" novalidate class="relative bg-surface rounded-2xl shadow-xl w-full max-w-lg">
+      <div class="flex items-center justify-between px-6 py-4 border-b border-border">
+        <h2 id="titulo-pago-doctor" class="text-base font-semibold font-heading text-text-primary">Pagar a doctor</h2>
+        <button type="button" aria-label="Cerrar" data-cerrar-pago class="p-2 rounded-lg text-text-muted hover:bg-surface-hover transition-colors cursor-pointer"><i data-lucide="x" class="h-4 w-4"></i></button>
+      </div>
+
+      <div id="pago-captura" class="px-6 py-5 space-y-4">
+        <div>
+          <label for="f-pago-doctor" class="block text-sm font-medium text-text-secondary mb-1 font-body">Doctor</label>
+          <select id="f-pago-doctor" class="block w-full rounded-lg border border-border px-3 py-2.5 text-sm font-body min-h-[44px] bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-500"></select>
+        </div>
+
+        <div role="radiogroup" aria-label="Tipo de pago" class="grid grid-cols-2 gap-1 p-1 rounded-lg bg-surface-alt border border-border">
+          <button type="button" role="radio" aria-checked="true" data-modo="comisiones"
+            class="modo-pago active rounded-md px-3 py-2 text-sm font-medium font-body cursor-pointer min-h-[40px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-300">Comisiones pendientes</button>
+          <button type="button" role="radio" aria-checked="false" data-modo="libre"
+            class="modo-pago rounded-md px-3 py-2 text-sm font-medium font-body cursor-pointer min-h-[40px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-300">Pago libre</button>
+        </div>
+
+        <div id="panel-comisiones" class="space-y-3">
+          <p id="comisiones-estado" aria-live="polite" class="text-sm text-text-secondary font-body"></p>
+          <div id="comisiones-lista-wrap" style="display:none" class="rounded-lg border border-border overflow-hidden">
+            <label class="flex items-center gap-3 px-4 py-2.5 border-b border-border bg-surface-alt text-sm font-medium text-text-primary font-body cursor-pointer min-h-[44px]">
+              <input id="f-comisiones-todas" type="checkbox" class="h-4 w-4 accent-primary-600"> Seleccionar todas
+            </label>
+            <ul id="comisiones-lista" class="max-h-64 overflow-y-auto divide-y divide-border"></ul>
+          </div>
+          <dl id="comisiones-resumen" style="display:none" class="rounded-lg bg-surface-alt px-4 py-3 text-sm font-body space-y-1">
+            <div class="flex justify-between gap-3">
+              <dt class="text-text-secondary">Comisiones (<span id="resumen-cantidad">0</span>)</dt>
+              <dd id="resumen-suma" class="tabular-nums text-text-primary">$0.00</dd>
+            </div>
+            <div id="fila-descuento" style="display:none" class="flex justify-between gap-3">
+              <dt class="text-text-secondary">− Saldo a favor de la clínica</dt>
+              <dd id="resumen-descuento" class="tabular-nums text-warning-700">$0.00</dd>
+            </div>
+            <div class="flex justify-between items-baseline gap-3 pt-2 border-t border-border">
+              <dt class="font-semibold text-text-primary">Entregar en efectivo</dt>
+              <dd id="resumen-neto" class="text-2xl font-bold font-heading tabular-nums text-text-primary">$0.00</dd>
+            </div>
+          </dl>
+        </div>
+
+        <div id="panel-libre" style="display:none" class="space-y-4">
+          <div>
+            <label for="f-pago-tipo" class="block text-sm font-medium text-text-secondary mb-1 font-body">Tipo</label>
+            <select id="f-pago-tipo" class="block w-full rounded-lg border border-border px-3 py-2.5 text-sm font-body min-h-[44px] bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-500">
+              <option value="salario">Salario / adelanto</option>
+              <option value="comision">Comisión</option>
+            </select>
+            <p class="mt-1 text-xs text-text-muted font-body">Un pago libre de comisión no descuenta pendientes; el administrador lo concilia.</p>
+          </div>
+          <div>
+            <label for="f-pago-concepto" class="block text-sm font-medium text-text-secondary mb-1 font-body">Concepto</label>
+            <input id="f-pago-concepto" type="text" maxlength="200" placeholder="Ej. Adelanto de la quincena"
+              class="block w-full rounded-lg border border-border px-3 py-2.5 text-sm font-body min-h-[44px] bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-500" />
+          </div>
+          <div>
+            <label for="f-pago-monto" class="block text-sm font-medium text-text-secondary mb-1 font-body">Monto</label>
+            <input id="f-pago-monto" type="text" inputmode="decimal" placeholder="0.00" aria-describedby="error-pago-monto"
+              class="block w-full rounded-lg border border-border px-3 py-2.5 text-sm font-body min-h-[44px] bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-500" />
+            <p id="error-pago-monto" style="display:none" role="alert" class="mt-1 text-sm text-danger-600 font-body">Escribe un monto mayor a cero</p>
+          </div>
+        </div>
+
+        <p id="aviso-pago-efectivo" style="display:none" role="status"
+          class="rounded-lg bg-warning-50 border border-warning-200 px-3 py-2 text-sm text-warning-700 font-body"></p>
+        <p id="error-pago-doctor" style="display:none" role="alert" class="text-sm text-danger-600 font-body"></p>
+      </div>
+
+      <div id="pago-exito" style="display:none" class="px-6 py-8 text-center">
+        <div class="mx-auto h-12 w-12 rounded-full bg-accent-50 flex items-center justify-center"><i data-lucide="check" class="h-6 w-6 text-accent-700"></i></div>
+        <p class="mt-3 text-base font-semibold font-heading text-text-primary">Pago registrado</p>
+        <p id="pago-exito-detalle" class="mt-1 text-sm text-text-secondary font-body"></p>
+      </div>
+
+      <div id="pago-footer-captura" class="flex justify-end gap-3 px-6 py-4 border-t border-border">
+        <button type="button" data-cerrar-pago class="inline-flex items-center justify-center gap-2 rounded-lg font-medium font-body cursor-pointer border border-border bg-surface hover:bg-surface-hover text-text-secondary px-4 py-2 text-sm min-h-[40px]">Cancelar</button>
+        <button type="submit" id="btn-confirmar-pago" disabled class="inline-flex items-center justify-center gap-2 rounded-lg font-medium font-body cursor-pointer bg-primary-500 hover:bg-primary-600 text-white px-4 py-2 text-sm min-h-[40px] disabled:opacity-50 disabled:cursor-not-allowed"><span id="texto-confirmar-pago">Pagar</span></button>
+      </div>
+      <div id="pago-footer-exito" style="display:none" class="flex justify-end gap-3 px-6 py-4 border-t border-border">
+        <button type="button" id="btn-imprimir-pago" class="inline-flex items-center justify-center gap-2 rounded-lg font-medium font-body cursor-pointer border border-border bg-surface hover:bg-surface-hover text-text-secondary px-4 py-2 text-sm min-h-[40px]"><i data-lucide="printer" class="h-4 w-4"></i> Imprimir comprobante</button>
+        <button type="button" data-cerrar-pago class="inline-flex items-center justify-center gap-2 rounded-lg font-medium font-body cursor-pointer bg-primary-500 hover:bg-primary-600 text-white px-4 py-2 text-sm min-h-[40px]">Listo</button>
+      </div>
+    </form>
+  </div>
+</div>
+
 <!-- Modal: confirmar cierre de caja -->
 <div id="modal-confirmar-cierre" class="hidden fixed inset-0 z-50 overflow-y-auto">
   <div class="flex min-h-full items-end sm:items-center justify-center p-4">
@@ -275,8 +442,16 @@
         <button type="button" onclick="Modal.close('modal-confirmar-cierre')" class="p-2 rounded-lg text-text-muted hover:bg-surface-hover transition-colors cursor-pointer"><i data-lucide="x" class="h-4 w-4"></i></button>
       </div>
       <div class="px-6 py-5 space-y-3">
-        <p class="text-sm text-text-secondary font-body">Esta acción cierra el día. No se podrán registrar más ingresos ni salidas hasta que un administrador reabra la caja.</p>
+        <p class="text-sm text-text-secondary font-body">Esta acción cierra el día. No se podrán registrar más ingresos, salidas ni pagos a doctores hasta que un administrador reabra la caja.</p>
         <div class="rounded-lg border border-border divide-y divide-border">
+          <div class="flex items-center justify-between px-4 py-2.5 text-sm font-body">
+            <span class="text-text-secondary">Salidas</span>
+            <span id="confirmar-salidas" class="font-medium tabular-nums">$0.00</span>
+          </div>
+          <div class="flex items-center justify-between px-4 py-2.5 text-sm font-body">
+            <span class="text-text-secondary">Pagos a doctores</span>
+            <span id="confirmar-pagos-doctores" class="font-medium tabular-nums">$0.00</span>
+          </div>
           <div class="flex items-center justify-between px-4 py-2.5 text-sm font-body">
             <span class="text-text-secondary">Esperado</span>
             <span id="confirmar-esperado" class="font-medium tabular-nums">$0.00</span>
@@ -318,6 +493,10 @@
         <div>
           <h3 class="text-sm font-semibold font-heading text-text-primary mb-2">Salidas</h3>
           <div id="detalle-salidas"></div>
+        </div>
+        <div>
+          <h3 class="text-sm font-semibold font-heading text-text-primary mb-2">Pagos a doctores</h3>
+          <div id="detalle-pagos-doctores"></div>
         </div>
         <div>
           <h3 class="text-sm font-semibold font-heading text-text-primary mb-2">Bitácora</h3>

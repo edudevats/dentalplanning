@@ -1,5 +1,5 @@
 from marshmallow import Schema, fields, validate, EXCLUDE, post_load
-from app.superadmin.models import SUBSCRIPTION_ESTADOS, PAYMENT_METODOS
+from app.superadmin.models import SUBSCRIPTION_ESTADOS, PAYMENT_METODOS, SUB_METODOS_PAGO
 
 
 class PlanSchema(Schema):
@@ -46,6 +46,7 @@ class TenantUpdateSchema(Schema):
 
     name = fields.Str(validate=validate.Length(min=2, max=200))
     contact_email = fields.Email(allow_none=True)
+    contact_phone = fields.Str(allow_none=True, validate=validate.Length(max=30))
     plan = fields.Str(validate=validate.Length(max=20))
 
 
@@ -131,3 +132,7 @@ class ActivarManualSchema(Schema):
     monto = fields.Float(load_default=None, validate=validate.Range(min=0))
     fecha = fields.Date(load_default=None)
     comentarios = fields.Str(load_default=None, validate=validate.Length(max=500))
+
+
+class MetodoPagoSchema(Schema):
+    metodo_pago = fields.Str(required=True, validate=validate.OneOf(SUB_METODOS_PAGO))

@@ -187,6 +187,11 @@ def admin_pagos():
     return render_template("admin/pagos.html")
 
 
+@frontend_bp.route("/admin/vencimientos")
+def admin_vencimientos():
+    return render_template("admin/vencimientos.html")
+
+
 @frontend_bp.route("/admin/planes")
 def admin_planes():
     return render_template("admin/planes.html")

@@ -21,6 +21,20 @@ class PermisosField(fields.Field):
         return value
 
 
+class PermisosUsuarioField(fields.Field):
+    """Permisos en PUT /users: forma de asistente {recurso: nivel} o de
+    recepcionista {"bloques_apagados": [...], "extras": {...}}.
+
+    Aquí solo se valida que sea un objeto; la ruta normaliza según el rol del
+    usuario destino (que el schema no conoce).
+    """
+
+    def _deserialize(self, value, attr, data, **kwargs):
+        if not isinstance(value, dict):
+            raise ValidationError("Los permisos deben ser un objeto")
+        return value
+
+
 def _validate_password_strength(password):
     """Enforce min 8 chars, at least 1 uppercase, 1 lowercase, 1 digit."""
     if len(password) < 8:
@@ -71,7 +85,7 @@ class UserUpdateSchema(Schema):
     name = fields.Str(validate=validate.Length(min=2, max=200))
     is_active = fields.Bool()
     password = fields.Str(validate=validate.Length(min=8))
-    permisos = PermisosField()
+    permisos = PermisosUsuarioField()
 
     @validates("password")
     def validate_password(self, value, **kwargs):

@@ -361,3 +361,26 @@ def seed_plans():
         click.echo(f"  CREATED {p['nombre']}")
     db.session.commit()
     click.echo(f"\n{created} planes creados.")
+
+
+@billing_cli.command("recordatorios")
+@click.option("--dry-run", is_flag=True, help="Solo muestra a quién avisaría")
+def billing_recordatorios(dry_run):
+    """Correos de cobro a tenants de transferencia (3 días antes / 2 después).
+
+    No cambia estados, no cobra, no suspende. Pensado para una Scheduled task
+    diaria (14:00 UTC = 08:00 CDMX).
+    """
+    from app.superadmin.recordatorios import enviar_recordatorios_pendientes
+
+    res = enviar_recordatorios_pendientes(get_today(), dry_run=dry_run)
+    prefijo = "AVISARÍA" if dry_run else "ENVIADO"
+    for nombre in res["enviados"]:
+        click.echo(f"  {prefijo} {nombre}")
+    for nombre in res["omitidos"]:
+        click.echo(f"  OMITIDO {nombre} (sin destinatario o SMTP falló)")
+    click.echo(
+        f"\nResultado: {len(res['enviados'])} enviados, "
+        f"{len(res['omitidos'])} omitidos, resumen "
+        f"{'enviado' if res['resumen_enviado'] else 'no enviado'}"
+    )

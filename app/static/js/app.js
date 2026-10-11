@@ -824,7 +824,8 @@ async function loadUserInfo() {
 }
 
 // ── Gating de navegación por rol ──────────────────────────────────────────────
-// Recepcionista: lista fija (su allowlist vive hardcodeada en el backend).
+// Recepcionista: se deriva de sus bloques encendidos más sus extras (ver
+// rutasRecepcion; el backend vive en app/middleware/permisos_recepcion.py).
 // Asistente: se deriva de sus permisos por usuario.
 const NAV_POR_RECURSO = {
   'inventario': ['/inventario'],
@@ -841,8 +842,40 @@ const NAV_POR_RECURSO = {
   'caja': ['/corte-caja'],
 };
 
+// Recepcionista: sus bloques encendidos (permisos.bloques_apagados guarda lo
+// apagado; vacío = todo) más los extras que el admin le sumó.
+const NAV_POR_BLOQUE = {
+  'ingresos': ['/ingresos'],
+  'tickets': ['/facturas'],
+  'corte': ['/corte-caja'],
+  'pagos_cajon': ['/corte-caja'],
+};
+
+function rutasRecepcion(user) {
+  const permisos = user.permisos || {};
+  const apagados = new Set(permisos.bloques_apagados || []);
+  const rutas = [];
+  Object.entries(NAV_POR_BLOQUE).forEach(([bloque, rs]) => {
+    if (!apagados.has(bloque)) rs.forEach(r => { if (!rutas.includes(r)) rutas.push(r); });
+  });
+  Object.keys(permisos.extras || {}).forEach(recurso => {
+    (NAV_POR_RECURSO[recurso] || []).forEach(r => { if (!rutas.includes(r)) rutas.push(r); });
+  });
+  return rutas;
+}
+
+// Primera pantalla de la recepcionista: /ingresos si lo conserva; si no, la
+// primera ruta que sí tenga. Con rutas, nunca devuelve una ajena a ellas. El
+// '/ingresos' final es solo un respaldo para rutas vacías, que el servidor ya
+// no permite guardar (tiene_algun_area exige un área navegable).
+function rutaInicioRecepcion(user) {
+  const rutas = rutasRecepcion(user || {});
+  return rutas.includes('/ingresos') ? '/ingresos' : (rutas[0] || '/ingresos');
+}
+window.rutaInicioRecepcion = rutaInicioRecepcion;
+
 function rutasPermitidas(user) {
-  if (user.role === 'recepcionista') return ['/ingresos', '/facturas', '/corte-caja'];
+  if (user.role === 'recepcionista') return rutasRecepcion(user);
   if (user.role === 'asistente') {
     const permisos = user.permisos || {};
     const rutas = [];
@@ -917,16 +950,24 @@ function applyRoleNav(user) {
   // lleva a uno de sus destinos válidos. Se prefiere Inventario por ser el
   // módulo por defecto del rol; si no lo tuviera, cualquier ruta suya sirve
   // más que rebotarlo a una página que tampoco puede abrir.
+  //
+  // Guardas contra bucles: sin rutas no se redirige (cualquier destino también
+  // le sería ajeno y rebotaría para siempre); se avisa y ya. Y nunca se
+  // redirige a la página en la que ya está.
   const here = window.location.pathname;
   const dentro = allowed.some(a => here === a || here.startsWith(a + '/'));
   if (!dentro) {
+    if (!allowed.length) {
+      Toast.warning('No tienes secciones disponibles. Pide acceso al administrador.');
+      return;
+    }
     let destino;
     if (esAsistente) {
       destino = allowed.includes('/inventario') ? '/inventario' : allowed[0];
     } else {
-      destino = '/ingresos';
+      destino = rutaInicioRecepcion(user);
     }
-    if (destino) window.location.replace(destino);
+    if (destino && destino !== here) window.location.replace(destino);
   }
 }
 

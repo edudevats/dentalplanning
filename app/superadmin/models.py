@@ -10,6 +10,20 @@ SUBSCRIPTION_ESTADOS = (SUBSCRIPTION_ACTIVA, SUBSCRIPTION_VENCIDA, SUBSCRIPTION_
 
 PAYMENT_METODOS = ("transferencia", "efectivo", "tarjeta", "clip", "otro")
 
+SUB_METODO_TRANSFERENCIA = "transferencia"
+SUB_METODO_CLIP = "clip"
+SUB_METODOS_PAGO = (SUB_METODO_TRANSFERENCIA, SUB_METODO_CLIP)
+
+# Recordatorios de cobro a tenants (ver app/superadmin/recordatorios.py).
+RECORDATORIO_PREVIO = "previo"
+RECORDATORIO_VENCIDO = "vencido"
+RECORDATORIO_WHATSAPP = "whatsapp"
+RECORDATORIO_RESUMEN = "resumen"
+CANAL_EMAIL = "email"
+CANAL_WHATSAPP = "whatsapp"
+ORIGEN_AUTO = "auto"
+ORIGEN_MANUAL = "manual"
+
 ADDON_TIPO_RECEPCIONISTA = "recepcionista"
 ADDON_TIPO_ASISTENTE = "asistente"
 
@@ -64,6 +78,13 @@ class Subscription(db.Model):
     clip_subscription_id = db.Column(db.String(100), nullable=True)  # active: Clip /subscriptions id
     grace_expires_at = db.Column(db.Date, nullable=True)
     counted_in_cupo = db.Column(db.Boolean, nullable=False, default=False)
+    # Cómo paga el tenant su mensualidad. Los de transferencia entran a
+    # /admin/vencimientos y a los recordatorios por correo. OJO: `flask billing
+    # cycle` todavía no lo consulta.
+    metodo_pago = db.Column(
+        db.String(20), nullable=False,
+        default=SUB_METODO_TRANSFERENCIA, server_default=SUB_METODO_TRANSFERENCIA,
+    )
     # Downgrade programado: el plan más barato entra al terminar el periodo ya
     # pagado (``plan_programado_desde`` = proximo_cobro al momento de agendarlo).
     plan_programado_id = db.Column(db.Integer, db.ForeignKey("plans.id"), nullable=True)
@@ -163,3 +184,28 @@ class AsientoRecepcionista(db.Model):
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
 
     tenant = db.relationship("Tenant", foreign_keys=[tenant_id])
+
+
+class RecordatorioCobro(db.Model):
+    """Cada aviso de cobro enviado (correo o WhatsApp) o el resumen diario.
+
+    Los automáticos se deduplican consultando (subscription_id, ciclo, tipo,
+    origen="auto"); los manuales pueden repetirse. El resumen diario no tiene
+    tenant ni suscripción.
+    """
+    __tablename__ = "recordatorios_cobro"
+
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey("tenants.id"), nullable=True, index=True)
+    subscription_id = db.Column(db.Integer, db.ForeignKey("subscriptions.id"), nullable=True)
+    ciclo = db.Column(db.Date, nullable=False)
+    tipo = db.Column(db.String(20), nullable=False)
+    canal = db.Column(db.String(20), nullable=False)
+    origen = db.Column(db.String(20), nullable=False)
+    destinatario = db.Column(db.String(255), nullable=True)
+    enviado_por_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+
+    __table_args__ = (
+        db.Index("ix_recordatorio_sub_ciclo_tipo", "subscription_id", "ciclo", "tipo"),
+    )

@@ -17,6 +17,8 @@ from app.auth.models import (
 from app.superadmin.models import (
     Plan, Subscription, Payment, TenantNote, AdminAuditLog,
     AsientoRecepcionista,
+    RecordatorioCobro, RECORDATORIO_WHATSAPP, CANAL_WHATSAPP, ORIGEN_MANUAL,
+    RECORDATORIO_PREVIO,
     SUBSCRIPTION_ACTIVA, SUBSCRIPTION_GRACIA, SUBSCRIPTION_VENCIDA,
     ASIENTO_ACTIVA, ASIENTO_PENDIENTE,
 )
@@ -34,7 +36,14 @@ from app.superadmin.schemas import (
     SubscriptionUpdateSchema, AssignPlanSchema, FechaCobroSchema,
     CambioPlanSchema, ChangeUserRoleSchema,
     ToggleActiveSchema, RechazarAsientoSchema, ActivarManualSchema,
+    MetodoPagoSchema,
 )
+from app.superadmin.vencimientos import (
+    agrupar_vencimientos, tipo_cliente, url_whatsapp, normalizar_telefono,
+    texto_datos_bancarios, TIPOS_CLIENTE, TIPO_PAGA, TIPO_PRUEBA,
+    TIPO_PRUEBA_VENCIDA,
+)
+from app.superadmin import recordatorios as recordatorios_svc
 from app.catalogo.models import Material
 from app.tratamientos.models import Tratamiento
 
@@ -79,6 +88,7 @@ def _serialize_tenant(t, *, with_counts=False):
         "plan": t.plan,
         "status": t.status,
         "contact_email": t.contact_email,
+        "contact_phone": t.contact_phone,
         "approved_at": t.approved_at.isoformat() if t.approved_at else None,
         "rejected_reason": t.rejected_reason,
         "created_at": t.created_at.isoformat() if t.created_at else None,
@@ -111,11 +121,13 @@ def _serialize_tenant(t, *, with_counts=False):
         if sub:
             out["subscription"] = {
                 "estado": sub.estado,
+                "metodo_pago": sub.metodo_pago,
                 "plan_nombre": sub.plan.nombre if sub.plan else None,
                 "plan_modulos": sub.plan.modulos if sub.plan else [],
                 "proximo_cobro": sub.proximo_cobro.isoformat() if sub.proximo_cobro else None,
                 "grace_expires_at": sub.grace_expires_at.isoformat() if sub.grace_expires_at else None,
             }
+        out["tipo_cliente"] = tipo_cliente(sub, get_today())
         out["ultima_actividad"] = (
             db.session.query(func.max(User.last_login))
             .filter(User.tenant_id == t.id)
@@ -156,6 +168,7 @@ def _serialize_subscription(s):
         "inicio": s.inicio.isoformat() if s.inicio else None,
         "proximo_cobro": s.proximo_cobro.isoformat() if s.proximo_cobro else None,
         "estado": s.estado,
+        "metodo_pago": s.metodo_pago,
         "clip_checkout_id": s.clip_checkout_id,
         "grace_expires_at": s.grace_expires_at.isoformat() if s.grace_expires_at else None,
         "plan_programado_id": s.plan_programado_id,
@@ -343,6 +356,11 @@ def log_admin_action(action, *, target_type=None, target_id=None,
 
 # ── Tenants ──────────────────────────────────────────────────────────────────
 
+def _filtro_plan_de_pago():
+    """Condicion SQL de 'cliente de paga' (espejo de vencimientos.tipo_cliente)."""
+    return db.and_(Plan.precio_mensual > 0, Plan.es_temporal.is_(False))
+
+
 def _query_tenants(args):
     """Aplica filtros (status, search, sub_estado, nuevas) y orden (sort) a la
     lista de clínicas. Usado por la ruta JSON y por el export CSV."""
@@ -351,6 +369,7 @@ def _query_tenants(args):
     sub_estado = args.get("sub_estado")
     sort = args.get("sort") or "reciente"
     nuevas = args.get("nuevas")
+    tipo = args.get("tipo")
     today = date.today()
 
     q = _exclude_system(Tenant.query).outerjoin(
@@ -380,6 +399,24 @@ def _query_tenants(args):
         q = q.filter(Subscription.estado == SUBSCRIPTION_GRACIA)
     elif sub_estado == "vencida":
         q = q.filter(Subscription.estado == SUBSCRIPTION_VENCIDA)
+
+    if tipo in TIPOS_CLIENTE and tipo != "sin_plan":
+        q = q.outerjoin(Plan, Plan.id == Subscription.plan_id)
+        vencida = db.and_(
+            Plan.es_temporal.is_(True),
+            Subscription.proximo_cobro.isnot(None),
+            Subscription.proximo_cobro < today,
+        )
+        if tipo == TIPO_PAGA:
+            q = q.filter(_filtro_plan_de_pago())
+        elif tipo == TIPO_PRUEBA_VENCIDA:
+            q = q.filter(vencida)
+        elif tipo == TIPO_PRUEBA:
+            q = q.filter(
+                Plan.id.isnot(None),
+                db.not_(_filtro_plan_de_pago()),
+                db.not_(vencida),
+            )
 
     if sort == "proximo_cobro":
         q = q.order_by(Subscription.proximo_cobro.is_(None),
@@ -638,11 +675,16 @@ def change_user_role(user_id):
     elif old_role == ROLE_ASISTENTE and new_role != ROLE_ASISTENTE:
         user.permisos = {}
         permisos_normalizados = True
+    elif old_role == "recepcionista" and new_role != "recepcionista":
+        # Bloques apagados y extras de recepcionista: mismo motivo, no deben
+        # revivir si el usuario regresa al rol.
+        user.permisos = {}
+        permisos_normalizados = True
 
     details = {"old_role": old_role, "new_role": new_role}
     if permisos_normalizados:
         # Solo se registra el detalle de permisos cuando la transición
-        # realmente los tocó (entrada/salida de asistente).
+        # realmente los tocó (entrada/salida de asistente o recepcionista).
         details["permisos_antes"] = permisos_antes
         details["permisos_despues"] = user.permisos or {}
 
@@ -1100,6 +1142,91 @@ def sync_all_plans_clip():
     db.session.commit()
     return jsonify({"synced": synced, "skipped": skipped, "errors": errors,
                     "total_candidates": len(candidates)})
+
+
+# ── Vencimientos (tenants que pagan por transferencia) ─────────────────────
+
+@superadmin_bp.route("/vencimientos", methods=["GET"])
+@require_superuser
+def list_vencimientos():
+    data = agrupar_vencimientos(get_today())
+    data["bancarios_configurados"] = bool(texto_datos_bancarios())
+    return jsonify(data)
+
+
+@superadmin_bp.route("/vencimientos/<int:sub_id>/whatsapp", methods=["POST"])
+@require_superuser
+def vencimiento_whatsapp(sub_id):
+    sub = db.session.get(Subscription, sub_id)
+    if not sub or not sub.tenant or not sub.proximo_cobro:
+        return jsonify({"error": "Suscripción no encontrada"}), 404
+    url = url_whatsapp(sub, get_today())
+    if not url:
+        return jsonify({
+            "error": "La clínica no tiene un teléfono válido. Agrégalo en la pestaña General."
+        }), 400
+    db.session.add(RecordatorioCobro(
+        tenant_id=sub.tenant_id, subscription_id=sub.id, ciclo=sub.proximo_cobro,
+        tipo=RECORDATORIO_WHATSAPP, canal=CANAL_WHATSAPP, origen=ORIGEN_MANUAL,
+        destinatario=normalizar_telefono(sub.tenant.contact_phone),
+        enviado_por_id=g.current_user.id,
+    ))
+    log_admin_action("vencimiento.whatsapp", target_type="subscription", target_id=sub.id,
+                     tenant_id=sub.tenant_id, summary="Abrió recordatorio por WhatsApp")
+    db.session.commit()
+    return jsonify({"url": url})
+
+
+@superadmin_bp.route("/vencimientos/<int:sub_id>/correo", methods=["POST"])
+@require_superuser
+def vencimiento_correo(sub_id):
+    sub = db.session.get(Subscription, sub_id)
+    if not sub or not sub.tenant:
+        return jsonify({"error": "Suscripción no encontrada"}), 404
+    if not sub.proximo_cobro:
+        return jsonify({"error": "La suscripción no tiene fecha de cobro"}), 400
+    today = get_today()
+    tipo = recordatorios_svc.tipo_pendiente(sub, today) or RECORDATORIO_PREVIO
+    ok = recordatorios_svc.enviar_recordatorio(
+        sub, tipo, today, origen=ORIGEN_MANUAL, enviado_por_id=g.current_user.id,
+    )
+    if not ok:
+        db.session.rollback()
+        return jsonify({
+            "error": "No se pudo enviar el correo: revisa el email de contacto y la configuración SMTP."
+        }), 502
+    log_admin_action("vencimiento.correo", target_type="subscription", target_id=sub.id,
+                     tenant_id=sub.tenant_id, summary=f"Envió recordatorio de cobro ({tipo})")
+    db.session.commit()
+    return jsonify({"ok": True, "tipo": tipo})
+
+
+@superadmin_bp.route("/vencimientos/enviar-pendientes", methods=["POST"])
+@require_superuser
+def vencimientos_enviar_pendientes():
+    res = recordatorios_svc.enviar_recordatorios_pendientes(get_today())
+    return jsonify({
+        "enviados": len(res["enviados"]),
+        "omitidos": len(res["omitidos"]),
+        "resumen_enviado": res["resumen_enviado"],
+    })
+
+
+@superadmin_bp.route("/tenants/<int:tenant_id>/subscription/metodo-pago", methods=["PUT"])
+@require_superuser
+def update_metodo_pago(tenant_id):
+    sub = Subscription.query.filter_by(tenant_id=tenant_id).first()
+    if not sub:
+        return jsonify({"error": "La clínica no tiene suscripción"}), 404
+    data = MetodoPagoSchema().load(request.get_json() or {})
+    anterior = sub.metodo_pago
+    sub.metodo_pago = data["metodo_pago"]
+    log_admin_action("subscription.metodo_pago", target_type="subscription",
+                     target_id=sub.id, tenant_id=tenant_id,
+                     summary=f"Método de pago: {anterior} → {sub.metodo_pago}",
+                     details={"antes": anterior, "despues": sub.metodo_pago})
+    db.session.commit()
+    return jsonify(_serialize_subscription(sub))
 
 
 # ── Subscriptions ───────────────────────────────────────────────────────────
@@ -1739,7 +1866,9 @@ def stats_overview():
 
     en_mora = (
         Subscription.query.join(Tenant)
+        .join(Plan, Plan.id == Subscription.plan_id)
         .filter(Tenant.slug != SYSTEM_TENANT_SLUG)
+        .filter(_filtro_plan_de_pago())
         .filter(Subscription.estado == SUBSCRIPTION_ACTIVA)
         .filter(Subscription.proximo_cobro.isnot(None))
         .filter(Subscription.proximo_cobro < today)
@@ -1775,6 +1904,8 @@ def stats_overview():
         .all()
     )
 
+    por_cobrar = agrupar_vencimientos(get_today())["resumen"]
+
     return jsonify({
         "total_tenants": total,
         "activos": activos,
@@ -1785,6 +1916,8 @@ def stats_overview():
         "nuevos_este_mes": nuevos_mes,
         "en_gracia": en_gracia,
         "en_mora": en_mora,
+        "por_cobrar": por_cobrar["por_cobrar"],
+        "por_cobrar_monto": por_cobrar["monto"],
         "total_tenants_mes_anterior": total_mes_anterior,
         "nuevos_mes_anterior": nuevos_mes_anterior,
         "mes_anterior": inicio_mes_anterior.strftime("%Y-%m"),
@@ -1890,8 +2023,10 @@ def stats_salud():
         .filter(Tenant.slug != SYSTEM_TENANT_SLUG)
     )
 
+    base_paga = base.join(Plan, Plan.id == Subscription.plan_id).filter(_filtro_plan_de_pago())
+
     en_mora_subs = (
-        base.filter(Subscription.estado == SUBSCRIPTION_ACTIVA)
+        base_paga.filter(Subscription.estado == SUBSCRIPTION_ACTIVA)
         .filter(Subscription.proximo_cobro.isnot(None))
         .filter(Subscription.proximo_cobro < today)
         .order_by(Subscription.proximo_cobro.asc())
@@ -1903,7 +2038,7 @@ def stats_salud():
         .all()
     )
     por_vencer_subs = (
-        base.filter(Subscription.estado == SUBSCRIPTION_ACTIVA)
+        base_paga.filter(Subscription.estado == SUBSCRIPTION_ACTIVA)
         .filter(Subscription.proximo_cobro.isnot(None))
         .filter(Subscription.proximo_cobro >= today)
         .filter(Subscription.proximo_cobro <= today + timedelta(days=7))
@@ -1975,7 +2110,7 @@ def _csv_response(header, rows, filename):
 def export_tenants_csv():
     tenants = _query_tenants(request.args)
     header = [
-        "nombre", "slug", "email_contacto", "estado", "plan",
+        "nombre", "slug", "email_contacto", "telefono_contacto", "estado", "plan",
         "estado_suscripcion", "proximo_cobro", "usuarios",
         "ultimo_pago_fecha", "ultimo_pago_monto", "creada",
     ]
@@ -1986,6 +2121,7 @@ def export_tenants_csv():
         up = r.get("ultimo_pago") or {}
         rows.append([
             r["name"], r["slug"], r.get("contact_email") or "",
+            r.get("contact_phone") or "",
             r["status"], r.get("plan") or "",
             sub.get("estado") or "", sub.get("proximo_cobro") or "",
             r.get("users_count", 0),

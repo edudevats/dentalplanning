@@ -11,7 +11,13 @@ from app.auth.models import (
     TENANT_STATUS_PENDING, TENANT_STATUS_ACTIVE,
     TENANT_STATUS_SUSPENDED, TENANT_STATUS_REJECTED,
 )
-from app.auth.schemas import RegisterSchema, LoginSchema, UserCreateSchema, UserUpdateSchema, ChangePasswordSchema
+from app.auth.schemas import (
+    RegisterSchema, LoginSchema, UserCreateSchema, UserUpdateSchema,
+    ChangePasswordSchema, PermisosField,
+)
+from app.middleware.permisos_recepcion import (
+    BLOQUES, EXTRAS_RECEPCION, normalizar_permisos_recepcion, tiene_algun_area,
+)
 from app.middleware.tenant import require_auth, require_role
 from app.middleware.permisos import (
     CATALOGO, ROLE_ASISTENTE, RECURSO_INVENTARIO, normalizar_permisos,
@@ -297,16 +303,29 @@ def listar_users():
 def catalogo_permisos():
     """Catálogo de recursos otorgables, con lo que el plan del tenant permite.
 
+    Con ?rol=recepcionista devuelve bloques y extras de la recepcionista.
     Evita duplicar el catálogo en el JS de Ajustes.
     """
     tenant = db.session.get(Tenant, g.tenant_id)
     modulos = tenant.allowed_modules if tenant else []
+
+    def disponible(recurso):
+        return all(slug in modulos for slug in CATALOGO[recurso]["modulos"])
+
+    if request.args.get("rol") == "recepcionista":
+        return jsonify({
+            "bloques": [{"clave": c, "label": b["label"]} for c, b in BLOQUES.items()],
+            "extras": [
+                {"recurso": r, "label": CATALOGO[r]["label"], "disponible": disponible(r)}
+                for r in EXTRAS_RECEPCION
+            ],
+        })
     return jsonify({
         "recursos": [
             {
                 "recurso": recurso,
                 "label": meta["label"],
-                "disponible": all(slug in modulos for slug in meta["modulos"]),
+                "disponible": disponible(recurso),
                 "fijo": recurso == RECURSO_INVENTARIO,
             }
             for recurso, meta in CATALOGO.items()
@@ -362,6 +381,22 @@ def actualizar_user(user_id):
     if user.role == "admin":
         return jsonify({"error": "No puedes editar al administrador desde aquí"}), 403
     data = UserUpdateSchema().load(request.get_json() or {})
+    nuevos_permisos = None
+    if "permisos" in data:
+        tenant = db.session.get(Tenant, g.tenant_id)
+        modulos = tenant.allowed_modules if tenant else []
+        if user.role == ROLE_ASISTENTE:
+            nuevos_permisos = normalizar_permisos(
+                PermisosField().deserialize(data["permisos"]),
+                modulos_permitidos=modulos,
+            )
+        elif user.role == "recepcionista":
+            nuevos_permisos = normalizar_permisos_recepcion(
+                data["permisos"], modulos_permitidos=modulos)
+            if not tiene_algun_area(nuevos_permisos):
+                return jsonify({
+                    "error": "La recepcionista debe conservar al menos un área"
+                }), 400
     if "name" in data:
         user.name = data["name"]
     if "is_active" in data:
@@ -369,11 +404,8 @@ def actualizar_user(user_id):
     if data.get("password"):
         user.set_password(data["password"])
         user.must_change_password = True
-    if "permisos" in data and user.role == ROLE_ASISTENTE:
-        tenant = db.session.get(Tenant, g.tenant_id)
-        user.permisos = normalizar_permisos(
-            data["permisos"], modulos_permitidos=tenant.allowed_modules if tenant else []
-        )
+    if nuevos_permisos is not None:
+        user.permisos = nuevos_permisos
     db.session.commit()
     return jsonify(_user_dump(user))
 

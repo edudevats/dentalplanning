@@ -1989,11 +1989,14 @@
       row.appendChild(info);
       row.appendChild(roleBadge);
 
-      if (u.role === 'asistente') {
-        const perm = domEl('button', 'p-1.5 rounded-md text-text-muted hover:text-primary-600 hover:bg-primary-50 transition-colors cursor-pointer');
-        perm.type = 'button'; perm.title = 'Editar permisos';
-        perm.appendChild(domIcon('shield-check', 'h-4 w-4'));
-        perm.addEventListener('click', () => openPermisosModal(u));
+      if (u.role === 'asistente' || u.role === 'recepcionista') {
+        // Botón con texto: el escudo solo pasaba desapercibido.
+        const perm = domEl('button', 'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border bg-surface hover:bg-primary-50 hover:text-primary-700 text-xs font-medium font-body text-text-secondary transition-colors cursor-pointer');
+        perm.type = 'button'; perm.title = 'Editar permisos de ' + u.name;
+        perm.appendChild(domIcon('shield-check', 'h-3.5 w-3.5'));
+        perm.appendChild(domEl('span', '', 'Permisos'));
+        perm.addEventListener('click', () =>
+          u.role === 'asistente' ? openPermisosModal(u) : openPermisosRecepcionModal(u));
         row.appendChild(perm);
       }
       if (u.role === 'recepcionista' || u.role === 'asistente') {
@@ -2319,6 +2322,123 @@
         Modal.close('modal-crud');
         loadUsuarios();
       } catch (e) { Toast.error(mensajeError(e, 'Error al guardar')); }
+    });
+    footer.appendChild(cancel); footer.appendChild(save);
+    body.appendChild(footer);
+    Modal.open('modal-crud');
+    lucide.createIcons();
+  }
+
+  // Catálogo de la recepcionista (bloques + extras), cacheado.
+  let _catalogoRecepcion = null;
+  async function getCatalogoRecepcion() {
+    if (!_catalogoRecepcion) {
+      _catalogoRecepcion = await API.get('/auth/permisos/catalogo?rol=recepcionista');
+    }
+    return _catalogoRecepcion;
+  }
+
+  // Recepcionista: bloques que se apagan (encendidos por defecto) + áreas
+  // extra con Ver/Editar. Se guarda lo apagado: {bloques_apagados, extras}.
+  async function openPermisosRecepcionModal(u) {
+    const body = document.getElementById('modal-crud-body');
+    body.replaceChildren();
+    document.getElementById('modal-crud-title').textContent = 'Permisos de ' + u.name;
+
+    let cat;
+    try { cat = await getCatalogoRecepcion(); }
+    catch (e) {
+      Toast.error(mensajeError(e, 'No se pudieron cargar los permisos. Intenta de nuevo.'));
+      return;
+    }
+    const actuales = u.permisos || {};
+    const apagados = new Set(actuales.bloques_apagados || []);
+    const extras = actuales.extras || {};
+
+    const secBloques = domEl('div', '');
+    secBloques.appendChild(domEl('p', 'text-sm font-medium text-text-secondary mb-1 font-body',
+                                 'Lo que hace en recepción'));
+    secBloques.appendChild(domEl('p', 'text-xs text-text-muted mb-2 font-body',
+                                 'Apaga lo que esta persona no debe usar.'));
+    cat.bloques.forEach(b => {
+      const fila = domEl('label', 'flex items-center gap-3 py-2 border-b border-border last:border-0 cursor-pointer');
+      fila.appendChild(domEl('span', 'flex-1 text-sm text-text-primary', b.label));
+      const chk = document.createElement('input');
+      chk.type = 'checkbox';
+      chk.className = 'h-4 w-4 accent-primary-600 cursor-pointer';
+      chk.dataset.bloque = b.clave;
+      chk.checked = !apagados.has(b.clave);
+      fila.appendChild(chk);
+      secBloques.appendChild(fila);
+    });
+    body.appendChild(secBloques);
+
+    const secExtras = domEl('div', 'pt-3');
+    secExtras.appendChild(domEl('p', 'text-sm font-medium text-text-secondary mb-1 font-body',
+                                'Acceso adicional'));
+    secExtras.appendChild(domEl('p', 'text-xs text-text-muted mb-2 font-body',
+                                'Áreas que normalmente son del administrador.'));
+    cat.extras.forEach(item => {
+      const fila = domEl('div', 'flex items-center gap-3 py-2 border-b border-border last:border-0');
+      fila.appendChild(domEl('span', 'flex-1 text-sm text-text-primary', item.label));
+      if (!item.disponible) {
+        fila.appendChild(domEl('span',
+          'text-xs px-2 py-0.5 rounded-full bg-surface-hover text-text-muted',
+          'No incluido en tu plan'));
+        fila.classList.add('opacity-50');
+        secExtras.appendChild(fila);
+        return;
+      }
+      const sel = document.createElement('select');
+      sel.className = 'rounded-lg border border-border px-2 py-1.5 text-xs font-body bg-surface';
+      sel.dataset.extra = item.recurso;
+      [['', 'Sin acceso'], ['ver', 'Ver'], ['editar', 'Editar']].forEach(([v, t]) => {
+        const opt = document.createElement('option');
+        opt.value = v; opt.textContent = t;
+        sel.appendChild(opt);
+      });
+      sel.value = extras[item.recurso] || '';
+      fila.appendChild(sel);
+      secExtras.appendChild(fila);
+    });
+    body.appendChild(secExtras);
+
+    const footer = domEl('div', 'flex justify-end gap-3 pt-2');
+    const cancel = domEl('button', 'inline-flex items-center gap-2 px-4 py-2.5 rounded-lg border border-border bg-surface hover:bg-surface-hover text-sm font-medium font-body text-text-primary transition-colors cursor-pointer min-h-[44px]', 'Cancelar');
+    cancel.type = 'button';
+    cancel.addEventListener('click', () => Modal.close('modal-crud'));
+    const save = domEl('button', 'inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-accent-600 hover:bg-accent-700 text-white text-sm font-medium font-body transition-colors cursor-pointer min-h-[44px]');
+    save.type = 'button';
+    save.appendChild(domIcon('save', 'h-4 w-4'));
+    save.appendChild(domEl('span', '', 'Guardar'));
+    let guardando = false;
+    save.addEventListener('click', async () => {
+      if (guardando) return;
+      const permisos = { bloques_apagados: [], extras: {} };
+      body.querySelectorAll('input[data-bloque]').forEach(c => {
+        if (!c.checked) permisos.bloques_apagados.push(c.dataset.bloque);
+      });
+      body.querySelectorAll('select[data-extra]').forEach(s => {
+        if (s.value) permisos.extras[s.dataset.extra] = s.value;
+      });
+      // Mismo criterio que tiene_algun_area: cuenta un extra o un bloque con
+      // página propia en su menú. Copia de BLOQUES_NAVEGABLES en
+      // app/middleware/permisos_recepcion.py; mantenerlas iguales.
+      const NAVEGABLES = ['ingresos', 'tickets', 'corte', 'pagos_cajon'];
+      const apagadosSet = new Set(permisos.bloques_apagados);
+      if (!Object.keys(permisos.extras).length
+          && NAVEGABLES.every(b => apagadosSet.has(b))) {
+        Toast.warning('La recepcionista debe conservar al menos un área');
+        return;
+      }
+      guardando = true;
+      try {
+        await API.put('/auth/users/' + u.id, { permisos });
+        Toast.success('Permisos actualizados');
+        Modal.close('modal-crud');
+        loadUsuarios();
+      } catch (e) { Toast.error(mensajeError(e, 'Error al guardar')); }
+      finally { guardando = false; }
     });
     footer.appendChild(cancel); footer.appendChild(save);
     body.appendChild(footer);

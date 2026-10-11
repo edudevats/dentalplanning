@@ -1,6 +1,6 @@
 // Panel super-admin / Pagos
 (function () {
-  const { currency, formatDate, confirmAction, openModal,
+  const { currency, formatDate, formatPeriodo, addDaysIso, confirmAction, openModal,
           buildField, inputEl, selectEl, textareaEl } = window.adminUI;
 
   let tenantsCache = null;
@@ -59,8 +59,7 @@
       const tr = document.createElement('tr');
       tr.className = 'hover:bg-cs-surface-container transition-colors duration-200';
 
-      const periodo = (p.periodo_inicio && p.periodo_fin)
-        ? `${formatDate(p.periodo_inicio)} – ${formatDate(p.periodo_fin)}` : '—';
+      const periodo = formatPeriodo(p.periodo_inicio, p.periodo_fin);
 
       const cells = [
         { v: formatDate(p.fecha) },
@@ -141,7 +140,7 @@
       { value: 'otro', label: 'Otro' },
     ]);
     const pIni = inputEl('date', 'periodo_inicio', '');
-    const pFin = inputEl('date', 'periodo_fin', '');
+    const pFin = inputEl('date', 'proximo_cobro', '');
     const comen = textareaEl('comentarios', '', 2);
 
     wrap.appendChild(buildField('Clínica', tenantSel));
@@ -149,7 +148,7 @@
     wrap.appendChild(buildField('Monto (MXN)', monto));
     wrap.appendChild(buildField('Método', metodo));
     wrap.appendChild(buildField('Periodo desde', pIni));
-    wrap.appendChild(buildField('Periodo hasta', pFin));
+    wrap.appendChild(buildField('Próximo cobro', pFin));
     const fullCol = document.createElement('div');
     fullCol.className = 'md:col-span-2';
     fullCol.appendChild(buildField('Comentarios', comen));
@@ -168,7 +167,7 @@
           monto: parseFloat(monto.value),
           metodo: metodo.value,
           periodo_inicio: pIni.value || undefined,
-          periodo_fin: pFin.value || undefined,
+          periodo_fin: pFin.value ? addDaysIso(pFin.value, -1) : undefined,
           comentarios: comen.value || undefined,
         });
         Toast.show('Pago registrado', 'success');

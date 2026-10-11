@@ -1,6 +1,6 @@
 // Panel super-admin / Detalle de clínica
 (function () {
-  const { statusBadge, currency, formatDate, confirmAction, openModal,
+  const { statusBadge, currency, formatDate, formatPeriodo, addDaysIso, confirmAction, openModal,
           buildField, inputEl, selectEl, textareaEl, kpiCard } = window.adminUI;
 
   const root = document.querySelector('[data-tenant-id]');
@@ -176,11 +176,14 @@
 
     const nameInput = inputEl('text', 'name', tenant.name);
     const emailInput = inputEl('email', 'contact_email', tenant.contact_email || '');
+    const phoneInput = inputEl('tel', 'contact_phone', tenant.contact_phone || '');
+    phoneInput.placeholder = '10 dígitos, p. ej. 999 123 4567';
 
     const grid = document.createElement('div');
     grid.className = 'grid grid-cols-1 md:grid-cols-2 gap-4';
     grid.appendChild(buildField('Nombre', nameInput));
     grid.appendChild(buildField('Email de contacto', emailInput));
+    grid.appendChild(buildField('WhatsApp / teléfono', phoneInput));
 
     const planDisplay = document.createElement('div');
     planDisplay.className = 'px-3 py-2 rounded-lg bg-cs-surface-container text-sm text-cs-on-surface';
@@ -201,6 +204,7 @@
         const body = {
           name: nameInput.value.trim(),
           contact_email: emailInput.value.trim() || null,
+          contact_phone: phoneInput.value.trim() || null,
         };
         await adminApi.put(`/tenants/${tenantId}`, body);
         Toast.show('Cambios guardados', 'success');
@@ -515,6 +519,31 @@
       });
       subCard.appendChild(grid);
 
+      const metodoWrap = document.createElement('div');
+      metodoWrap.className = 'flex flex-wrap items-center gap-2 text-xs';
+      const metodoLbl = document.createElement('span');
+      metodoLbl.className = 'font-semibold text-cs-on-surface-var';
+      metodoLbl.textContent = 'Paga por:';
+      const metodoSel = selectEl('metodo_pago', [
+        { value: 'transferencia', label: 'Transferencia (recibe recordatorios)' },
+        { value: 'clip', label: 'Clip (cobro automático)' },
+      ]);
+      metodoSel.value = sub.metodo_pago || 'transferencia';
+      metodoSel.classList.add('max-w-xs');
+      metodoSel.addEventListener('change', async () => {
+        try {
+          await adminApi.put(`/tenants/${tenantId}/subscription/metodo-pago`, { metodo_pago: metodoSel.value });
+          Toast.show('Método de pago actualizado', 'success');
+          await loadTenant();
+        } catch (err) {
+          Toast.show(err.message, 'error');
+          metodoSel.value = sub.metodo_pago || 'transferencia';
+        }
+      });
+      metodoWrap.appendChild(metodoLbl);
+      metodoWrap.appendChild(metodoSel);
+      subCard.appendChild(metodoWrap);
+
       if (sub.estado === 'vencida') {
         const warn = document.createElement('div');
         warn.className = 'flex items-center gap-2 p-3 rounded-md bg-red-500/10 text-red-400 text-xs font-semibold';
@@ -674,8 +703,7 @@
       pays.payments.forEach(p => {
         const tr = document.createElement('tr');
         tr.className = 'hover:bg-cs-surface-container transition-colors';
-        const periodo = (p.periodo_inicio && p.periodo_fin)
-          ? `${formatDate(p.periodo_inicio)} – ${formatDate(p.periodo_fin)}` : '—';
+        const periodo = formatPeriodo(p.periodo_inicio, p.periodo_fin);
         const cells = [
           { v: formatDate(p.fecha) },
           { v: currency(p.monto) },
@@ -763,8 +791,8 @@
       isMonthlyCharge ? monthlyCharge.periodo_inicio : today,
     );
     const pFin = inputEl(
-      'date', 'periodo_fin',
-      isMonthlyCharge ? monthlyCharge.periodo_fin : '',
+      'date', 'proximo_cobro',
+      isMonthlyCharge ? addDaysIso(monthlyCharge.periodo_fin, 1) : '',
     );
     const comen = textareaEl(
       'comentarios',
@@ -815,7 +843,7 @@
     wrap.appendChild(buildField('Monto (MXN)', monto));
     wrap.appendChild(buildField('Método', metodo));
     wrap.appendChild(buildField('Periodo desde', pIni));
-    wrap.appendChild(buildField('Periodo hasta', pFin));
+    wrap.appendChild(buildField('Próximo cobro', pFin));
     const fullCol = document.createElement('div');
     fullCol.className = 'md:col-span-2';
     fullCol.appendChild(buildField('Comentarios', comen));
@@ -830,7 +858,7 @@
     note.appendChild(document.createTextNode(
       isMonthlyCharge
         ? 'Se liquidará el corte mensual existente sin crear un pago duplicado. La clínica quedará activa y el próximo cobro avanzará un mes.'
-        : 'Al registrar un pago con "Periodo hasta" la suscripción se activará y la cuenta quedará habilitada hasta esa fecha.'
+        : 'Al registrar el pago, la suscripción queda activa y el siguiente cobro será en la fecha de "Próximo cobro".'
     ));
     wrap.appendChild(note);
 
@@ -846,7 +874,7 @@
           monto: parseFloat(monto.value),
           metodo: metodo.value,
           periodo_inicio: pIni.value || undefined,
-          periodo_fin: pFin.value || undefined,
+          periodo_fin: pFin.value ? addDaysIso(pFin.value, -1) : undefined,
           comentarios: comen.value || undefined,
           pending_payment_id: isMonthlyCharge && monthlyCharge.id
             ? monthlyCharge.id : undefined,
@@ -892,14 +920,6 @@
   }
 
   // ── Date helpers (espejo de _compute_proximo_cobro del backend) ─────────
-  function addDays(dateStr, days) {
-    const [y, m, d] = dateStr.split('-').map(Number);
-    const dt = new Date(y, m - 1, d);
-    dt.setDate(dt.getDate() + days);
-    const pad = n => String(n).padStart(2, '0');
-    return `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}`;
-  }
-
   function addOneMonth(dateStr) {
     const [y, m, d] = dateStr.split('-').map(Number);
     let ny = y, nm = m + 1;
@@ -912,7 +932,7 @@
   function computeProximo(plan, inicioStr) {
     if (!inicioStr) return '';
     if (plan && plan.dias_expiracion && plan.dias_expiracion > 0) {
-      return addDays(inicioStr, plan.dias_expiracion);
+      return addDaysIso(inicioStr, plan.dias_expiracion);
     }
     return addOneMonth(inicioStr);
   }
@@ -1326,7 +1346,8 @@
     wireTabs();
     try {
       await loadTenant();
-      activateTab('general');
+      const tabParam = new URL(window.location.href).searchParams.get('tab');
+      activateTab(renderers[tabParam] ? tabParam : 'general');
       loadAsientos();
     } catch (err) {
       console.error(err);
