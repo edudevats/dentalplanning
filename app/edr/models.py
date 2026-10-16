@@ -82,6 +82,14 @@ class GastoOperativo(db.Model):
     # puede desmarcarlo para un pago en efectivo que NO salió de ese cajón.
     sale_de_caja = db.Column(db.Boolean, nullable=False, default=False,
                              server_default=db.text("0"))
+    # De qué gasto recurrente salió este gasto. NULL = capturado a mano (todo
+    # el histórico) o su recurrente ya se borró. Solo lo usa la UI para la
+    # etiqueta "Recurrente"; ningún reporte lo necesita.
+    recurrente_id = db.Column(
+        db.Integer,
+        db.ForeignKey("gastos_recurrentes.id", ondelete="SET NULL"),
+        nullable=True,
+    )
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
 
     concepto = db.relationship("GastoConcepto", backref="gastos")
@@ -89,6 +97,44 @@ class GastoOperativo(db.Model):
 
     __table_args__ = (
         db.Index("ix_gastos_operativos_tenant_fecha", "tenant_id", "fecha"),
+    )
+
+
+class GastoRecurrente(db.Model):
+    """Plantilla de un gasto que se repite cada mes (renta, internet...).
+
+    app/edr/recurrentes.py la convierte en un GastoOperativo real el día que
+    toca. `ultima_fecha_generada` es la marca de hasta dónde ya se generó: por
+    eso un gasto generado que el admin borra no vuelve a aparecer.
+    """
+    __tablename__ = "gastos_recurrentes"
+
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey("tenants.id"), nullable=False)
+    concepto_id = db.Column(
+        db.Integer, db.ForeignKey("gastos_conceptos.id"), nullable=False
+    )
+    concepto_nombre = db.Column(db.String(200))
+    tipo = db.Column(db.String(20), default="fijo")  # fijo / variable
+    monto = db.Column(db.Float, nullable=False)
+    metodo_pago_id = db.Column(
+        db.Integer, db.ForeignKey("metodos_pago.id"), nullable=False
+    )
+    sucursal_id = db.Column(db.Integer, db.ForeignKey("sucursales.id"), nullable=True)
+    # Fecha del primer cargo. Su día es el día de cada mes.
+    fecha_inicio = db.Column(db.Date, nullable=False)
+    ultima_fecha_generada = db.Column(db.Date, nullable=True)
+    activo = db.Column(db.Boolean, nullable=False, default=True,
+                       server_default=db.text("1"))
+    created_by = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+
+    concepto = db.relationship("GastoConcepto")
+    metodo_pago = db.relationship("MetodoPago")
+    sucursal = db.relationship("Sucursal")
+
+    __table_args__ = (
+        db.Index("ix_gastos_recurrentes_tenant_activo", "tenant_id", "activo"),
     )
 
 

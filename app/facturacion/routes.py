@@ -317,10 +317,11 @@ def eliminar_sucursal(sucursal_id):
     # gastos y cortes apuntan a la sucursal, así que borrar una con turnos pero
     # sin ingresos violaría la FK y tiraría un 500 en vez de este 409.
     from app.caja.models import CorteCaja, TurnoCaja
-    from app.edr.models import GastoOperativo, Ingreso
+    from app.edr.models import GastoOperativo, GastoRecurrente, Ingreso
     referencias = (
         (Ticket, "ticket"), (Ingreso, "ingreso"), (TurnoCaja, "turno"),
         (GastoOperativo, "gasto"), (CorteCaja, "corte"),
+        (GastoRecurrente, "gasto recurrente"),
     )
     for modelo, nombre in referencias:
         n = modelo.query.filter_by(tenant_id=g.tenant_id, sucursal_id=suc.id).count()

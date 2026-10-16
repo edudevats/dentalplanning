@@ -1,15 +1,18 @@
+from datetime import date
 from flask import Blueprint, request, jsonify, g
 from marshmallow import ValidationError
 from sqlalchemy.orm import joinedload, selectinload
 from app.extensions import db
 from app.middleware.tenant import require_auth, require_role
-from app.edr.models import Ingreso, GastoOperativo, PagoDoctor, PagoComisionIngreso
+from app.edr.models import Ingreso, GastoOperativo, GastoRecurrente, PagoDoctor, PagoComisionIngreso
+from app.edr import recurrentes
 from app.edr.schemas import (
     IngresoSchema,
     VisitaSchema,
     GastoOperativoSchema,
     PagoDoctorSchema,
     ComisionPagoSchema,
+    GastoRecurrenteSchema,
 )
 from app.facturacion.services import recalcular_total, FacturacionError
 from app.facturacion.models import TICKET_SIN_TIMBRAR
@@ -360,6 +363,8 @@ def _enrich_gasto(gasto, schema=None):
 @edr_bp.route("/gastos", methods=["GET"])
 @require_auth
 def listar_gastos():
+    # Antes de leer, crear los recurrentes que ya tocaban (no hay cron).
+    recurrentes.generar_pendientes_seguro(g.tenant_id)
     year, month = _parse_mes(request.args.get("mes"))
     # eager-load el método para no hacer una consulta por fila en _enrich_gasto
     gastos = GastoOperativo.query.options(
@@ -498,6 +503,145 @@ def eliminar_gasto(gasto_id):
     db.session.delete(gasto)
     db.session.commit()
     return jsonify({"message": "Gasto eliminado"})
+
+
+# ── GASTOS RECURRENTES ──
+
+MSG_FECHA_PASADA = "La fecha no puede ser anterior a hoy"
+
+
+def _error_campo(campo, mensaje):
+    return jsonify({"error": mensaje, "detalles": {campo: [mensaje]}}), 400
+
+
+def _dump_recurrente(rec, schema=None):
+    data = (schema or GastoRecurrenteSchema()).dump(rec)
+    data["proxima_fecha"] = (
+        recurrentes.siguiente_fecha(rec).isoformat() if rec.activo else None
+    )
+    data["metodo_pago_nombre"] = rec.metodo_pago.nombre if rec.metodo_pago else None
+    data["sucursal_nombre"] = rec.sucursal.nombre if rec.sucursal else None
+    return data
+
+
+def _validar_refs_recurrente(data):
+    """Concepto, método y sucursal deben ser del tenant (solo las claves presentes).
+
+    Devuelve (concepto_o_None, respuesta_de_error_o_None).
+    """
+    from app.ajustes.models import GastoConcepto
+    from app.facturacion.models import Sucursal
+    concepto = None
+    if "concepto_id" in data:
+        concepto = GastoConcepto.query.filter_by(
+            id=data["concepto_id"], tenant_id=g.tenant_id).first()
+        if concepto is None:
+            return None, _error_campo("concepto_id", "Concepto no válido")
+    if "metodo_pago_id" in data and _resolver_metodo(data["metodo_pago_id"]) is None:
+        return None, _error_campo("metodo_pago_id", "Método de pago no válido")
+    if data.get("sucursal_id") is not None and Sucursal.query.filter_by(
+            id=data["sucursal_id"], tenant_id=g.tenant_id).first() is None:
+        return None, _error_campo("sucursal_id", "Sucursal no válida")
+    return concepto, None
+
+
+@edr_bp.route("/gastos-recurrentes", methods=["GET"])
+@require_auth
+@require_role("admin")
+def listar_gastos_recurrentes():
+    recurrentes.generar_pendientes_seguro(g.tenant_id)
+    recs = GastoRecurrente.query.options(
+        joinedload(GastoRecurrente.metodo_pago),
+        joinedload(GastoRecurrente.sucursal),
+    ).filter_by(tenant_id=g.tenant_id).order_by(
+        GastoRecurrente.concepto_nombre, GastoRecurrente.id).all()
+    schema = GastoRecurrenteSchema()
+    return jsonify([_dump_recurrente(r, schema) for r in recs])
+
+
+@edr_bp.route("/gastos-recurrentes", methods=["POST"])
+@require_auth
+@require_role("admin")
+def crear_gasto_recurrente():
+    try:
+        data = GastoRecurrenteSchema().load(request.get_json() or {})
+    except ValidationError as err:
+        return jsonify({"error": "Datos inválidos", "detalles": err.messages}), 400
+    if data["fecha_inicio"] < date.today():
+        return _error_campo("fecha_inicio", MSG_FECHA_PASADA)
+    concepto, error = _validar_refs_recurrente(data)
+    if error:
+        return error
+
+    rec = GastoRecurrente(
+        tenant_id=g.tenant_id, created_by=g.current_user.id,
+        concepto_nombre=concepto.nombre, tipo=concepto.tipo or "fijo", **data,
+    )
+    db.session.add(rec)
+    db.session.commit()
+    # Si el primer cargo es hoy, el gasto de hoy aparece ya.
+    recurrentes.generar_pendientes_seguro(g.tenant_id)
+    db.session.refresh(rec)
+    return jsonify(_dump_recurrente(rec)), 201
+
+
+@edr_bp.route("/gastos-recurrentes/<int:rec_id>", methods=["PUT"])
+@require_auth
+@require_role("admin")
+def actualizar_gasto_recurrente(rec_id):
+    rec = GastoRecurrente.query.filter_by(
+        id=rec_id, tenant_id=g.tenant_id).first_or_404()
+    try:
+        data = GastoRecurrenteSchema(partial=True).load(request.get_json() or {})
+    except ValidationError as err:
+        return jsonify({"error": "Datos inválidos", "detalles": err.messages}), 400
+    concepto, error = _validar_refs_recurrente(data)
+    if error:
+        return error
+
+    hoy = date.today()
+    nueva_fecha = data.pop("fecha_inicio", None)
+    # El formulario reenvía la fecha original: solo una fecha DISTINTA se
+    # valida y reinicia la secuencia. Los gastos ya generados no se tocan.
+    if nueva_fecha is not None and nueva_fecha != rec.fecha_inicio:
+        if nueva_fecha < hoy:
+            return _error_campo("fecha_inicio", MSG_FECHA_PASADA)
+        rec.fecha_inicio = nueva_fecha
+        # Solo se reinicia si la nueva fecha cae despues de lo ya generado; si
+        # no, conservar la marca evita regenerar un cargo de un dia que ya
+        # tiene su gasto (el siguiente se calcula desde esa marca).
+        if (rec.ultima_fecha_generada is None
+                or rec.ultima_fecha_generada < nueva_fecha):
+            rec.ultima_fecha_generada = None
+    elif data.get("activo") is True and not rec.activo:
+        recurrentes.reactivar(rec, hoy)
+
+    if concepto is not None:
+        rec.concepto_nombre = concepto.nombre
+        rec.tipo = concepto.tipo or "fijo"
+    for key, value in data.items():
+        setattr(rec, key, value)
+    db.session.commit()
+    recurrentes.generar_pendientes_seguro(g.tenant_id)
+    db.session.refresh(rec)
+    return jsonify(_dump_recurrente(rec))
+
+
+@edr_bp.route("/gastos-recurrentes/<int:rec_id>", methods=["DELETE"])
+@require_auth
+@require_role("admin")
+def eliminar_gasto_recurrente(rec_id):
+    rec = GastoRecurrente.query.filter_by(
+        id=rec_id, tenant_id=g.tenant_id).first_or_404()
+    # Los gastos ya generados se quedan; solo pierden el vínculo. Se hace a
+    # mano y no solo con el ON DELETE SET NULL porque SQLite (pruebas) no
+    # aplica FKs por default.
+    GastoOperativo.query.filter_by(
+        tenant_id=g.tenant_id, recurrente_id=rec.id,
+    ).update({"recurrente_id": None}, synchronize_session=False)
+    db.session.delete(rec)
+    db.session.commit()
+    return jsonify({"message": "Gasto recurrente eliminado"})
 
 
 # ── PAGOS A DOCTORES ──

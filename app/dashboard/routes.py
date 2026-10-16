@@ -11,6 +11,7 @@ from app.ajustes.models import DistribucionConfig, DistribucionCategoria, DIST_C
 from app.engine.pricing_engine import generar_dashboard_ganancias
 # parse_mes y el Estado de Resultados canónico viven en el núcleo contable
 from app.engine.accounting import parse_mes as _parse_mes, estado_resultados, filtro_mes, reparto_iva
+from app.edr.recurrentes import generar_pendientes_seguro
 from app.facturacion.iva import iva_de
 
 dashboard_bp = Blueprint("dashboard", __name__, url_prefix="/api/v1")
@@ -39,6 +40,7 @@ def ganancias():
 @dashboard_bp.route("/reportes/resumen-mensual", methods=["GET"])
 @require_auth
 def resumen_mensual():
+    generar_pendientes_seguro(g.tenant_id)
     year, month = _parse_mes(request.args.get("mes"))
 
     # Ingresos
@@ -224,6 +226,7 @@ def resumen_mensual():
 @dashboard_bp.route("/reportes/trimestral", methods=["GET"])
 @require_auth
 def trimestral():
+    generar_pendientes_seguro(g.tenant_id)
     year = request.args.get("year", date.today().year, type=int)
 
     # Una consulta agregada por tabla con GROUP BY mes (antes: 48 = 4 × 12).
@@ -339,6 +342,7 @@ def trimestral():
 @dashboard_bp.route("/reportes/distribucion", methods=["GET"])
 @require_auth
 def distribucion():
+    generar_pendientes_seguro(g.tenant_id)
     year, month = _parse_mes(request.args.get("mes"))
 
     total_ingresos = db.session.query(

@@ -96,4 +96,10 @@ def create_app(config_name=None):
     from app.clip.cli import billing_cli
     app.cli.add_command(billing_cli)
 
+    from app.migraciones_cli import migraciones_cli
+    app.cli.add_command(migraciones_cli)
+
+    from app.edr.cli import gastos_cli
+    app.cli.add_command(gastos_cli)
+
     return app

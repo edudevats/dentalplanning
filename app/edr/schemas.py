@@ -108,6 +108,7 @@ class GastoOperativoSchema(Schema):
     metodo_pago_nombre = fields.Str(dump_only=True)
     metodo_pago_tipo = fields.Str(dump_only=True)
     created_by = fields.Int(dump_only=True)
+    recurrente_id = fields.Int(dump_only=True, allow_none=True)
     created_at = fields.DateTime(dump_only=True)
 
 
@@ -140,3 +141,25 @@ class ComisionPagoSchema(Schema):
     ingreso_ids = fields.List(
         fields.Int(), required=True, validate=validate.Length(min=1)
     )
+
+
+class GastoRecurrenteSchema(Schema):
+    class Meta:
+        unknown = EXCLUDE
+
+    id = fields.Int(dump_only=True)
+    concepto_id = fields.Int(required=True)
+    # Los pone el servidor desde el concepto, igual que el alta de gastos.
+    concepto_nombre = fields.Str(dump_only=True)
+    tipo = fields.Str(dump_only=True)
+    monto = fields.Float(
+        required=True,
+        validate=validate.Range(min=0, min_inclusive=False,
+                                error="El monto debe ser mayor a cero"),
+    )
+    metodo_pago_id = fields.Int(required=True)
+    sucursal_id = fields.Int(allow_none=True, load_default=None)
+    fecha_inicio = fields.Date(required=True)
+    activo = fields.Bool(load_default=True)
+    ultima_fecha_generada = fields.Date(dump_only=True, allow_none=True)
+    created_at = fields.DateTime(dump_only=True)

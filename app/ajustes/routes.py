@@ -37,8 +37,30 @@ ajustes_bp = Blueprint("ajustes", __name__, url_prefix="/api/v1/ajustes")
 
 # ── Generic CRUD helper ──
 
-def _crud_routes(model, schema_cls, name):
-    """Returns (list, create, update, delete) route functions."""
+def _bloquear_si_lo_usa_un_recurrente(campo, etiqueta):
+    """Hook de borrado: un GastoRecurrente apunta con FK NOT NULL a su
+    concepto y método de pago; borrarlos tiraría un 500 en MySQL."""
+    def hook(item):
+        from app.edr.models import GastoRecurrente  # evita ciclo con app.edr
+        n = GastoRecurrente.query.filter(
+            GastoRecurrente.tenant_id == g.tenant_id,
+            getattr(GastoRecurrente, campo) == item.id,
+        ).count()
+        if n:
+            return jsonify({
+                "error": f"Este {etiqueta} lo usa {n} gasto(s) recurrente(s). "
+                         "Cámbialo o elimina el recurrente primero."
+            }), 409
+        return None
+    return hook
+
+
+def _crud_routes(model, schema_cls, name, antes_de_eliminar=None):
+    """Returns (list, create, update, delete) route functions.
+
+    `antes_de_eliminar(item)` es opcional: si devuelve una respuesta, se
+    devuelve tal cual y el registro no se borra (p. ej. un 409).
+    """
 
     def listar():
         items = model.query.filter_by(tenant_id=g.tenant_id).all()
@@ -67,6 +89,10 @@ def _crud_routes(model, schema_cls, name):
         item = model.query.filter_by(
             id=item_id, tenant_id=g.tenant_id
         ).first_or_404()
+        if antes_de_eliminar is not None:
+            bloqueo = antes_de_eliminar(item)
+            if bloqueo is not None:
+                return bloqueo
         db.session.delete(item)
         db.session.commit()
         return jsonify({"message": f"{name} eliminado"})
@@ -101,7 +127,9 @@ ajustes_bp.add_url_rule(
 # ── Métodos de Pago ──
 
 _mp_list, _mp_create, _mp_update, _mp_delete = _crud_routes(
-    MetodoPago, MetodoPagoSchema, "Método de pago"
+    MetodoPago, MetodoPagoSchema, "Método de pago",
+    antes_de_eliminar=_bloquear_si_lo_usa_un_recurrente(
+        "metodo_pago_id", "método de pago"),
 )
 
 ajustes_bp.add_url_rule(
@@ -125,7 +153,9 @@ ajustes_bp.add_url_rule(
 # ── Conceptos de Gasto ──
 
 _gc_list, _gc_create, _gc_update, _gc_delete = _crud_routes(
-    GastoConcepto, GastoConceptoSchema, "Concepto de gasto"
+    GastoConcepto, GastoConceptoSchema, "Concepto de gasto",
+    antes_de_eliminar=_bloquear_si_lo_usa_un_recurrente(
+        "concepto_id", "concepto"),
 )
 
 ajustes_bp.add_url_rule(

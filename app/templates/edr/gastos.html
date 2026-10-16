@@ -17,6 +17,12 @@
         <i data-lucide="unlock" class="h-4 w-4"></i> Abrir caja
       </button>
       <p id="turno-actual" style="display:none" class="text-sm text-text-secondary font-body"></p>
+      {# Solo el admin gestiona recurrentes. Nace oculto por `style.display`
+         (no la clase `hidden`, ver el comentario de btn-inicio-caja). #}
+      <button type="button" id="btn-recurrentes" onclick="abrirRecurrentes()" style="display:none"
+        class="inline-flex items-center justify-center gap-2 rounded-lg font-medium font-body cursor-pointer border border-border bg-surface hover:bg-surface-hover text-text-secondary px-4 py-2 text-sm min-h-[38px]">
+        <i data-lucide="repeat" class="h-4 w-4"></i> Gastos recurrentes
+      </button>
       <button type="button" id="btn-nuevo" onclick="openCreate()"
         class="inline-flex items-center justify-center gap-2 rounded-lg font-medium font-body cursor-pointer bg-primary-500 hover:bg-primary-600 text-white px-4 py-2 text-sm min-h-[38px]">
         <i data-lucide="plus" class="h-4 w-4"></i> Nuevo Gasto
@@ -129,6 +135,45 @@
     </div>
   </div>
 </div>
+<!-- Gastos recurrentes -->
+<div id="modal-recurrentes" class="hidden fixed inset-0 z-50 overflow-y-auto">
+  <div class="flex min-h-full items-end sm:items-center justify-center p-4">
+    <div class="fixed inset-0 bg-black/40" onclick="cerrarRecurrentes()"></div>
+    <div class="relative bg-surface rounded-2xl shadow-xl w-full max-w-3xl">
+      <div class="flex items-center justify-between px-6 py-4 border-b border-border">
+        <div>
+          <h2 class="text-base font-semibold font-heading text-text-primary">Gastos recurrentes</h2>
+          <p class="text-xs text-text-muted font-body mt-0.5">Se registran solos cada mes. Tú solo capturas los gastos variables.</p>
+        </div>
+        <button type="button" onclick="cerrarRecurrentes()" class="p-2 rounded-lg text-text-muted hover:bg-surface-hover transition-colors cursor-pointer"><i data-lucide="x" class="h-4 w-4"></i></button>
+      </div>
+      <div class="px-6 py-5 space-y-5">
+        <div class="rounded-xl border border-border"><div id="rec-table"></div></div>
+
+        <div class="rounded-xl border border-border p-4 space-y-4">
+          <h3 id="rec-form-title" class="text-sm font-semibold font-heading text-text-primary">Agregar gasto recurrente</h3>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div><label class="block text-sm font-medium text-text-secondary mb-1 font-body">Concepto <span class="text-danger-500">*</span></label>
+              <select id="rec-concepto" class="block w-full rounded-lg border border-border px-3 py-2.5 text-sm font-body min-h-[44px] bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-500"></select></div>
+            <div><label class="block text-sm font-medium text-text-secondary mb-1 font-body">Monto mensual <span class="text-danger-500">*</span></label>
+              <input id="rec-monto" type="number" min="0" step="0.01" placeholder="0.00" class="block w-full rounded-lg border border-border px-3 py-2.5 text-sm font-body min-h-[44px] bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-500" /></div>
+            <div><label class="block text-sm font-medium text-text-secondary mb-1 font-body">Método de pago <span class="text-danger-500">*</span></label>
+              <select id="rec-metodo" class="block w-full rounded-lg border border-border px-3 py-2.5 text-sm font-body min-h-[44px] bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-500"></select></div>
+            <div><label class="block text-sm font-medium text-text-secondary mb-1 font-body">Sucursal</label>
+              <select id="rec-sucursal" class="block w-full rounded-lg border border-border px-3 py-2.5 text-sm font-body min-h-[44px] bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-500"></select></div>
+            <div class="sm:col-span-2"><label class="block text-sm font-medium text-text-secondary mb-1 font-body">Fecha del primer cargo <span class="text-danger-500">*</span></label>
+              <input id="rec-fecha" type="date" class="block w-full sm:w-56 rounded-lg border border-border px-3 py-2.5 text-sm font-body min-h-[44px] bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-500" />
+              <p id="rec-hint" class="mt-1 text-xs text-text-muted font-body">No puede ser anterior a hoy.</p></div>
+          </div>
+          <div class="flex justify-end gap-3 pt-2 border-t border-border">
+            <button type="button" id="rec-cancel" onclick="limpiarFormRecurrente()" style="display:none" class="inline-flex items-center justify-center gap-2 rounded-lg font-medium font-body cursor-pointer border border-border bg-surface hover:bg-surface-hover text-text-secondary px-4 py-2 text-sm min-h-[38px]">Cancelar edición</button>
+            <button type="button" id="rec-save" onclick="guardarRecurrente()" class="inline-flex items-center justify-center gap-2 rounded-lg font-medium font-body cursor-pointer bg-primary-500 hover:bg-primary-600 text-white px-4 py-2 text-sm min-h-[38px]"><span id="rec-save-text">Agregar</span></button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
 {% include 'partials/modal_inicio_caja.html' %}
 {% endblock %}
 
@@ -178,7 +223,14 @@ function updateStats() {
 function renderTable_() {
   const cols = [
     { key: 'fecha', label: 'Fecha', render: v => formatDate(v) },
-    { key: 'concepto_id', label: 'Concepto', render: v => conceptos.find(c => String(c.id) === String(v))?.nombre ?? '-' },
+    { key: 'concepto_id', label: 'Concepto', render: (v, row) => {
+      const nombre = conceptos.find(c => String(c.id) === String(v))?.nombre ?? row.concepto_nombre ?? '-';
+      if (!row.recurrente_id) return nombre;
+      const wrap = domEl('span', 'inline-flex items-center gap-2');
+      wrap.appendChild(domEl('span', '', nombre));
+      wrap.appendChild(badgeEl('Recurrente', 'info'));
+      return wrap;
+    }},
     { key: 'tipo', label: 'Tipo', render: v => badge(v === 'fijo' ? 'Fijo' : 'Variable', v === 'fijo' ? 'info' : 'warning') },
     { key: 'metodo_pago_nombre', label: 'Metodo', render: v => v ?? '-' },
     { key: 'monto', label: 'Monto', align: 'right', render: v => domEl('span', 'tabular-nums font-medium', fmt(v)) },
@@ -299,6 +351,157 @@ function aplicarTurnoAlFormulario() {
   fecha.readOnly = true;
 }
 
+// ── Gastos recurrentes ──
+let recurrentesData = [], sucursalesLista = [], editingRecId = null, recCambio = false;
+
+function hoyISO() {
+  const d = new Date();
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+
+function actualizarHintRecurrente() {
+  const v = document.getElementById('rec-fecha').value;
+  const hint = document.getElementById('rec-hint');
+  if (!v) { hint.textContent = 'No puede ser anterior a hoy.'; return; }
+  const dia = Number(v.slice(8, 10));
+  let txt = 'Se registrará el día ' + dia + ' de cada mes, empezando el ' + formatDate(v) + '.';
+  if (dia > 28) txt += ' En los meses que no tienen ese día, se usa el último día del mes.';
+  hint.textContent = txt;
+}
+document.getElementById('rec-fecha').addEventListener('input', actualizarHintRecurrente);
+
+function limpiarFormRecurrente() {
+  editingRecId = null;
+  document.getElementById('rec-form-title').textContent = 'Agregar gasto recurrente';
+  document.getElementById('rec-save-text').textContent = 'Agregar';
+  document.getElementById('rec-cancel').style.display = 'none';
+  document.getElementById('rec-concepto').value = '';
+  document.getElementById('rec-monto').value = '';
+  document.getElementById('rec-metodo').value = '';
+  document.getElementById('rec-sucursal').value = '';
+  const f = document.getElementById('rec-fecha');
+  f.min = hoyISO(); f.value = '';
+  actualizarHintRecurrente();
+}
+
+function editarRecurrente(row) {
+  editingRecId = row.id;
+  document.getElementById('rec-form-title').textContent = 'Editar gasto recurrente';
+  document.getElementById('rec-save-text').textContent = 'Actualizar';
+  document.getElementById('rec-cancel').style.display = '';
+  document.getElementById('rec-concepto').value = String(row.concepto_id);
+  document.getElementById('rec-monto').value = row.monto;
+  document.getElementById('rec-metodo').value = String(row.metodo_pago_id);
+  document.getElementById('rec-sucursal').value = row.sucursal_id ? String(row.sucursal_id) : '';
+  const f = document.getElementById('rec-fecha');
+  // La fecha original puede haber quedado atrás: se permite conservarla, y
+  // el servidor solo valida una fecha distinta.
+  f.min = row.fecha_inicio < hoyISO() ? row.fecha_inicio : hoyISO();
+  f.value = row.fecha_inicio;
+  actualizarHintRecurrente();
+}
+
+function renderRecurrentes() {
+  const cols = [
+    { key: 'concepto_nombre', label: 'Concepto', render: v => v ?? '-' },
+    { key: 'monto', label: 'Monto', align: 'right', render: v => domEl('span', 'tabular-nums font-medium', fmt(v)) },
+    { key: 'fecha_inicio', label: 'Cada mes', render: v => 'Día ' + Number(String(v).slice(8, 10)) },
+    { key: 'proxima_fecha', label: 'Próximo', render: v => v ? formatDate(v) : '-' },
+    { key: 'metodo_pago_nombre', label: 'Método', render: v => v ?? '-' },
+    { key: 'activo', label: 'Estado', render: v => badgeEl(v ? 'Activo' : 'Pausado', v ? 'success' : 'neutral') },
+    { key: 'id', label: '', align: 'right', render: (_, row) => {
+      const div = domEl('div', 'flex items-center justify-end gap-1');
+      const mk = (icon, cls, title, fn) => {
+        const b = domEl('button', 'rounded-lg p-1.5 text-text-muted transition-colors cursor-pointer ' + cls);
+        b.type = 'button'; b.title = title; b.appendChild(domIcon(icon)); b.addEventListener('click', fn);
+        return b;
+      };
+      div.appendChild(mk('pencil', 'hover:bg-primary-50 hover:text-primary-700', 'Editar', () => editarRecurrente(row)));
+      div.appendChild(mk(row.activo ? 'pause' : 'play', 'hover:bg-primary-50 hover:text-primary-700',
+        row.activo ? 'Pausar' : 'Reactivar', () => alternarRecurrente(row)));
+      div.appendChild(mk('trash-2', 'hover:bg-danger-50 hover:text-danger-600', 'Eliminar', () => eliminarRecurrente(row)));
+      return div;
+    }},
+  ];
+  renderTable('rec-table', cols, recurrentesData, 'Aún no tienes gastos recurrentes', false);
+  lucide.createIcons();
+}
+
+async function cargarRecurrentes() {
+  renderTable('rec-table', [], [], '', true);
+  try { recurrentesData = await API.get('/edr/gastos-recurrentes') ?? []; }
+  catch (err) { Toast.error(err.message || 'Error al cargar gastos recurrentes'); recurrentesData = []; }
+  renderRecurrentes();
+}
+
+function abrirRecurrentes() {
+  populateSelect(document.getElementById('rec-concepto'),
+    conceptos.map(c => ({ value: String(c.id), label: c.nombre })), '', 'Seleccionar concepto');
+  populateSelect(document.getElementById('rec-metodo'),
+    metodosPago.map(m => ({ value: String(m.id), label: m.nombre })), '', 'Seleccionar método');
+  populateSelect(document.getElementById('rec-sucursal'),
+    sucursalesLista.map(s => ({ value: String(s.id), label: s.nombre })), '', 'Sin sucursal');
+  // populateSelect deja el placeholder deshabilitado; aquí "Sin sucursal" es una
+  // opción real, para poder quitar la sucursal de un recurrente.
+  document.getElementById('rec-sucursal').options[0].disabled = false;
+  limpiarFormRecurrente();
+  recCambio = false;
+  Modal.open('modal-recurrentes');
+  cargarRecurrentes();
+}
+
+function cerrarRecurrentes() {
+  Modal.close('modal-recurrentes');
+  // Crear o editar pudo registrar el gasto de hoy.
+  if (recCambio) fetchData();
+}
+
+async function guardarRecurrente() {
+  const concepto = document.getElementById('rec-concepto').value;
+  const monto = Number(document.getElementById('rec-monto').value);
+  const metodo = document.getElementById('rec-metodo').value;
+  const sucursal = document.getElementById('rec-sucursal').value;
+  const fecha = document.getElementById('rec-fecha').value;
+  if (!concepto || !metodo || !fecha || !(monto > 0)) { Toast.warning('Completa los campos obligatorios'); return; }
+  const original = editingRecId ? recurrentesData.find(r => r.id === editingRecId) : null;
+  if (fecha < hoyISO() && !(original && original.fecha_inicio === fecha)) {
+    Toast.warning('La fecha no puede ser anterior a hoy'); return;
+  }
+  const payload = {
+    concepto_id: Number(concepto), monto, metodo_pago_id: Number(metodo),
+    sucursal_id: sucursal ? Number(sucursal) : null, fecha_inicio: fecha,
+  };
+  const btn = document.getElementById('rec-save'); btn.disabled = true;
+  try {
+    if (editingRecId) { await API.put('/edr/gastos-recurrentes/' + editingRecId, payload); Toast.success('Gasto recurrente actualizado'); }
+    else { await API.post('/edr/gastos-recurrentes', payload); Toast.success('Gasto recurrente agregado'); }
+    recCambio = true;
+    limpiarFormRecurrente();
+    cargarRecurrentes();
+  } catch (err) { Toast.error(err.message || 'Error al guardar'); }
+  finally { btn.disabled = false; }
+}
+
+async function alternarRecurrente(row) {
+  try {
+    await API.put('/edr/gastos-recurrentes/' + row.id, { activo: !row.activo });
+    Toast.success(row.activo ? 'Gasto recurrente pausado' : 'Gasto recurrente reactivado');
+    recCambio = true;
+    cargarRecurrentes();
+  } catch (err) { Toast.error(err.message || 'Error al actualizar'); }
+}
+
+async function eliminarRecurrente(row) {
+  if (!confirm('¿Eliminar "' + (row.concepto_nombre || 'este gasto') + '"? Ya no se registrará cada mes. Los gastos que ya se registraron se conservan.')) return;
+  try {
+    await API.delete('/edr/gastos-recurrentes/' + row.id);
+    Toast.success('Gasto recurrente eliminado');
+    if (editingRecId === row.id) limpiarFormRecurrente();
+    recCambio = true;
+    cargarRecurrentes();
+  } catch (err) { Toast.error(err.message || 'Error al eliminar'); }
+}
+
 async function init() {
   try {
     conceptos = await API.get('/ajustes/gastos-conceptos') ?? [];
@@ -318,6 +521,8 @@ async function init() {
   ]);
   const user = (me.status === 'fulfilled' ? (me.value.user || me.value) : {}) || {};
   userRole = user.role || null;
+  sucursalesLista = sucs.status === 'fulfilled' ? (sucs.value || []) : [];
+  if (userRole === 'admin') document.getElementById('btn-recurrentes').style.display = '';
 
   turnoDelDia = await TurnoCaja.iniciar({
     rol: userRole,
