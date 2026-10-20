@@ -484,6 +484,147 @@
         </ol>
       </div>
     </div>
+
+    <!-- CONECTAR CON CLAUDE -->
+    <div id="panel-claude" class="hidden space-y-6">
+      <div class="bg-surface rounded-xl border border-border shadow-sm">
+        <div class="px-5 py-4 border-b border-border">
+          <h3 class="text-sm font-semibold font-heading text-text-primary">Conectar en claude.ai o Claude Desktop</h3>
+        </div>
+        <div class="p-5 space-y-4 text-sm text-text-secondary font-body">
+          <p>Claude consulta los reportes de tu clínica (ventas, gastos, cobranza y más). La conexión es de <strong>solo lectura</strong>: Claude no puede modificar nada.</p>
+          <ol class="list-decimal pl-5 space-y-1">
+            <li>En Claude, abre <strong>Configuración → Conectores → Agregar conector personalizado</strong>.</li>
+            <li>Pega esta dirección:</li>
+          </ol>
+          {% if mcp_url %}
+          <div class="flex items-stretch gap-2">
+            <input id="claude-mcp-url" type="text" readonly value="{{ mcp_url }}"
+              class="flex-1 min-w-0 rounded-lg border border-border px-3 py-2.5 text-sm font-mono bg-surface-alt text-text-primary select-all" />
+            <button id="claude-mcp-url-copiar" type="button"
+              class="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-primary-500 hover:bg-primary-600 text-white text-sm font-medium font-body transition-colors cursor-pointer min-h-[44px]">
+              <i data-lucide="copy" class="h-4 w-4"></i> Copiar
+            </button>
+          </div>
+          {% else %}
+          <div id="claude-sin-base-url" class="rounded-lg border border-danger-500 bg-danger-50 px-4 py-3 text-sm text-danger-700 font-body" role="alert">Falta configurar la dirección pública del servidor (APP_BASE_URL).</div>
+          {% endif %}
+          <p>Inicia sesión con tu usuario de Dental Planning cuando Claude te lo pida y autoriza la conexión.</p>
+        </div>
+      </div>
+
+      <div class="bg-surface rounded-xl border border-border shadow-sm">
+        <div class="px-5 py-4 border-b border-border">
+          <h3 class="text-sm font-semibold font-heading text-text-primary">Conexiones de Claude</h3>
+        </div>
+        <div class="p-5 overflow-x-auto">
+          <table class="w-full text-sm font-body">
+            <thead>
+              <tr class="text-left text-text-muted border-b border-border">
+                <th class="py-2 pr-4 font-semibold">Cliente</th>
+                <th class="py-2 pr-4 font-semibold">Usuario</th>
+                <th class="py-2 pr-4 font-semibold">Conectado</th>
+                <th class="py-2 pr-4 font-semibold">Último uso</th>
+                <th class="py-2 pr-4 font-semibold">Estado</th>
+                <th class="py-2 font-semibold text-right">Acciones</th>
+              </tr>
+            </thead>
+            <tbody id="tbody-claude-conexiones"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="bg-surface rounded-xl border border-border shadow-sm">
+        <div class="px-5 py-4 border-b border-border">
+          <h3 class="text-sm font-semibold font-heading text-text-primary">Claude Code (avanzado)</h3>
+        </div>
+        <div class="p-5 space-y-4">
+          <p class="text-sm text-text-muted font-body">
+            Para Claude Code en una terminal: genera un token personal y úsalo con el comando de abajo.
+            También es de <strong>solo lectura</strong>.
+          </p>
+          <div id="claude-aviso" class="hidden rounded-lg border border-warning-200 bg-warning-50 px-4 py-3 text-sm text-warning-700 font-body"></div>
+          <form id="form-claude-token" class="flex flex-col sm:flex-row items-stretch gap-2">
+            <input id="claude-token-nombre" type="text" maxlength="100" placeholder="Nombre del token (p. ej. Claude de mi laptop)"
+              class="flex-1 min-w-0 rounded-lg border border-border px-3 py-2.5 text-sm font-body bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-500 min-h-[44px]" />
+            <button id="claude-generar" type="submit"
+              class="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-primary-500 hover:bg-primary-600 text-white text-sm font-medium font-body transition-colors cursor-pointer min-h-[44px]">
+              <i data-lucide="key-round" class="h-4 w-4"></i> Generar token
+            </button>
+          </form>
+
+          <div id="claude-token-nuevo" class="hidden rounded-lg border border-accent-200 bg-accent-50 p-4 space-y-3">
+            <p class="text-sm font-semibold text-accent-700 font-body">Token creado. Cópialo ahora: por seguridad no se volverá a mostrar.</p>
+            <div class="flex items-stretch gap-2">
+              <input id="claude-token-valor" type="text" readonly
+                class="flex-1 min-w-0 rounded-lg border border-border px-3 py-2.5 text-sm font-mono bg-surface text-text-primary select-all" value="" />
+              <button id="claude-token-copiar" type="button"
+                class="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-primary-500 hover:bg-primary-600 text-white text-sm font-medium font-body transition-colors cursor-pointer min-h-[44px]">
+                <i data-lucide="copy" class="h-4 w-4"></i> Copiar
+              </button>
+            </div>
+            <p class="text-xs text-text-secondary font-body">Si lo pierdes, revócalo y genera uno nuevo.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="bg-surface rounded-xl border border-border shadow-sm">
+        <div class="px-5 py-4 border-b border-border">
+          <h3 class="text-sm font-semibold font-heading text-text-primary">Tokens de la clínica</h3>
+        </div>
+        <div class="p-5 overflow-x-auto">
+          <table class="w-full text-sm font-body">
+            <thead>
+              <tr class="text-left text-text-muted border-b border-border">
+                <th class="py-2 pr-4 font-semibold">Nombre</th>
+                <th class="py-2 pr-4 font-semibold">Prefijo</th>
+                <th class="py-2 pr-4 font-semibold">Creado</th>
+                <th class="py-2 pr-4 font-semibold">Último uso</th>
+                <th class="py-2 pr-4 font-semibold">Estado</th>
+                <th class="py-2 font-semibold text-right">Acciones</th>
+              </tr>
+            </thead>
+            <tbody id="tbody-claude-tokens"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="bg-surface rounded-xl border border-border shadow-sm">
+        <div class="px-5 py-4 border-b border-border">
+          <h3 class="text-sm font-semibold font-heading text-text-primary">Instrucción para Claude Code</h3>
+        </div>
+        <div class="p-5 space-y-4 text-sm text-text-secondary font-body">
+          <div class="space-y-2">
+            <p>O copia esta instrucción y pégala tal cual en Claude Code para que él mismo instale la conexión:</p>
+            <div class="flex items-stretch gap-2">
+              <pre id="claude-instruccion" class="flex-1 min-w-0 overflow-x-auto rounded-lg border border-border bg-surface-alt px-3 py-2.5 text-xs font-mono text-text-primary whitespace-pre-wrap break-words"></pre>
+              <button id="claude-instruccion-copiar" type="button"
+                class="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg border border-border bg-surface hover:bg-surface-hover text-sm font-medium font-body text-text-primary transition-colors cursor-pointer min-h-[44px]">
+                <i data-lucide="copy" class="h-4 w-4"></i> Copiar
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="bg-surface rounded-xl border border-border shadow-sm">
+        <div class="px-5 py-4 border-b border-border">
+          <h3 class="text-sm font-semibold font-heading text-text-primary">Cómo conectarlo en Claude Code</h3>
+        </div>
+        <div class="p-5 space-y-3 text-sm text-text-secondary font-body">
+          <p>En una terminal donde tengas Claude Code instalado, ejecuta este comando cambiando <code class="font-mono text-text-primary">&lt;token&gt;</code> por tu token:</p>
+          <div class="flex items-stretch gap-2">
+            <pre id="claude-comando" class="flex-1 min-w-0 overflow-x-auto rounded-lg border border-border bg-surface-alt px-3 py-2.5 text-xs font-mono text-text-primary whitespace-pre-wrap break-all">claude mcp add --transport http dental {{ mcp_url or '' }} --header "Authorization: Bearer &lt;token&gt;"</pre>
+            <button id="claude-comando-copiar" type="button"
+              class="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg border border-border bg-surface hover:bg-surface-hover text-sm font-medium font-body text-text-primary transition-colors cursor-pointer min-h-[44px]">
+              <i data-lucide="copy" class="h-4 w-4"></i> Copiar
+            </button>
+          </div>
+          <p>Si acabas de generar un token, el comando ya lo incluye. Después abre Claude Code y pregúntale, por ejemplo, <em>"¿cuánto vendimos este mes?"</em>.</p>
+          <p class="text-xs text-text-muted">Revoca un token cuando ya no lo uses o si crees que alguien más lo conoce: deja de funcionar al instante.</p>
+        </div>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -628,6 +769,7 @@
     { key: 'fiscal', label: 'Configuracion fiscal', icon: 'receipt' },
     { key: 'sucursales', label: 'Sucursales', icon: 'store' },
     { key: 'impresion', label: 'Impresión', icon: 'printer' },
+    { key: 'claude', label: 'Conectar con Claude', icon: 'sparkles', soloAdmin: true },
   ];
 
   const urlTab = new URLSearchParams(location.search).get('tab');
@@ -637,6 +779,9 @@
     const nav = document.getElementById('tab-nav');
     nav.replaceChildren();
     TABS.forEach(t => {
+      // El rol llega asíncrono (loadUserInfo); mientras no se conoce se muestra
+      // y la API responde 403 a quien no sea admin.
+      if (t.soloAdmin && window.__userRole && window.__userRole !== 'admin') return;
       const btn = domEl('button', 'w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium font-body transition-colors cursor-pointer text-left ' + (t.key === activeTab ? 'bg-primary-50 text-primary-700' : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary'));
       btn.type = 'button';
       btn.appendChild(domIcon(t.icon, 'h-4 w-4 shrink-0'));
@@ -666,10 +811,20 @@
     else if (key === 'fiscal') cargarConfigFiscal();
     else if (key === 'sucursales') { cargarSucursales(); cargarFolioManual(); }
     else if (key === 'impresion') loadImpresion();
+    else if (key === 'claude') cargarTokensClaude();
     else if (key === 'usuarios') loadUsuarios();
   }
 
   buildNav();
+  // Con el rol ya conocido se ocultan las pestañas solo de admin.
+  document.addEventListener('DOMContentLoaded', () => {
+    if (!window.__userInfo) return;
+    window.__userInfo.then(() => {
+      const tab = TABS.find(t => t.key === activeTab);
+      if (tab && tab.soloAdmin && window.__userRole !== 'admin') switchTab('consultorio');
+      else buildNav();
+    });
+  });
 
   // ── CONSULTORIO ───────────────────────────────────────────
   const DAYS = [
@@ -2553,6 +2708,214 @@
     } catch (e) {
       Toast.error('No se pudo regenerar la clave');
     }
+  });
+
+  // ── Conectar con Claude (tokens del MCP) ─────────────────
+  // El token en claro solo llega en la respuesta del POST; la BD guarda su hash.
+  const MCP_URL = {{ mcp_url|tojson }};
+
+  function claudeComando(token) {
+    return `claude mcp add --transport http dental ${MCP_URL} --header "Authorization: Bearer ${token || '<token>'}"`;
+  }
+
+  function claudeInstruccion(token) {
+    return 'Instala el servidor MCP de Dental Planning con el nombre "dental", transporte HTTP, '
+      + `en la dirección ${MCP_URL} y con el encabezado "Authorization: Bearer ${token || '<token>'}".`;
+  }
+
+  const MCP_SIN_URL = 'Falta configurar la dirección pública del servidor (APP_BASE_URL).';
+
+  function claudeActualizarTextos(token) {
+    // Sin dirección pública no hay comando ni instrucción que copiar.
+    document.getElementById('claude-comando').textContent = MCP_URL ? claudeComando(token) : MCP_SIN_URL;
+    document.getElementById('claude-instruccion').textContent = MCP_URL ? claudeInstruccion(token) : MCP_SIN_URL;
+  }
+  claudeActualizarTextos(null);
+
+  function claudeAviso(msg) {
+    const el = document.getElementById('claude-aviso');
+    el.textContent = msg || '';
+    el.classList.toggle('hidden', !msg);
+  }
+
+  function claudeFecha(iso) {
+    if (!iso) return '—';
+    // La BD guarda UTC sin zona; sin la "Z" el navegador lo leería como hora local.
+    if (!/[zZ]|[+-]\d\d:?\d\d$/.test(iso)) iso += 'Z';
+    return new Date(iso).toLocaleString('es-MX', { dateStyle: 'medium', timeStyle: 'short' });
+  }
+
+  async function copiarTexto(texto, ok) {
+    try {
+      await navigator.clipboard.writeText(texto);
+      Toast.success(ok);
+    } catch {
+      Toast.info('Selecciona y copia el texto manualmente (Ctrl+C)');
+    }
+  }
+
+  function renderTokensClaude(tokens) {
+    const tbody = document.getElementById('tbody-claude-tokens');
+    tbody.replaceChildren();
+    if (!tokens.length) {
+      const tr = domEl('tr');
+      const td = domEl('td', 'py-6 text-center text-text-muted', 'Aún no has generado tokens.');
+      td.colSpan = 6;
+      tr.appendChild(td);
+      tbody.appendChild(tr);
+      return;
+    }
+    tokens.forEach(t => {
+      const tr = domEl('tr', 'border-b border-border last:border-0' + (t.revocado ? ' text-text-muted' : ''));
+      tr.appendChild(domEl('td', 'py-2 pr-4', t.nombre));
+      tr.appendChild(domEl('td', 'py-2 pr-4 font-mono text-xs', t.prefijo + '…'));
+      tr.appendChild(domEl('td', 'py-2 pr-4 whitespace-nowrap', claudeFecha(t.created_at)));
+      tr.appendChild(domEl('td', 'py-2 pr-4 whitespace-nowrap', t.last_used_at ? claudeFecha(t.last_used_at) : 'Nunca'));
+      const estado = domEl('td', 'py-2 pr-4');
+      estado.appendChild(domEl('span',
+        'inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ' +
+        (t.revocado ? 'bg-danger-50 text-danger-700' : 'bg-accent-50 text-accent-700'),
+        t.revocado ? 'Revocado' : 'Activo'));
+      tr.appendChild(estado);
+      const acciones = domEl('td', 'py-2 text-right');
+      if (!t.revocado) {
+        const btn = domEl('button', 'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-danger-100 text-danger-600 hover:bg-danger-50 text-xs font-medium cursor-pointer');
+        btn.type = 'button';
+        btn.appendChild(domIcon('ban', 'h-3.5 w-3.5'));
+        btn.appendChild(domEl('span', '', 'Revocar'));
+        btn.addEventListener('click', () => revocarTokenClaude(t));
+        acciones.appendChild(btn);
+      }
+      tr.appendChild(acciones);
+      tbody.appendChild(tr);
+    });
+    lucide.createIcons();
+  }
+
+  function renderConexionesClaude(filas) {
+    const tbody = document.getElementById('tbody-claude-conexiones');
+    tbody.replaceChildren();
+    if (!filas.length) {
+      const tr = domEl('tr');
+      const td = domEl('td', 'py-6 text-center text-text-muted', 'Aún no hay conexiones de Claude.');
+      td.colSpan = 6;
+      tr.appendChild(td);
+      tbody.appendChild(tr);
+      return;
+    }
+    filas.forEach(c => {
+      const tr = domEl('tr', 'border-b border-border last:border-0' + (c.revocada ? ' text-text-muted' : ''));
+      tr.appendChild(domEl('td', 'py-2 pr-4', c.cliente || '—'));
+      tr.appendChild(domEl('td', 'py-2 pr-4', c.usuario || '—'));
+      tr.appendChild(domEl('td', 'py-2 pr-4 whitespace-nowrap', claudeFecha(c.created_at)));
+      tr.appendChild(domEl('td', 'py-2 pr-4 whitespace-nowrap', c.last_used_at ? claudeFecha(c.last_used_at) : 'Nunca'));
+      const estado = domEl('td', 'py-2 pr-4');
+      estado.appendChild(domEl('span',
+        'inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ' +
+        (c.revocada ? 'bg-danger-50 text-danger-700' : 'bg-accent-50 text-accent-700'),
+        c.revocada ? 'Revocada' : 'Activa'));
+      tr.appendChild(estado);
+      const acciones = domEl('td', 'py-2 text-right');
+      if (!c.revocada) {
+        const btn = domEl('button', 'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-danger-100 text-danger-600 hover:bg-danger-50 text-xs font-medium cursor-pointer');
+        btn.type = 'button';
+        btn.appendChild(domIcon('ban', 'h-3.5 w-3.5'));
+        btn.appendChild(domEl('span', '', 'Revocar'));
+        btn.addEventListener('click', () => revocarConexionClaude(c));
+        acciones.appendChild(btn);
+      }
+      tr.appendChild(acciones);
+      tbody.appendChild(tr);
+    });
+    lucide.createIcons();
+  }
+
+  // Devuelve el mensaje de un 403 en vez de mostrarlo: cargarTokensClaude
+  // pide ambas listas y muestra el aviso una sola vez.
+  async function cargarConexionesClaude() {
+    try {
+      renderConexionesClaude(await API.get('/mcp/conexiones'));
+    } catch (e) {
+      if (e?.response?.status === 403) return e.message;
+      Toast.error('No se pudieron cargar las conexiones');
+    }
+    return null;
+  }
+
+  async function revocarConexionClaude(c) {
+    if (!confirm(`¿Revocar la conexión de ${c.cliente || 'Claude'} (${c.usuario || 'usuario'})? Claude dejará de poder consultar tus datos con ella.`)) return;
+    try {
+      await API.delete('/mcp/conexiones/' + c.id);
+      Toast.success('Conexión revocada');
+      const aviso = await cargarConexionesClaude();
+      if (aviso) claudeAviso(aviso);
+    } catch (e) {
+      Toast.error(e.message || 'No se pudo revocar la conexión');
+    }
+  }
+
+  async function cargarTokensClaude() {
+    const conexiones = cargarConexionesClaude();
+    let aviso = null;
+    try {
+      renderTokensClaude(await API.get('/mcp/tokens'));
+    } catch (e) {
+      if (e?.response?.status === 403) aviso = e.message;
+      else Toast.error('No se pudieron cargar los tokens');
+    }
+    aviso = aviso || await conexiones;
+    if (aviso) claudeAviso(aviso);
+  }
+
+  async function revocarTokenClaude(t) {
+    if (!confirm(`¿Revocar el token "${t.nombre}"? Claude dejará de poder consultar tus datos con él.`)) return;
+    try {
+      await API.delete('/mcp/tokens/' + t.id);
+      Toast.success('Token revocado');
+      cargarTokensClaude();
+    } catch (e) {
+      Toast.error(e.message || 'No se pudo revocar el token');
+    }
+  }
+
+  document.getElementById('form-claude-token').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const nombreInp = document.getElementById('claude-token-nombre');
+    const btn = document.getElementById('claude-generar');
+    btn.disabled = true;
+    try {
+      const r = await API.post('/mcp/tokens', { nombre: nombreInp.value.trim() || 'Claude' });
+      claudeAviso('');
+      nombreInp.value = '';
+      document.getElementById('claude-token-valor').value = r.token;
+      document.getElementById('claude-token-nuevo').classList.remove('hidden');
+      claudeActualizarTextos(r.token);
+      Toast.success('Token generado');
+      cargarTokensClaude();
+    } catch (err) {
+      // 403: la clínica no tiene plan de pago (o el usuario no es admin).
+      if (err?.response?.status === 403) claudeAviso(err.message);
+      else Toast.error(err.message || 'No se pudo generar el token');
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  document.getElementById('claude-token-copiar').addEventListener('click', () => {
+    const val = document.getElementById('claude-token-valor').value;
+    if (val) copiarTexto(val, 'Token copiado');
+  });
+
+  document.getElementById('claude-mcp-url-copiar')?.addEventListener('click', () => {
+    copiarTexto(MCP_URL, 'Dirección copiada');
+  });
+
+  document.getElementById('claude-instruccion-copiar').addEventListener('click', () => {
+    copiarTexto(document.getElementById('claude-instruccion').textContent, 'Instrucción copiada');
+  });
+
+  document.getElementById('claude-comando-copiar').addEventListener('click', () => {
+    copiarTexto(document.getElementById('claude-comando').textContent, 'Comando copiado');
   });
 
   // ── Descuentos y cupones ─────────────────────────────────

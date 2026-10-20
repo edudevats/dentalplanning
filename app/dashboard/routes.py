@@ -37,11 +37,27 @@ def ganancias():
 
 # ── RESUMEN MENSUAL (réplica hoja RESUMEN del Excel EDR) ──
 
+def venta_ajustada(ingreso):
+    """(venta_contable, iva_al_sat) de un ingreso.
+
+    El IVA de un facturable gravado NO timbrado se queda como ingreso; si está
+    timbrado, el IVA se va al SAT (no es ingreso). Requiere `ingreso.ticket`.
+    """
+    iva = iva_de(ingreso.monto or 0.0, ingreso.tipo_servicio, ingreso.factura)
+    timbrado = bool(ingreso.ticket and ingreso.ticket.estado == "timbrada")
+    return reparto_iva(ingreso.monto or 0.0, iva, timbrado)
+
+
 @dashboard_bp.route("/reportes/resumen-mensual", methods=["GET"])
 @require_auth
 def resumen_mensual():
-    generar_pendientes_seguro(g.tenant_id)
     year, month = _parse_mes(request.args.get("mes"))
+    return jsonify(calcular_resumen_mensual(g.tenant_id, year, month))
+
+
+def calcular_resumen_mensual(tenant_id, year, month):
+    """Resumen mensual (hoja RESUMEN del EDR). Lo usan la pantalla y el MCP."""
+    generar_pendientes_seguro(tenant_id)
 
     # Ingresos
     # eager-load metodo_pago (efectivo vs banco) y ticket (estado timbrado para el IVA)
@@ -49,18 +65,14 @@ def resumen_mensual():
         joinedload(Ingreso.metodo_pago),
         joinedload(Ingreso.ticket),
     ).filter(
-        Ingreso.tenant_id == g.tenant_id,
+        Ingreso.tenant_id == tenant_id,
         *filtro_mes(Ingreso.fecha, year, month),
     ).all()
 
-    # Venta ajustada por ingreso: el IVA de un facturable gravado NO timbrado se
-    # queda como ingreso; si está timbrado, el IVA se va al SAT (no es ingreso).
     venta_por_ingreso = {}
     iva_por_regresar_al_sat = 0.0
     for i in ingresos:
-        iva = iva_de(i.monto or 0.0, i.tipo_servicio, i.factura)
-        timbrado = bool(i.ticket and i.ticket.estado == "timbrada")
-        venta, iva_sat = reparto_iva(i.monto or 0.0, iva, timbrado)
+        venta, iva_sat = venta_ajustada(i)
         venta_por_ingreso[i.id] = venta
         iva_por_regresar_al_sat += iva_sat
 
@@ -77,7 +89,7 @@ def resumen_mensual():
 
     # Gastos operativos
     gastos = GastoOperativo.query.filter(
-        GastoOperativo.tenant_id == g.tenant_id,
+        GastoOperativo.tenant_id == tenant_id,
         *filtro_mes(GastoOperativo.fecha, year, month),
     ).all()
     def _es_impuesto(g_):
@@ -97,7 +109,7 @@ def resumen_mensual():
 
     # Pagos a doctores (unificados: salario + comision)
     pagos = PagoDoctor.query.filter(
-        PagoDoctor.tenant_id == g.tenant_id,
+        PagoDoctor.tenant_id == tenant_id,
         *filtro_mes(PagoDoctor.fecha, year, month),
     ).all()
     total_pagos_doctores   = sum(p.monto for p in pagos)
@@ -107,7 +119,7 @@ def resumen_mensual():
     # ── ESTADO DE RESULTADOS (definición ÚNICA en app/engine/accounting.py) ──
     # La misma función calcula utilidad_neta para el resumen, el trimestral y
     # la distribución, así que SIEMPRE significan lo mismo.
-    config = ConfigConsultorio.query.filter_by(tenant_id=g.tenant_id).first()
+    config = ConfigConsultorio.query.filter_by(tenant_id=tenant_id).first()
     tasa_impuesto = config.tasa_impuesto_pct if config else 0
 
     # Base de caja: la comisión del doctor es gasto SOLO cuando se paga (vía
@@ -175,7 +187,7 @@ def resumen_mensual():
             "saldo_acumulado": round(saldo_acum, 2),
         })
 
-    return jsonify({
+    return {
         "mes": f"{year}-{month:02d}",
         # ── Ingresos ──
         "total_ingresos": round(total_ingresos, 2),
@@ -218,7 +230,7 @@ def resumen_mensual():
             "cincuenta_pct_ventas": round(cincuenta_pct_ventas, 2),
         },
         "balance_diario": balance_list,
-    })
+    }
 
 
 # ── REPORTES TRIMESTRALES (réplica hoja %TRIMESTRALES) ──

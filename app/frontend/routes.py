@@ -1,4 +1,5 @@
 from flask import render_template, redirect, url_for, request
+from app.mcp.oauth import ConfiguracionFaltante, recurso
 from . import frontend_bp
 
 
@@ -104,7 +105,14 @@ def reportes_marketing():
 
 @frontend_bp.route('/ajustes')
 def ajustes():
-    return render_template('ajustes/index.html', page='ajustes')
+    # URL pública del MCP para las instrucciones de "Conectar con Claude". Sale
+    # de la misma regla que el OAuth: en producción solo APP_BASE_URL https (el
+    # Host de la petición no es confiable); sin ella, la plantilla avisa.
+    try:
+        mcp_url = recurso()
+    except ConfiguracionFaltante:
+        mcp_url = None
+    return render_template('ajustes/index.html', page='ajustes', mcp_url=mcp_url)
 
 
 @frontend_bp.route("/inventario")

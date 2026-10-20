@@ -110,7 +110,7 @@
   lucide.createIcons();
   setActiveNav();
   initMobileSidebar();
-  loadUserInfo();
+  window.__userInfo = loadUserInfo();  // las páginas pueden esperar el rol
   initUserMenu();
 </script>
 {% endblock %}

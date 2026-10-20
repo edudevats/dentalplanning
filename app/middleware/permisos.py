@@ -127,6 +127,11 @@ CATALOGO = {
 # ausencia de clave.
 BLUEPRINTS_NO_APLICA = frozenset({
     "auth", "frontend", "superadmin", "clip", "portal", "finanzas_personales",
+    # MCP: /mcp usa su propio token y las rutas de tokens exigen rol admin.
+    "mcp",
+    # OAuth del MCP: rutas públicas del protocolo; la pantalla de autorización
+    # valida las credenciales y exige rol admin por su cuenta.
+    "oauth",
 })
 
 # Operaciones que ningún asistente alcanza, tenga el nivel que tenga en el

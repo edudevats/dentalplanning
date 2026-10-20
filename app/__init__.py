@@ -42,6 +42,8 @@ def create_app(config_name=None):
     from app.crm.routes import crm_bp
     from app.cobranza.routes import cobranza_bp
     from app.caja.routes import caja_bp
+    from app.mcp.routes import mcp_bp
+    from app.mcp.oauth_routes import oauth_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(catalogo_bp)
@@ -60,6 +62,8 @@ def create_app(config_name=None):
     app.register_blueprint(crm_bp)
     app.register_blueprint(cobranza_bp)
     app.register_blueprint(caja_bp)
+    app.register_blueprint(mcp_bp)
+    app.register_blueprint(oauth_bp)
 
     # Error handlers
     from app.middleware.error_handlers import register_error_handlers
@@ -84,6 +88,7 @@ def create_app(config_name=None):
         from app.crm import models as crm_models  # noqa: F401
         from app.cobranza import models as cobranza_models  # noqa: F401
         from app.caja import models as caja_models  # noqa: F401
+        from app.mcp import models as mcp_models  # noqa: F401
 
     # Health check
     @app.route("/api/v1/health")
@@ -101,5 +106,8 @@ def create_app(config_name=None):
 
     from app.edr.cli import gastos_cli
     app.cli.add_command(gastos_cli)
+
+    from app.mcp.cli import mcp_cli
+    app.cli.add_command(mcp_cli)
 
     return app

@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}Conectar con Claude — Dental Planning{% endblock %}
+
+{% block body %}
+<div class="min-h-screen flex items-center justify-center px-6 py-12 bg-surface-alt">
+  <div class="w-full max-w-md rounded-2xl border border-border bg-surface px-8 py-10 shadow-sm">
+    <div class="mb-8 text-center">
+      <div class="flex items-center justify-center gap-2 mb-2">
+        <img src="{{ url_for('static', filename='imagenes/02-fondoblanco.jpg.jpeg') }}" alt="Logo" class="h-10 w-10 object-contain rounded-md" />
+        <span class="text-2xl font-bold font-heading text-primary-800">Dental Planning</span>
+      </div>
+    </div>
+
+    {% if cliente_nombre %}
+    <div class="mb-6">
+      <h1 class="text-xl font-bold font-heading text-text-primary">Conectar con {{ cliente_nombre }}</h1>
+      <p class="mt-2 text-sm text-text-secondary">
+        <strong class="text-text-primary">{{ cliente_nombre }}</strong> quiere consultar los reportes de tu clínica (solo lectura).
+        Entra con la cuenta del administrador para permitirlo.
+      </p>
+      <p class="mt-2 text-sm text-text-secondary">Al permitir, regresarás a <strong class="text-text-primary">{{ redirect_host }}</strong>.</p>
+      {% if not host_de_claude %}
+      <div class="mt-4 rounded-lg border border-danger-500 bg-danger-50 px-4 py-3" role="alert">
+        <p class="text-sm font-semibold text-danger-700">Atención: esta aplicación no es de Claude (Anthropic). Permite el acceso solo si tú la conectaste.</p>
+      </div>
+      {% endif %}
+    </div>
+    {% else %}
+    <div class="mb-6">
+      <h1 class="text-xl font-bold font-heading text-text-primary">No se pudo iniciar la conexión</h1>
+    </div>
+    {% endif %}
+
+    {% if error %}
+    <div class="mb-6 rounded-lg border border-danger-500 bg-danger-50 px-4 py-3" role="alert">
+      <p class="text-sm text-danger-700">{{ error }}</p>
+    </div>
+    {% endif %}
+
+    {% if cliente_nombre %}
+    <form method="post" action="/oauth/authorize" class="space-y-5">
+      {% for nombre, valor in campos.items() %}
+      <input type="hidden" name="{{ nombre }}" value="{{ valor }}" />
+      {% endfor %}
+      <input type="hidden" name="csrf" value="{{ csrf }}" />
+
+      <div>
+        <label for="email" class="block text-sm font-medium text-text-secondary mb-1 font-body">Correo electrónico</label>
+        <input id="email" name="email" type="email" autocomplete="email" placeholder="tu@correo.com" value="{{ email }}"
+          class="block w-full rounded-lg border border-border px-3 py-2.5 text-sm font-body text-text-primary placeholder:text-text-muted min-h-[44px] bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-500" />
+      </div>
+
+      <div>
+        <label for="password" class="block text-sm font-medium text-text-secondary mb-1 font-body">Contraseña</label>
+        <input id="password" name="password" type="password" autocomplete="current-password" placeholder="Tu contraseña"
+          class="block w-full rounded-lg border border-border px-3 py-2.5 text-sm font-body text-text-primary placeholder:text-text-muted min-h-[44px] bg-surface focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-500" />
+      </div>
+
+      <!-- Permitir va primero en el DOM: Enter envía el primer botón -->
+      <div class="flex flex-row-reverse gap-3">
+        <button type="submit" name="accion" value="permitir"
+          class="inline-flex flex-1 items-center justify-center rounded-lg bg-primary-500 hover:bg-primary-600 text-white font-medium font-body px-4 py-2.5 text-sm min-h-[44px] transition-colors focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-primary-300">
+          Permitir
+        </button>
+        <button type="submit" name="accion" value="cancelar" formnovalidate
+          class="inline-flex flex-1 items-center justify-center rounded-lg border border-border bg-surface hover:bg-surface-hover text-text-secondary font-medium font-body px-4 py-2.5 text-sm min-h-[44px] transition-colors">
+          Cancelar
+        </button>
+      </div>
+    </form>
+    {% else %}
+    <p class="text-sm text-text-secondary">Vuelve a Claude e intenta conectar Dental Planning de nuevo.</p>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
