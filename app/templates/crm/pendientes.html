@@ -13,6 +13,33 @@
     </div>
   </div>
 
+  <!-- Numeración de expedientes: solo la ve el admin -->
+  <div id="cfg-expediente" class="hidden bg-surface rounded-xl border border-border shadow-sm p-5 space-y-3">
+    <div>
+      <h2 class="text-sm font-semibold font-heading text-text-primary">Numeración de expedientes</h2>
+      <p id="cfg-exp-estado" class="mt-0.5 text-xs text-text-muted font-body"></p>
+    </div>
+    <div class="flex flex-col sm:flex-row sm:items-end gap-3">
+      <div>
+        <label for="cfg-exp-formato" class="block text-xs font-medium text-text-secondary mb-1 font-body">Formato</label>
+        <select id="cfg-exp-formato" onchange="pintarLetrasExpediente()"
+                class="rounded-lg border border-border px-3 py-2 text-sm font-body bg-surface min-h-[40px]">
+          <option value="" disabled>Elige un formato</option>
+          <option value="letra">Letra + 6 números (A000245)</option>
+          <option value="numerico">7 números (0000245)</option>
+        </select>
+      </div>
+      <div id="cfg-exp-letras-caja">
+        <label for="cfg-exp-letras" class="block text-xs font-medium text-text-secondary mb-1 font-body">Letras (ej. A, B)</label>
+        <input id="cfg-exp-letras" type="text" maxlength="80" placeholder="A"
+               class="w-40 rounded-lg border border-border px-3 py-2 text-sm font-body bg-surface min-h-[40px] uppercase" />
+      </div>
+      <button type="button" onclick="guardarExpediente()"
+              class="rounded-lg bg-primary-500 hover:bg-primary-600 text-white px-4 py-2 text-sm font-medium cursor-pointer min-h-[40px]">Guardar</button>
+    </div>
+    <p class="text-xs text-text-muted font-body">Se pueden agregar letras en cualquier momento; una letra en uso no se puede quitar y el formato no cambia una vez que hay expedientes.</p>
+  </div>
+
   <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
     <div class="bg-surface rounded-xl border border-border shadow-sm">
       <div class="px-5 py-3 border-b border-border">
@@ -38,7 +65,36 @@ async function cargarConfig() {
   try {
     const cfg = await API.get('/crm/config');
     document.getElementById('cfg-meses').value = cfg.meses_inactividad;
+    pintarExpediente(cfg);
   } catch (e) { Toast.error('No se pudo cargar la configuración'); }
+}
+
+function pintarLetrasExpediente() {
+  document.getElementById('cfg-exp-letras-caja').classList.toggle(
+    'hidden', document.getElementById('cfg-exp-formato').value !== 'letra');
+}
+
+function pintarExpediente(cfg) {
+  const card = document.getElementById('cfg-expediente');
+  card.classList.toggle('hidden', !cfg.es_admin);
+  if (!cfg.es_admin) return;
+  const e = cfg.expediente;
+  document.getElementById('cfg-exp-formato').value = e.formato || '';
+  document.getElementById('cfg-exp-letras').value = (e.letras || []).join(', ');
+  document.getElementById('cfg-exp-estado').textContent = e.formato
+    ? `Próximo número: ${e.siguiente}`
+    : 'Aún no eligen cómo numerar sus expedientes.';
+  pintarLetrasExpediente();
+}
+
+async function guardarExpediente() {
+  try {
+    await guardarConfigExpediente(
+      document.getElementById('cfg-exp-formato').value,
+      document.getElementById('cfg-exp-letras').value);
+    Toast.success('Numeración de expedientes guardada');
+    cargarConfig();
+  } catch (e) { Toast.error(e.message || 'No se pudo guardar'); }
 }
 
 async function guardarConfig() {

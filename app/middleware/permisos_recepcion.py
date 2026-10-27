@@ -64,15 +64,18 @@ BLOQUES = {
         ],
     },
     "crm": {
-        # Todo excepto DELETE paciente y PUT config.
+        # Todo excepto DELETE paciente, PUT config y PUT expediente/config
+        # (la config del expediente es solo del admin; asignar uno vacío va por PUT paciente).
         "label": "CRM de pacientes",
         "reglas": [
             ("GET", r"/api/v1/crm/pacientes"),
+            ("GET", r"/api/v1/crm/pacientes/buscar"),
             ("POST", r"/api/v1/crm/pacientes"),
             ("GET", r"/api/v1/crm/pacientes/\d+"),
             ("PUT", r"/api/v1/crm/pacientes/\d+"),
             ("PUT", r"/api/v1/crm/pacientes/\d+/estatus"),
             ("POST", r"/api/v1/crm/pacientes/\d+/visitas"),
+            ("GET", r"/api/v1/crm/visitas/\d+"),
             ("POST", r"/api/v1/crm/pacientes/\d+/seguimientos"),
             ("POST", r"/api/v1/crm/seguimientos/\d+/completar"),
             ("POST", r"/api/v1/crm/pacientes/\d+/notas"),

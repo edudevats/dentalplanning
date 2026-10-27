@@ -19,6 +19,9 @@ class Paciente(db.Model):
     especialista_id = db.Column(db.Integer, db.ForeignKey("especialistas.id"), nullable=True)
     es_problematico = db.Column(db.Boolean, nullable=False, default=False)
     notas_generales = db.Column(db.Text)
+    # Número de expediente: código completo ("A000245" / "0000245") y su parte numérica.
+    expediente = db.Column(db.String(10), nullable=True)
+    expediente_numero = db.Column(db.Integer, nullable=True)
     eliminado = db.Column(db.Boolean, nullable=False, default=False)
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = db.Column(
@@ -31,6 +34,7 @@ class Paciente(db.Model):
 
     __table_args__ = (
         db.Index("ix_pacientes_tenant_estatus", "tenant_id", "estatus_crm"),
+        db.UniqueConstraint("tenant_id", "expediente", name="uq_pacientes_tenant_expediente"),
     )
 
 
@@ -83,7 +87,7 @@ class PacienteEvento(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     tenant_id = db.Column(db.Integer, db.ForeignKey("tenants.id"), nullable=False, index=True)
     paciente_id = db.Column(db.Integer, db.ForeignKey("pacientes.id"), nullable=False)
-    tipo = db.Column(db.String(20), nullable=False)  # cambio_estatus | nota
+    tipo = db.Column(db.String(20), nullable=False)  # cambio_estatus | nota | expediente
     detalle = db.Column(db.Text)
     usuario_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
@@ -99,6 +103,12 @@ class CrmConfig(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     tenant_id = db.Column(db.Integer, db.ForeignKey("tenants.id"), nullable=False, unique=True)
     meses_inactividad = db.Column(db.Integer, nullable=False, default=4)
+    # Numeración de expedientes: None (sin configurar) | "letra" | "numerico".
+    expediente_formato = db.Column(db.String(10), nullable=True)
+    expediente_letras = db.Column(db.String(60), nullable=True)  # CSV: "A,B"
+    expediente_siguiente = db.Column(
+        db.Integer, nullable=False, default=100, server_default="100",
+    )
 
 
 class DienteEstado(db.Model):

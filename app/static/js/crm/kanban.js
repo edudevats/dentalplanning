@@ -63,6 +63,7 @@ const Kanban = (() => {
            class="kb-card bg-surface rounded-lg border border-border p-3 shadow-sm cursor-pointer hover:shadow-md space-y-1.5">
         <div class="flex items-start justify-between gap-2">
           <p class="text-sm font-semibold font-body text-text-primary">${esc(p.nombre)}</p>
+          ${p.expediente ? `<span class="shrink-0 rounded-full bg-primary-50 text-primary-700 px-2 py-0.5 text-[10px] font-semibold font-body">${esc(p.expediente)}</span>` : ''}
         </div>
         <div class="flex flex-wrap gap-1">${badges.join('')}</div>
         <p class="text-xs text-text-muted font-body">

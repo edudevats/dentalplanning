@@ -16,6 +16,10 @@ class PacienteSchema(Schema):
     especialista_id = fields.Int(allow_none=True)
     es_problematico = fields.Bool()
     notas_generales = fields.Str(allow_none=True)
+    # Expediente: se lee ya formateado; para asignarlo/cambiarlo se envía
+    # expediente_cambio = {"modo": "auto"|"manual"|"quitar", "letra"?, "valor"?}
+    expediente = fields.Str(dump_only=True)
+    expediente_cambio = fields.Dict(load_only=True, allow_none=True)
     # Enriquecidos (solo lectura)
     especialista_nombre = fields.Str(dump_only=True)
     ultima_visita = fields.Date(dump_only=True)

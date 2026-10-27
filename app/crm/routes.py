@@ -10,8 +10,8 @@ from app.crm.schemas import (
     PacienteSchema, VisitaSchema, SeguimientoSchema, NotaSchema, CrmConfigSchema,
     AsignarSchema, CorregirAsignacionSchema, EstadoDienteSchema, RealizarSchema,
 )
-from app.crm import services, odontograma
-from app.crm.services import CrmError, CrmNotFound
+from app.crm import services, odontograma, expediente, actividad
+from app.crm.services import CrmError, CrmNotFound, CrmForbidden
 
 crm_bp = Blueprint("crm", __name__, url_prefix="/api/v1/crm")
 
@@ -21,6 +21,11 @@ LIMITE_BUSQUEDA = 20
 @crm_bp.errorhandler(CrmNotFound)
 def _crm_not_found(e):
     return jsonify({"error": str(e)}), 404
+
+
+@crm_bp.errorhandler(CrmForbidden)
+def _crm_forbidden(e):
+    return jsonify({"error": str(e)}), 403
 
 
 @crm_bp.errorhandler(CrmError)
@@ -74,6 +79,19 @@ def _dump_paciente_enriquecido(paciente_id):
     return _dump_paciente(p, ultima, siguiente, corte)
 
 
+def _filtro_texto(texto):
+    """Nombre, teléfono o expediente; "a245" también encuentra A000245."""
+    like = f"%{texto}%"
+    condiciones = [
+        Paciente.nombre.ilike(like), Paciente.telefono.ilike(like),
+        Paciente.expediente.ilike(like),
+    ]
+    codigo = expediente.codigo_de_busqueda(texto)
+    if codigo:
+        condiciones.append(Paciente.expediente == codigo)
+    return or_(*condiciones)
+
+
 @crm_bp.route("/pacientes", methods=["GET"])
 @require_auth
 def listar_pacientes():
@@ -82,8 +100,7 @@ def listar_pacientes():
 
     texto = (request.args.get("q") or "").strip()
     if texto:
-        like = f"%{texto}%"
-        q = q.filter(or_(Paciente.nombre.ilike(like), Paciente.telefono.ilike(like)))
+        q = q.filter(_filtro_texto(texto))
     estatus = request.args.get("estatus")
     if estatus:
         q = q.filter(Paciente.estatus_crm == estatus)
@@ -107,7 +124,7 @@ def listar_pacientes():
 @crm_bp.route("/pacientes/buscar", methods=["GET"])
 @require_auth
 def buscar_pacientes():
-    """Búsqueda ligera para autocompletar: solo id/nombre/telefono, con límite.
+    """Búsqueda ligera para autocompletar: id/nombre/telefono/expediente, con límite.
 
     A diferencia de listar_pacientes, no calcula inactividad ni timeline, así
     que es barato aun con miles de pacientes. La ruta /pacientes/buscar no
@@ -116,20 +133,21 @@ def buscar_pacientes():
     texto = (request.args.get("q") or "").strip()
     if len(texto) < 2:
         return jsonify({"pacientes": [], "total": 0})
-    like = f"%{texto}%"
     filas = (
         Paciente.query
         .filter(
             Paciente.tenant_id == g.tenant_id,
             Paciente.eliminado.is_(False),
-            or_(Paciente.nombre.ilike(like), Paciente.telefono.ilike(like)),
+            _filtro_texto(texto),
         )
         .order_by(Paciente.nombre)
         .limit(LIMITE_BUSQUEDA)
         .all()
     )
     pacientes = [
-        {"id": p.id, "nombre": p.nombre, "telefono": p.telefono} for p in filas
+        {"id": p.id, "nombre": p.nombre, "telefono": p.telefono,
+         "expediente": p.expediente}
+        for p in filas
     ]
     return jsonify({"pacientes": pacientes, "total": len(pacientes)})
 
@@ -143,30 +161,22 @@ def ficha_paciente(paciente_id):
         return jsonify({"error": "Paciente no encontrado"}), 404
     p, ultima, siguiente = fila
     data = _dump_paciente(p, ultima, siguiente, corte)
+    # Sin expediente cualquiera lo asigna; con uno, solo el admin lo cambia.
+    data["expediente_editable"] = (
+        p.expediente is None or expediente.es_admin(g.current_user)
+    )
 
-    timeline = []
-    for v in p.visitas.all():
-        timeline.append({
-            "tipo": "visita", "id": v.id, "fecha": v.fecha.isoformat(),
-            "detalle": v.motivo or "Visita", "completado": None,
-            "ingreso_id": v.ingreso_id,
-        })
-    for s in p.seguimientos.all():
-        timeline.append({
-            "tipo": "seguimiento", "id": s.id,
-            "fecha": s.fecha_programada.isoformat(),
-            "detalle": f"{s.tipo}: {s.notas or ''}".strip(": "),
-            "completado": s.completado, "ingreso_id": None,
-        })
-    for e in p.eventos.all():
-        timeline.append({
-            "tipo": e.tipo, "id": e.id,
-            "fecha": e.created_at.date().isoformat() if e.created_at else None,
-            "detalle": e.detalle, "completado": None, "ingreso_id": None,
-        })
-    timeline.sort(key=lambda x: (x["fecha"] or "", x["id"]), reverse=True)
-    data["timeline"] = timeline
+    data["timeline"] = actividad.timeline(p, actividad.usuario_ve_montos(g.current_user))
     return jsonify(data)
+
+
+@crm_bp.route("/visitas/<int:visita_id>", methods=["GET"])
+@require_auth
+def detalle_visita(visita_id):
+    """Detalle de una visita; los montos solo para quien ve ingresos."""
+    return jsonify(actividad.detalle_visita(
+        g.tenant_id, visita_id, actividad.usuario_ve_montos(g.current_user)
+    ))
 
 
 @crm_bp.route("/pacientes", methods=["POST"])
@@ -174,7 +184,9 @@ def ficha_paciente(paciente_id):
 @require_role("admin", "editor", "recepcionista")
 def crear_paciente():
     data = PacienteSchema().load(request.get_json() or {})
-    p = services.crear_paciente(g.tenant_id, data, usuario_id=g.current_user.id)
+    p = services.crear_paciente(
+        g.tenant_id, data, usuario_id=g.current_user.id, usuario=g.current_user
+    )
     return jsonify(_dump_paciente(p)), 201
 
 
@@ -184,7 +196,8 @@ def crear_paciente():
 def actualizar_paciente(paciente_id):
     data = PacienteSchema(partial=True).load(request.get_json() or {})
     services.actualizar_paciente(
-        g.tenant_id, paciente_id, data, usuario_id=g.current_user.id
+        g.tenant_id, paciente_id, data, usuario_id=g.current_user.id,
+        usuario=g.current_user,
     )
     return jsonify(_dump_paciente_enriquecido(paciente_id))
 
@@ -298,7 +311,31 @@ def resumen():
 @require_auth
 def obtener_config():
     cfg = services.get_config(g.tenant_id)
-    return jsonify({"meses_inactividad": cfg.meses_inactividad})
+    return jsonify({
+        "meses_inactividad": cfg.meses_inactividad,
+        "expediente": _dump_expediente_config(cfg),
+        "es_admin": expediente.es_admin(g.current_user),
+    })
+
+
+def _dump_expediente_config(cfg):
+    return {
+        "formato": cfg.expediente_formato,
+        "letras": expediente.letras_de(cfg),
+        "siguiente": cfg.expediente_siguiente or expediente.CONTADOR_INICIAL,
+    }
+
+
+@crm_bp.route("/expediente/config", methods=["PUT"])
+@require_auth
+def actualizar_config_expediente():
+    # Explícito: require_role deja pasar siempre al asistente.
+    if not expediente.es_admin(g.current_user):
+        return jsonify({"error": "Solo el administrador configura los expedientes"}), 403
+    body = request.get_json() or {}
+    cfg = expediente.configurar(g.tenant_id, body.get("formato"), body.get("letras"))
+    db.session.commit()
+    return jsonify(_dump_expediente_config(cfg))
 
 
 @crm_bp.route("/config", methods=["PUT"])

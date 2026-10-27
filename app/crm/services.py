@@ -16,6 +16,10 @@ class CrmNotFound(CrmError):
     """Recurso del CRM no encontrado; las routes lo devuelven como 404."""
 
 
+class CrmForbidden(CrmError):
+    """Acción no permitida al rol del usuario; las routes lo devuelven como 403."""
+
+
 CAMPOS_PACIENTE = (
     "nombre", "telefono", "whatsapp", "email", "fecha_nacimiento",
     "especialista_id", "es_problematico", "notas_generales",
@@ -60,7 +64,7 @@ def crm_activo(tenant_id):
     return bool(tenant) and "crm" in tenant.allowed_modules
 
 
-def crear_paciente(tenant_id, data, usuario_id=None):
+def crear_paciente(tenant_id, data, usuario_id=None, usuario=None):
     nombre = (data.get("nombre") or "").strip()
     if not nombre:
         raise CrmError("El nombre del paciente es obligatorio")
@@ -68,17 +72,31 @@ def crear_paciente(tenant_id, data, usuario_id=None):
     if estatus not in ESTATUS_CRM:
         raise CrmError("Estatus inválido")
     _validar_especialista(tenant_id, data.get("especialista_id"))
+    cambio = data.get("expediente_cambio")
+    # get_config puede hacer commit al crear la fila: se pide antes de agregar al paciente.
+    cfg = get_config(tenant_id) if cambio else None
     p = Paciente(
         tenant_id=tenant_id, nombre=nombre, estatus_crm=estatus,
         **{k: data.get(k) for k in CAMPOS_PACIENTE if k != "nombre" and k in data},
     )
     db.session.add(p)
+    if cambio:
+        from app.crm import expediente  # import diferido: expediente importa este módulo
+        try:
+            db.session.flush()  # da p.id para el evento del expediente
+            expediente.aplicar(p, cfg, cambio, usuario)
+        except CrmError:
+            db.session.rollback()
+            raise
     db.session.commit()
     return p
 
 
-def actualizar_paciente(tenant_id, paciente_id, data, usuario_id=None):
+def actualizar_paciente(tenant_id, paciente_id, data, usuario_id=None, usuario=None):
     p = _paciente(tenant_id, paciente_id)
+    cambio = data.get("expediente_cambio")
+    # get_config puede hacer commit al crear la fila: se pide antes de tocar al paciente.
+    cfg = get_config(tenant_id) if cambio else None
     if "nombre" in data and not (data.get("nombre") or "").strip():
         raise CrmError("El nombre del paciente es obligatorio")
     if "especialista_id" in data:
@@ -89,6 +107,13 @@ def actualizar_paciente(tenant_id, paciente_id, data, usuario_id=None):
     for k in CAMPOS_PACIENTE:
         if k in data:
             setattr(p, k, data[k])
+    if cambio:
+        from app.crm import expediente  # import diferido: expediente importa este módulo
+        try:
+            expediente.aplicar(p, cfg, cambio, usuario)
+        except CrmError:
+            db.session.rollback()
+            raise
     db.session.commit()
     return p
 
