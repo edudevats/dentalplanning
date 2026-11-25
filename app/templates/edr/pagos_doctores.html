@@ -144,14 +144,14 @@
 <!-- Modal: Detalle de Tratamientos por Doctor -->
 <div id="modal-detalle-doctor" class="hidden fixed inset-0 z-50 overflow-y-auto">
   <div class="flex min-h-full items-end sm:items-center justify-center p-4">
-    <div class="fixed inset-0 bg-black/40" onclick="Modal.close('modal-detalle-doctor')"></div>
+    <div class="fixed inset-0 bg-black/40" onclick="cerrarDetalle()"></div>
     <div class="relative bg-surface rounded-2xl shadow-xl w-full max-w-4xl">
       <div class="flex items-center justify-between px-6 py-4 border-b border-border">
         <div>
           <h2 id="modal-detalle-title" class="text-base font-semibold font-heading text-text-primary">Detalle de Tratamientos</h2>
           <p id="modal-detalle-subtitle" class="text-xs text-text-muted font-body mt-0.5"></p>
         </div>
-        <button type="button" onclick="Modal.close('modal-detalle-doctor')" class="p-2 rounded-lg text-text-muted hover:bg-surface-hover transition-colors cursor-pointer">
+        <button type="button" onclick="cerrarDetalle()" class="p-2 rounded-lg text-text-muted hover:bg-surface-hover transition-colors cursor-pointer">
           <i data-lucide="x" class="h-4 w-4"></i>
         </button>
       </div>
@@ -159,7 +159,7 @@
         <div id="modal-detalle-table-wrap"></div>
       </div>
       <div class="flex justify-end gap-3 px-6 py-4 border-t border-border bg-surface-alt rounded-b-2xl">
-        <button type="button" onclick="Modal.close('modal-detalle-doctor')" class="inline-flex items-center justify-center gap-2 rounded-lg font-medium font-body cursor-pointer border border-border bg-surface hover:bg-surface-hover text-text-secondary px-4 py-2 text-sm min-h-[38px]">Cerrar</button>
+        <button type="button" onclick="cerrarDetalle()" class="inline-flex items-center justify-center gap-2 rounded-lg font-medium font-body cursor-pointer border border-border bg-surface hover:bg-surface-hover text-text-secondary px-4 py-2 text-sm min-h-[38px]">Cerrar</button>
       </div>
     </div>
   </div>
@@ -288,30 +288,6 @@
   </div>
 </div>
 
-<!-- Delete modal -->
-<div id="modal-del" class="hidden fixed inset-0 z-50 overflow-y-auto">
-  <div class="flex min-h-full items-end sm:items-center justify-center p-4">
-    <div class="fixed inset-0 bg-black/40" onclick="Modal.close('modal-del')"></div>
-    <div class="relative bg-surface rounded-2xl shadow-xl w-full max-w-md">
-      <div class="flex items-center justify-between px-6 py-4 border-b border-border">
-        <h2 class="text-base font-semibold font-heading text-text-primary">Eliminar Pago</h2>
-        <button type="button" onclick="Modal.close('modal-del')" class="p-2 rounded-lg text-text-muted hover:bg-surface-hover transition-colors cursor-pointer">
-          <i data-lucide="x" class="h-4 w-4"></i>
-        </button>
-      </div>
-      <div class="px-6 py-5">
-        <p class="text-sm text-text-secondary font-body">Esta accion no se puede deshacer. Se eliminara permanentemente este registro de pago.</p>
-        <div class="flex justify-end gap-3 mt-6 pt-4 border-t border-border">
-          <button type="button" onclick="Modal.close('modal-del')" class="inline-flex items-center justify-center gap-2 rounded-lg font-medium font-body cursor-pointer border border-border bg-surface hover:bg-surface-hover text-text-secondary px-4 py-2 text-sm min-h-[38px]">Cancelar</button>
-          <button type="button" id="del-btn" onclick="handleDelete()" class="inline-flex items-center justify-center gap-2 rounded-lg font-medium font-body cursor-pointer bg-danger-500 hover:bg-danger-600 text-white px-4 py-2 text-sm min-h-[38px]">
-            <span id="del-text">Eliminar</span>
-          </button>
-        </div>
-      </div>
-    </div>
-  </div>
-</div>
-
 <!-- Modal: editar una comisión pendiente (comisión negociada) -->
 <div id="modal-com-edit" class="hidden fixed inset-0 z-[60] overflow-y-auto">
   <div class="flex min-h-full items-end sm:items-center justify-center p-4">
@@ -404,6 +380,24 @@ function tipoBadge(tipo) {
   return badge;
 }
 
+// Concepto + badge "Caja" (los pagos hechos desde /corte-caja salieron de un
+// cajón: se marcan para que el admin no los confunda con una transferencia).
+function conceptoConCaja(v, row) {
+  const wrap = domEl('span', 'inline-flex items-center gap-2 flex-wrap');
+  wrap.appendChild(domEl('span', '', v || ''));
+  if (row.sale_de_caja) {
+    wrap.appendChild(domEl('span',
+      'inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-warning-50 text-warning-700',
+      'Caja' + (row.sucursal_nombre ? ' · ' + row.sucursal_nombre : '')));
+  }
+  return wrap;
+}
+
+// Borrar pagos es solo de admin (el backend lo exige igual; esto oculta el boton).
+function puedeBorrarPagos() {
+  return !(window.__userRole && window.__userRole !== 'admin');
+}
+
 function renderTable_() {
   const cols = [
     { key: 'fecha', label: 'Fecha', render: v => formatDate(v) },
@@ -418,16 +412,7 @@ function renderTable_() {
       label: 'Concepto',
       // Los pagos hechos desde /corte-caja salieron de un cajón: se marcan
       // para que el admin no los confunda con una transferencia.
-      render: (v, row) => {
-        const wrap = domEl('span', 'inline-flex items-center gap-2 flex-wrap');
-        wrap.appendChild(domEl('span', '', v || ''));
-        if (row.sale_de_caja) {
-          wrap.appendChild(domEl('span',
-            'inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-warning-50 text-warning-700',
-            'Caja' + (row.sucursal_nombre ? ' · ' + row.sucursal_nombre : '')));
-        }
-        return wrap;
-      }
+      render: (v, row) => conceptoConCaja(v, row)
     },
     {
       key: 'monto',
@@ -448,9 +433,9 @@ function renderTable_() {
         const dBtn = domEl('button', 'rounded-lg p-1.5 text-text-muted hover:bg-danger-50 hover:text-danger-600 transition-colors cursor-pointer');
         dBtn.type = 'button';
         dBtn.appendChild(domIcon('trash-2'));
-        dBtn.addEventListener('click', () => { editingId = row.id; Modal.open('modal-del'); });
+        dBtn.addEventListener('click', () => borrarPago(row));
         div.appendChild(eBtn);
-        div.appendChild(dBtn);
+        if (puedeBorrarPagos()) div.appendChild(dBtn);
         return div;
       }
     },
@@ -537,64 +522,84 @@ function renderTableResumen() {
   lucide.createIcons();
 }
 
+// Id del doctor cuyo modal "Ver Detalles" está abierto (null = cerrado).
+let especialistaDetalle = null;
+let nombreDetalle = '';
+
+function cerrarDetalle() {
+  especialistaDetalle = null;
+  Modal.close('modal-detalle-doctor');
+}
+
 function openDetalleDoctor(row) {
-  document.getElementById('modal-detalle-title').textContent = 'Detalle de Tratamientos - ' + row.especialista_nombre;
-  
+  especialistaDetalle = row.especialista_id;
+  nombreDetalle = row.especialista_nombre;
+  renderDetallePagos();
+  Modal.open('modal-detalle-doctor');
+}
+
+// Pagos del doctor en el mes seleccionado (sale de tableData).
+function renderDetallePagos() {
+  const pagos = tableData.filter(p => String(p.especialista_id) === String(especialistaDetalle));
+  document.getElementById('modal-detalle-title').textContent = 'Pagos - ' + nombreDetalle;
+
   const selMonthEl = document.getElementById('sel-month');
   const mesLabel = selMonthEl.options[selMonthEl.selectedIndex].text;
   const anioVal = document.getElementById('sel-year').value;
-  document.getElementById('modal-detalle-subtitle').textContent = 'Período: ' + mesLabel + ' ' + anioVal;
-  
+  const total = pagos.reduce((s, p) => s + (p.monto || 0), 0);
+  document.getElementById('modal-detalle-subtitle').textContent =
+    'Período: ' + mesLabel + ' ' + anioVal + ' · ' + pagos.length + ' pago(s) · ' + fmt(total);
+
+  const puedeBorrar = puedeBorrarPagos();
   const cols = [
     { key: 'fecha', label: 'Fecha', render: v => formatDate(v) },
-    { key: 'paciente', label: 'Paciente' },
-    { key: 'nombre_tratamiento', label: 'Tratamiento', render: v => domEl('span', 'font-medium text-text-primary', v) },
-    { key: 'monto', label: 'Monto Venta', align: 'right', render: v => domEl('span', 'tabular-nums', fmt(v)) },
-    { key: 'comision_doctor', label: 'Comisión Doctor', align: 'right', render: v => domEl('span', 'tabular-nums text-secondary-600', fmt(v)) },
-    { key: 'ganancia', label: 'Ganancia Neta Clínica', align: 'right', render: v => domEl('span', 'tabular-nums font-medium ' + (v >= 0 ? 'text-accent-600' : 'text-danger-600'), fmt(v)) }
+    { key: 'tipo', label: 'Tipo', render: v => tipoBadge(v) },
+    { key: 'concepto', label: 'Concepto', render: (v, row) => conceptoConCaja(v, row) },
+    {
+      key: 'comisiones_liquidadas',
+      label: 'Origen',
+      render: v => domEl('span', 'text-text-secondary', v === 0 ? 'Manual' : 'Liquidó ' + v + ' comisión(es)')
+    },
+    { key: 'monto', label: 'Monto', align: 'right', render: v => domEl('span', 'tabular-nums font-medium', fmt(v)) },
   ];
-  
-  renderTable('modal-detalle-table-wrap', cols, row.detalle_tratamientos || [], 'No hay tratamientos realizados por el Doctor en este período', false);
-  
-  if (row.detalle_tratamientos && row.detalle_tratamientos.length > 0) {
+  if (puedeBorrar) {
+    cols.push({
+      key: 'id',
+      label: '',
+      align: 'right',
+      render: (_, row) => {
+        const dBtn = domEl('button', 'rounded-lg p-1.5 text-text-muted hover:bg-danger-50 hover:text-danger-600 transition-colors cursor-pointer');
+        dBtn.type = 'button';
+        dBtn.title = 'Eliminar pago';
+        dBtn.appendChild(domIcon('trash-2'));
+        dBtn.addEventListener('click', () => borrarPago(row));
+        return dBtn;
+      }
+    });
+  }
+
+  renderTable('modal-detalle-table-wrap', cols, pagos, 'No hay pagos a este doctor en este período', false);
+
+  if (pagos.length > 0) {
     const tableEl = document.querySelector('#modal-detalle-table-wrap table');
     if (tableEl) {
       const tfoot = document.createElement('tfoot');
       tfoot.className = 'bg-surface-alt border-t border-border font-semibold text-text-primary';
-      
       const tr = document.createElement('tr');
-      
       const tdLabel = document.createElement('td');
-      tdLabel.setAttribute('colspan', '3');
+      tdLabel.setAttribute('colspan', '4');
       tdLabel.className = 'py-3 px-5 text-left';
       tdLabel.textContent = 'Totales';
       tr.appendChild(tdLabel);
-      
-      const sumMonto = row.detalle_tratamientos.reduce((sum, t) => sum + (t.monto || 0), 0);
-      const sumCom = row.detalle_tratamientos.reduce((sum, t) => sum + (t.comision_doctor || 0), 0);
-      const sumGan = row.detalle_tratamientos.reduce((sum, t) => sum + (t.ganancia || 0), 0);
-      
       const tdMonto = document.createElement('td');
       tdMonto.className = 'py-3 px-5 text-right tabular-nums';
-      tdMonto.textContent = fmt(sumMonto);
+      tdMonto.textContent = fmt(total);
       tr.appendChild(tdMonto);
-      
-      const tdCom = document.createElement('td');
-      tdCom.className = 'py-3 px-5 text-right tabular-nums text-secondary-600';
-      tdCom.textContent = fmt(sumCom);
-      tr.appendChild(tdCom);
-      
-      const tdGan = document.createElement('td');
-      tdGan.className = 'py-3 px-5 text-right tabular-nums ' + (sumGan >= 0 ? 'text-accent-700' : 'text-danger-600');
-      tdGan.textContent = fmt(sumGan);
-      tr.appendChild(tdGan);
-      
+      if (puedeBorrar) tr.appendChild(document.createElement('td'));
       tfoot.appendChild(tr);
       tableEl.appendChild(tfoot);
     }
   }
-  
-  Modal.open('modal-detalle-doctor');
   lucide.createIcons();
 }
 
@@ -863,18 +868,31 @@ async function handleSave() {
   finally { btn.disabled = false; txt.textContent = editingId ? 'Actualizar' : 'Guardar'; }
 }
 
-async function handleDelete() {
-  const btn = document.getElementById('del-btn');
-  const txt = document.getElementById('del-text');
-  btn.disabled = true;
-  txt.textContent = 'Eliminando...';
+// Borra un pago: aviso (con el efecto sobre comisiones) + contraseña de admin.
+async function borrarPago(pago) {
+  const n = pago.comisiones_liquidadas || 0;
+  const efecto = n > 0
+    ? 'Este pago liquidó ' + n + ' comisión(es); regresarán a Comisiones Pendientes.'
+    : 'Se eliminará el pago.';
+  const ok = await Confirm.show({
+    title: 'Eliminar pago',
+    danger: true,
+    confirmText: 'Sí, eliminar',
+    message: '¿Seguro que quieres eliminar el pago de ' + fmt(pago.monto) + ' a ' +
+      (pago.especialista_nombre || 'el doctor') + ' del ' + formatDate(pago.fecha) +
+      ' (' + (pago.concepto || 'sin concepto') + ')? ' + efecto,
+  });
+  if (!ok) return;
+  const admin_password = await AdminGate.ask('Solo el administrador puede eliminar pagos.');
+  if (admin_password === null) return;
   try {
-    await API.delete('/edr/pagos-doctores/' + editingId);
+    await API.delete('/edr/pagos-doctores/' + pago.id, { admin_password });
     Toast.success('Pago eliminado');
-    Modal.close('modal-del');
-    fetchData();
-  } catch { Toast.error('Error al eliminar'); }
-  finally { btn.disabled = false; txt.textContent = 'Eliminar'; }
+    await fetchData();
+    if (especialistaDetalle !== null) renderDetallePagos();
+  } catch (e) {
+    Toast.error(e.message);
+  }
 }
 
 // ── Comisiones pagadas (detalle del mes y deshacer un pago) ──

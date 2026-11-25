@@ -503,6 +503,7 @@ const Prompt = {
   show(opts = {}) {
     const {
       title = '',
+      message = '',
       fields = [],
       confirmText = 'Guardar',
       cancelText = 'Cancelar',
@@ -532,6 +533,12 @@ const Prompt = {
         h.textContent = title;
         form.appendChild(h);
       }
+      if (message) {
+        const p = document.createElement('p');
+        p.className = 'text-sm text-text-secondary font-body';
+        p.textContent = message;
+        form.appendChild(p);
+      }
 
       const controls = {};
       fields.forEach((f) => {
@@ -559,6 +566,7 @@ const Prompt = {
           ctrl.type = f.type || 'text';
           ctrl.className = INPUT_CLS;
           if (f.placeholder) ctrl.placeholder = f.placeholder;
+          if (f.autocomplete) ctrl.autocomplete = f.autocomplete;
         }
         if (f.value != null) ctrl.value = f.value;
         const id = `prompt-field-${f.name}`;
@@ -625,6 +633,26 @@ const Prompt = {
         (first || okBtn).focus();
       }, 50);
     });
+  },
+};
+
+// ── AdminGate: pide la contraseña del admin para acciones destructivas ───────
+// Resuelve la contraseña (string) o null si se cancela.
+const AdminGate = {
+  async ask(mensaje) {
+    const r = await Prompt.show({
+      title: 'Confirma con tu contraseña',
+      message: mensaje,
+      confirmText: 'Confirmar',
+      fields: [{
+        name: 'password',
+        label: 'Contraseña de administrador',
+        type: 'password',
+        required: true,
+        autocomplete: 'current-password',
+      }],
+    });
+    return r ? r.password : null;
   },
 };
 

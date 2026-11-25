@@ -1,9 +1,11 @@
 from datetime import date
 from flask import Blueprint, request, jsonify, g
 from marshmallow import ValidationError
+from sqlalchemy import func
 from sqlalchemy.orm import joinedload, selectinload
 from app.extensions import db
 from app.middleware.tenant import require_auth, require_role
+from app.middleware.reauth import require_admin_password
 from app.edr.models import Ingreso, GastoOperativo, GastoRecurrente, PagoDoctor, PagoComisionIngreso
 from app.edr import recurrentes
 from app.edr.schemas import (
@@ -658,9 +660,19 @@ def listar_pagos():
         *filtro_mes(PagoDoctor.fecha, year, month),
     ).order_by(PagoDoctor.fecha).all()
 
+    conteos = {}
+    if pagos:
+        conteos = dict(db.session.query(
+            PagoComisionIngreso.pago_id, func.count(PagoComisionIngreso.id),
+        ).filter(
+            PagoComisionIngreso.tenant_id == g.tenant_id,
+            PagoComisionIngreso.pago_id.in_([p.id for p in pagos]),
+        ).group_by(PagoComisionIngreso.pago_id).all())
+
     result = []
     for p in pagos:
         data = PagoDoctorSchema().dump(p)
+        data["comisiones_liquidadas"] = conteos.get(p.id, 0)
         data["especialista_nombre"] = p.especialista.nombre if p.especialista else None
         data["sucursal_nombre"] = p.sucursal.nombre if p.sucursal else None
         result.append(data)
@@ -697,18 +709,25 @@ def actualizar_pago(pago_id):
 @edr_bp.route("/pagos-doctores/<int:pago_id>", methods=["DELETE"])
 @require_auth
 @require_role("admin")
+@require_admin_password
 def eliminar_pago(pago_id):
     pago = PagoDoctor.query.filter_by(
         id=pago_id, tenant_id=g.tenant_id
     ).first_or_404()
     # Si el pago liquidó comisiones, soltar las ligas: esos ingresos vuelven a
     # quedar pendientes.
-    PagoComisionIngreso.query.filter_by(
+    ligas = PagoComisionIngreso.query.filter_by(
         pago_id=pago.id, tenant_id=g.tenant_id
-    ).delete()
+    ).all()
+    for liq in ligas:
+        comisiones.despagar_reversiones(g.tenant_id, liq.ingreso_id)
+        db.session.delete(liq)
     db.session.delete(pago)
     db.session.commit()
-    return jsonify({"message": "Pago eliminado"})
+    return jsonify({
+        "message": "Pago eliminado",
+        "comisiones_liberadas": len(ligas),
+    })
 
 
 # ── COMISIONES PENDIENTES ──
